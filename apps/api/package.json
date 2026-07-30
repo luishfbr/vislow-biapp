@@ -14,6 +14,7 @@
     "@nestjs/common": "11.1.6",
     "@nestjs/core": "11.1.6",
     "@nestjs/platform-express": "11.1.6",
+    "@vislow/build-contract": "workspace:*",
     "@vislow/codegen": "workspace:*",
     "@vislow/component-registry": "workspace:*",
     "@vislow/config-schema": "workspace:*",

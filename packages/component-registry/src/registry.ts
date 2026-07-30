@@ -169,6 +169,19 @@ export function roleFieldsOf(kind: NodeKind): Extract<FieldSpec, { kind: 'role' 
 }
 
 /**
+ * O no le o `DataFrame`?
+ *
+ * Vive AQUI porque tem dois consumidores que precisam concordar: o codegen, que
+ * decide se emite `frame={frame}` no JSX gerado, e o preview do editor, que
+ * decide se passa a prop `frame`. Cada um com a sua copia da regra e a
+ * divergencia mais barata de introduzir e mais cara de achar — o preview
+ * desenharia dados e o pacote entregue cairia no estado vazio.
+ */
+export function consumesData(kind: NodeKind): boolean {
+  return roleFieldsOf(kind).length > 0;
+}
+
+/**
  * Props default de um tipo de no.
  *
  * Campos de papel NAO entram: eles referenciam um papel que o usuario declarou

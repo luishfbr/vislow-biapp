@@ -106,9 +106,28 @@ export const specSchema = {
     root: { $ref: '#/$defs/node' },
   },
   $defs: {
-    // Uniao discriminada por `kind`. O `oneOf` sobre `const` da mensagem de erro
-    // util: o Ajv aponta qual variante falhou, e nao "nenhuma das 7 serve".
-    node: { oneOf: NODE_KINDS.map(nodeSchemaFor) },
+    /**
+     * Uniao discriminada por `kind`, despachada com `if`/`then`.
+     *
+     * NAO e `oneOf`. Com `oneOf` o Ajv avalia as SETE variantes e reporta o erro
+     * de todas: um `barChart` sem medida ligada acusava tambem "falta
+     * `direction`" e "falta `gap`" — campos de container. Erro de outro tipo de
+     * no e pior que erro nenhum, porque manda o usuario procurar um campo que a
+     * tela dele nem tem.
+     *
+     * Com `if`/`then`, o `if` que nao casa nao produz erro, entao so a variante
+     * do `kind` declarado fala. O `enum` no `kind` e quem cobre o caso de um tipo
+     * inexistente, que antes era o unico servico util do `oneOf`.
+     */
+    node: {
+      type: 'object',
+      required: ['id', 'kind', 'props'],
+      properties: { kind: { enum: [...NODE_KINDS] } },
+      allOf: NODE_KINDS.map((kind) => ({
+        if: { required: ['kind'], properties: { kind: { const: kind } } },
+        then: nodeSchemaFor(kind),
+      })),
+    },
   },
 } as const;
 
@@ -125,8 +144,29 @@ function validator(): ValidateFunction {
   return compiled;
 }
 
+/**
+ * Caminho do Ajv no MESMO formato que `walk` produz.
+ *
+ * O Ajv devolve JSON Pointer (`/root/children/0/props`) e o `walk` devolve
+ * `root.children[0]`. As duas formas conviviam na mesma lista de problemas — a
+ * do schema e a das regras semanticas —, entao quem consome nao conseguia ligar
+ * um problema a um no sem saber de qual dos dois validadores ele veio.
+ *
+ * Erro de `required` aponta para o OBJETO que nao tem a propriedade. Anexar o
+ * nome que falta faz o caminho apontar para o CAMPO, como todos os outros — sem
+ * isso, "falta uma propriedade em props" nao diz qual controle da tela acender.
+ */
 function toIssue(error: ErrorObject): ValidationIssue {
-  const path = error.instancePath.replace(/^\//, '').replace(/\//g, '.');
+  let path = '';
+  for (const segment of error.instancePath.split('/')) {
+    if (segment === '') continue;
+    if (/^\d+$/.test(segment)) path += `[${segment}]`;
+    else path += path === '' ? segment : `.${segment}`;
+  }
+
+  const missing = (error.params as { missingProperty?: string }).missingProperty;
+  if (missing !== undefined) path = path === '' ? missing : `${path}.${missing}`;
+
   return { path: path || '(raiz)', message: error.message ?? 'invalido' };
 }
 
@@ -151,10 +191,26 @@ export function walk(spec: VisualSpec): { node: VisualSpec['root']; path: string
  * `capabilities.json` — ou pior, produziria um visual que pede um campo que o
  * codegen nao declarou.
  */
+/**
+ * Descarta os erros de ROLLUP do `if`/`then`.
+ *
+ * Cada `then` que falha gera, alem do erro real, um `must match "then" schema`
+ * em cada ancestral ate a raiz. Eles nao dizem nada que o erro especifico ja nao
+ * diga e, num aninhamento de tres containers, sao a maioria da lista — o que faz
+ * o problema de verdade sumir no meio.
+ */
+function isInformative(error: ErrorObject): boolean {
+  return error.keyword !== 'if';
+}
+
 export function validateSpec(value: unknown): SpecValidationResult {
   const validate = validator();
   if (!validate(value)) {
-    return { kind: 'invalid', issues: (validate.errors ?? []).map(toIssue) };
+    const errors = validate.errors ?? [];
+    const informative = errors.filter(isInformative);
+    // Se o filtro levar tudo, o rollup era a unica informacao que havia. Melhor
+    // um erro vago do que uma spec reprovada sem nenhum problema listado.
+    return { kind: 'invalid', issues: (informative.length > 0 ? informative : errors).map(toIssue) };
   }
 
   const spec = value as VisualSpec;

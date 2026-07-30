@@ -2,18 +2,22 @@
   "name": "@vislow/web",
   "version": "0.1.0",
   "private": true,
-  "description": "Editor low-code: produz e valida o VisualConfig e empacota o .pbiviz",
+  "description": "Editor de composicao: monta a arvore do visual e pede a compilacao a API de build",
   "scripts": {
     "dev": "next dev",
     "build:app": "next build",
     "start": "next start"
   },
   "dependencies": {
+    "@vislow/build-contract": "workspace:*",
+    "@vislow/component-registry": "workspace:*",
     "@vislow/config-schema": "workspace:*",
     "@vislow/visual-kit": "workspace:*",
     "next": "16.2.12",
     "react": "19.2.8",
     "react-dom": "19.2.8",
+    "react-is": "19.2.8",
+    "recharts": "3.10.1",
     "zustand": "5.0.14"
   },
   "devDependencies": {

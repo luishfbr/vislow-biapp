@@ -1,2 +1,9 @@
-# O pacote base (base-runtime.pbiviz) e artefato de build e nao e versionado.
-# Produza com: pnpm --filter @vislow/runtime build:runtime
+# Sem uso desde o Sprint 5.
+#
+# Ate a Fase 3 o editor empacotava o .pbiviz no browser e buscava daqui o pacote
+# base (base-runtime.pbiviz, artefato de build, nunca versionado). Com a
+# compilacao real por usuario (ADR-08) quem produz o pacote e a API de build, e
+# o editor nao serve mais nenhum artefato estatico.
+#
+# O diretorio fica porque `pnpm --filter @vislow/runtime build:runtime` ainda
+# escreve aqui enquanto o caminho antigo nao for removido de vez.

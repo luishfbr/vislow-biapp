@@ -4,10 +4,10 @@ import { ExportButton } from '@/components/ExportButton';
 import { useEditorStore } from '@/store/useEditorStore';
 
 export function Header() {
-  const config = useEditorStore((s) => s.config);
+  const spec = useEditorStore((s) => s.spec);
   const rename = useEditorStore((s) => s.rename);
 
-  const nameTooShort = config.project.name.trim().length < 3;
+  const nameTooShort = spec.project.name.trim().length < 3;
 
   return (
     <header className="flex shrink-0 items-center gap-4 border-b border-slate-200 bg-white px-4 py-2.5 dark:border-slate-700 dark:bg-slate-900">
@@ -21,7 +21,7 @@ export function Header() {
         </label>
         <input
           id="visual-name"
-          value={config.project.name}
+          value={spec.project.name}
           maxLength={50}
           onChange={(e) => {
             rename(e.target.value);
@@ -38,11 +38,11 @@ export function Header() {
         )}
       </div>
 
-      <span className="text-[11px] text-slate-400">v{config.project.packageVersion}</span>
+      <span className="text-[11px] text-slate-400">v{spec.project.packageVersion}</span>
 
       <div className="ml-auto flex items-center gap-2">
-        {/* O botao fica desabilitado com config invalida: RN-03 impede exportar
-            um pacote que so quebraria dentro do Power BI. */}
+        {/* O botao fica desabilitado com spec invalida: RN-03 impede pedir uma
+            build que o servidor recusaria de qualquer forma. */}
         <ExportButton />
       </div>
     </header>
