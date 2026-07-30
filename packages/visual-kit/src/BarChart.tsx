@@ -1,4 +1,3 @@
-import { useMemo } from 'react';
 import type { VisualConfig } from '@vislow/config-schema';
 import { FONT_SIZE_CLASS, RADIUS_TOP_CLASS, cx } from './tokens.js';
 import { DIMMED_OPACITY, resolveColors } from './theme.js';
@@ -21,8 +20,14 @@ export function BarChart({
 
   // Calculado UMA vez por render. Ja foi bug: estava dentro do .map, o que
   // tornava o render O(n^2) e arriscava estourar a pilha com Math.max(...args).
-  const maxValue = useMemo(() => data.reduce((m, d) => Math.max(m, d.value), 0), [data]);
-  const hasSelection = useMemo(() => data.some((d) => d.selected), [data]);
+  //
+  // Sem useMemo de proposito. O memo nao servia para nada: `data` e um array novo
+  // a cada render (o runtime monta `points` com .map), entao a dependencia nunca
+  // casava e o valor era recalculado sempre. Memoizar um reduce sobre um punhado
+  // de barras e otimizacao prematura — e, com hook, o unico ponto do visual-kit
+  // sensivel a duplicacao do React no bundle (achado 39).
+  const maxValue = data.reduce((m, d) => Math.max(m, d.value), 0);
+  const hasSelection = data.some((d) => d.selected);
 
   if (!bar) return null;
 

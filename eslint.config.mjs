@@ -53,6 +53,44 @@ export default defineConfig([
     },
   },
 
+  // O `visual-kit` e compilado para DENTRO do bundle do visual do Power BI, onde
+  // o webpack do `pbiviz` usa `resolve.symlinks: false` e pode duplicar o React
+  // (achado 39). Elementos JSX atravessam copias sem problema, mas hooks nao: o
+  // dispatcher fica `null` e o componente cai no ErrorBoundary. Enquanto a
+  // arquitetura de compilacao por usuario nao dissolver essa causa, o kit fica
+  // sem hooks — e essa regra e o que impede alguem de reintroduzir um sem saber.
+  {
+    files: ['packages/visual-kit/src/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: 'react',
+              importNames: [
+                'useState',
+                'useEffect',
+                'useMemo',
+                'useCallback',
+                'useRef',
+                'useReducer',
+                'useContext',
+                'useLayoutEffect',
+                'useId',
+                'useSyncExternalStore',
+                'useTransition',
+                'useDeferredValue',
+              ],
+              message:
+                'achado 39: hook no visual-kit quebra dentro do Power BI se o React duplicar no bundle. Use classe (ver ErrorBoundary) ou calcule no render.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+
   // O runtime tem DOIS tsconfig: o `tsconfig.json` e lax e existe para a
   // toolchain do pbiviz (cujo visualPlugin.ts gerado nao passa em
   // strictNullChecks). O lint precisa apontar para o config estrito.

@@ -55,6 +55,12 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
   `pbiviz`, cujo `tsconfig.json` lista os arquivos um a um.
 - **`renderRealBundle.test.ts` é o único teste que executa o artefato.** Se você mexer no bundle, na resolução de
   módulos ou nas dependências do runtime, é ele que pega o estrago.
+- **O `visual-kit` não usa hooks** — regra de ESLint, não convenção. Hook é o único ponto sensível à duplicação
+  do React no bundle (achado 39): elementos JSX atravessam cópias, hooks não. Use classe (ver `ErrorBoundary`) ou
+  calcule no render.
+- **Todo pacote carrega uma impressão digital de build** (`stamp-build-id.mjs`, exibida no canto do visual e no
+  card de erro). Ao diagnosticar qualquer coisa no Desktop, **peça o id primeiro** — sem ele, "importou o arquivo
+  antigo" é indistinguível de "a correção não funciona", e isso já custou uma sessão inteira.
 
 ## Estado
 
