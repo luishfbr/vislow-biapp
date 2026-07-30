@@ -1,0 +1,10 @@
+{
+  // Config de EDITOR e LINT do CODIGO DO PACOTE. O `template/` NAO entra aqui:
+  // ele e fonte de um projeto pbiviz standalone, com o proprio tsconfig e as
+  // proprias dependencias (powerbi-visuals-api, visual-kit vendorizado). Tentar
+  // compila-lo neste grafo falharia por modulos que so existem depois do
+  // `npm ci` do build.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "types": ["node"] },
+  "include": ["src/**/*"]
+}

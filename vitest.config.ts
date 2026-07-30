@@ -28,11 +28,17 @@ export default defineConfig({
       ).pathname,
       '@vislow/config-schema': new URL('./packages/config-schema/src/index.ts', import.meta.url)
         .pathname,
+      // Mesma armadilha do subcaminho de packaging: o especifico vem ANTES.
+      '@vislow/visual-kit/nodes': new URL(
+        './packages/visual-kit/src/nodes/index.ts',
+        import.meta.url,
+      ).pathname,
       '@vislow/visual-kit': new URL('./packages/visual-kit/src/index.ts', import.meta.url).pathname,
       '@vislow/component-registry': new URL(
         './packages/component-registry/src/index.ts',
         import.meta.url,
       ).pathname,
+      '@vislow/codegen': new URL('./packages/codegen/src/index.ts', import.meta.url).pathname,
     },
   },
 });

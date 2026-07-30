@@ -56,6 +56,23 @@ jobs:
           VISLOW_REQUIRE_TEMPLATE: '1'
         run: pnpm test:packaging
 
+      # Copia `visual-kit` e `config-schema` compilados para dentro do template
+      # do backend. Sao pacotes privados: nao estao em registro nenhum e entram
+      # em `node_modules` como diretorios reais, depois do `npm ci` de cada
+      # build. Depende do `pnpm build` acima ter gerado dist/ e o CSS.
+      - name: Preparar o template de compilacao
+        run: pnpm --filter @vislow/visual-template stage:vendor
+
+      # O GATE DE ACEITE do ADR-08: compila um .pbiviz de verdade a partir de uma
+      # spec e executa o bundle minificado num jsdom. E o herdeiro do teste que
+      # pegou o achado 39 — nenhum teste de fonte enxerga o que o webpack fez
+      # com o bundle. VISLOW_REQUIRE_BUILD=1 impede que a ausencia do template
+      # passe como "teste ignorado".
+      - name: Gate de compilacao real (spec -> .pbiviz -> render)
+        env:
+          VISLOW_REQUIRE_BUILD: '1'
+        run: pnpm test:build
+
       # Depois do empacotamento, porque o export estatico precisa levar o pacote
       # base em public/templates/ — o editor faz `fetch` dele para gerar o
       # .pbiviz no browser. Sem esta etapa, quebrar a resolucao do subcaminho

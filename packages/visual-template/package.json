@@ -1,0 +1,23 @@
+{
+  "name": "@vislow/visual-template",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Scaffold estatico de um projeto pbiviz e o empacotamento dos pacotes internos que o visual gerado consome",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "template",
+    "vendor"
+  ],
+  "scripts": {
+    "stage:vendor": "node scripts/stage-vendor.mjs"
+  }
+}

@@ -43,6 +43,27 @@ export const RADIUS_TOP_CLASS: Record<Radius, string> = {
   full: 'pbi:rounded-t-full',
 };
 
+/**
+ * Espacamento ENTRE itens de um container.
+ *
+ * Mapa separado do `SPACING_CLASS` de proposito: `p-*` e `gap-*` sao classes
+ * diferentes e a regra das strings literais proibe derivar uma da outra.
+ */
+export const GAP_CLASS: Record<Spacing, string> = {
+  none: 'pbi:gap-0',
+  xs: 'pbi:gap-1',
+  sm: 'pbi:gap-2',
+  md: 'pbi:gap-4',
+  lg: 'pbi:gap-6',
+  xl: 'pbi:gap-8',
+};
+
+/** Direcao de um container. Chaves batem com o campo `direction` do registro. */
+export const DIRECTION_CLASS: Record<'row' | 'column', string> = {
+  row: 'pbi:flex-row',
+  column: 'pbi:flex-col',
+};
+
 export const FONT_SIZE_CLASS: Record<FontSize, string> = {
   xs: 'pbi:text-xs',
   sm: 'pbi:text-sm',
@@ -82,6 +103,7 @@ export const BORDER_CLASS: Record<Border, string> = {
 /** Todos os mapas, para o teste de cobertura de tokens (T-02). */
 export const CLASS_MAPS = {
   spacing: SPACING_CLASS,
+  gap: GAP_CLASS,
   radius: RADIUS_CLASS,
   radiusTop: RADIUS_TOP_CLASS,
   fontSize: FONT_SIZE_CLASS,

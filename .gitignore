@@ -19,3 +19,7 @@ out/
 *.log
 .env
 .env.local
+
+# Pacotes internos compilados para dentro do template. Saida de
+# `pnpm --filter @vislow/visual-template stage:vendor`.
+packages/visual-template/vendor/

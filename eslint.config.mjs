@@ -91,6 +91,15 @@ export default defineConfig([
     },
   },
 
+  // Um modulo do NestJS e uma classe VAZIA de proposito: ela existe so para
+  // carregar o decorator `@Module`, que e o que o container de DI le. Nao ha
+  // como escrever um modulo sem cair no `no-extraneous-class`, entao a regra sai
+  // — e sai apenas nos arquivos `*.module.ts`, onde o padrao e legitimo.
+  {
+    files: ['apps/api/src/**/*.module.ts'],
+    rules: { '@typescript-eslint/no-extraneous-class': 'off' },
+  },
+
   // O runtime tem DOIS tsconfig: o `tsconfig.json` e lax e existe para a
   // toolchain do pbiviz (cujo visualPlugin.ts gerado nao passa em
   // strictNullChecks). O lint precisa apontar para o config estrito.

@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "types": ["node"],
+
+    // O NestJS usa decorators legados com metadados de tipo em runtime — e
+    // assim que a injecao por construtor descobre o que injetar. Sao os
+    // decorators do TypeScript, nao os do padrao ES.
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    // `emitDecoratorMetadata` le o TIPO do parametro em tempo de emissao. Com
+    // `useDefineForClassFields`, os campos declarados na classe passam a ser
+    // definidos com `Object.defineProperty` antes do construtor rodar, e as
+    // propriedades injetadas nascem `undefined`.
+    "useDefineForClassFields": false
+  },
+  "include": ["src/**/*"]
+}

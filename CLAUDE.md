@@ -62,6 +62,25 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
   card de erro). Ao diagnosticar qualquer coisa no Desktop, **peça o id primeiro** — sem ele, "importou o arquivo
   antigo" é indistinguível de "a correção não funciona", e isso já custou uma sessão inteira.
 
+### Armadilhas da API de build (Sprint 4)
+
+- **Nunca defina `NODE_ENV=production` no ambiente do worker.** O `npm ci` lê isso como `--omit=dev` e pula o
+  `powerbi-visuals-tools`. O `npm ci` termina com sucesso e a falha aparece depois, como um `404` do registro
+  tentando baixar um pacote chamado `pbiviz` — nada na mensagem aponta para a causa.
+- **O `tsconfig.json` do template não aceita comentário.** O `powerbi-visuals-tools` lê o arquivo com
+  `JSON.parse` cru. Toda explicação vai no `packages/visual-template/template/README.md`.
+- **O template usa `moduleResolution: "bundler"`.** A resolução `node` ignora o campo `exports` e não acharia
+  `@vislow/visual-kit/nodes`.
+- **Os `@vislow/*` entram em `node_modules` DEPOIS do `npm ci`**, que apaga o diretório inteiro antes de
+  instalar. Cópia de diretório, nunca symlink — symlink reintroduz o achado 39.
+- **`@vislow/visual-kit/nodes` fica fora do barril** pelo mesmo motivo do `config-schema/packaging`: o Runtime
+  Core importa o barril, e reexportar levaria o Recharts (~575 KB) para dentro do bundle dele.
+- **A inspeção do artefato é portão, não teste** (ADR-11). O `pbiviz` já reportou sucesso produzindo pacote
+  quebrado três vezes. Nada sai do worker sem passar por `inspectPbiviz`.
+- **`compiledVisual.e2e.test.ts` é o gate de aceite** — herdeiro do `renderRealBundle`. Se você mexer no
+  codegen, no template ou nos nós do kit, é ele que pega o estrago. Ele exige o template preparado
+  (`pnpm build && pnpm stage:vendor`).
+
 ## Estado
 
 Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (editor web) **concluídas**.
@@ -73,10 +92,16 @@ pelo editor importa, lê o modelo e renderiza barras com dados reais (MT-01 e MT
 (React duplicado) está fechado — a deduplicação basta, e o `visual-kit` ficou sem hooks como defesa em
 profundidade.
 
-**Próximo: pivô para compilação real por usuário.** Decisão de produto de 2026-07-30: o usuário deve montar o
-visual do zero a partir de um catálogo de componentes, e o backend compila um `.pbiviz` de verdade com o nome
-que ele escolheu. Isso reverte a **ADR-01** (patch de placeholder) e a **ADR-05** (zero backend). Plano em
-`~/.claude/plans/`. Sprint 2 é o gate: Recharts cabe em 1 MB? `pbiviz package` roda headless?
+**Pivô para compilação real por usuário** (ADR-08, reverte a ADR-01 e a ADR-05). Plano em `~/.claude/plans/`.
+
+- **Sprint 2 (gate)** — aprovado: Recharts cabe com folga e `pbiviz package` roda headless.
+- **Sprint 3 (registro)** — `@vislow/component-registry`: catálogo de componentes e schema da árvore derivado.
+- **Sprint 4 (API de build)** — concluído no código em 2026-07-30. `@vislow/visual-kit/nodes`,
+  `@vislow/codegen`, `@vislow/visual-template` e `@vislow/api`. Ciclo completo medido por HTTP com os sete
+  tipos de nó: **pacote 224,1 KB, `content.js` 762,6 KB, build em 11,8 s**. **Falta a validação manual no
+  Desktop.**
+- **Próximo: Sprint 5 (editor de composição)** — paleta, árvore navegável, painel de propriedades gerado do
+  registro, canvas de preview e mapeamento de papéis. O export passa a chamar a API.
 
 ```bash
 pnpm dev                                        # editor em http://localhost:3000
@@ -85,6 +110,11 @@ pnpm --filter @vislow/runtime build:runtime     # empacota + 11 guardas + copia 
 pnpm stage:template                             # só a copia, se o dist já existe
 pnpm test:packaging                             # T-03…T-08 isolados
 node packages/runtime/scripts/make-samples.mjs  # amostras para teste manual no Power BI
+
+# API de build (Sprint 4)
+pnpm build && pnpm stage:vendor                 # prepara o template — obrigatorio antes do primeiro build
+pnpm dev:api                                    # API em http://localhost:3001
+pnpm test:build                                 # gate de aceite: spec -> .pbiviz compilado -> render em jsdom
 ```
 
 **O editor precisa do pacote base para exportar.** Ele busca `/templates/base-runtime.pbiviz`; rode

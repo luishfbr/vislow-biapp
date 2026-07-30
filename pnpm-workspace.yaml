@@ -27,3 +27,6 @@ allowBuilds:
   # Otimizador de imagens do Next.js. Com `output: 'export'` a otimizacao em
   # servidor nao existe, entao o binario nativo nao e usado.
   sharp: false
+  # O postinstall do NestJS so imprime um pedido de patrocinio. Nao roda para
+  # manter o install deterministico e silencioso no CI (RNF-13).
+  '@nestjs/core': false

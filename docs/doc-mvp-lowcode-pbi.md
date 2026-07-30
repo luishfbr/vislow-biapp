@@ -237,6 +237,8 @@ Todo o desenho decorre destas restrições, verificadas na documentação da Mic
 | **ADR-09** | **O schema JSON da árvore é gerado a partir do registro de componentes**, não escrito à mão. | Escrever o schema à mão criaria uma segunda lista de tipos de nó, que divergiria do registro na primeira adição — e a divergência falharia em runtime, dentro do Power BI. Derivando, um tipo novo passa a ser validado no mesmo commit em que passa a existir. Mesma lógica do ADR-02, um nível acima. | Schema manual em paralelo ao registro. |
 | **ADR-10** | O codegen emite **imports nomeados dos mesmos componentes do `visual-kit`** que o preview usa, e não JSX de Recharts cru. | Preserva o ADR-04 depois do pivô: o visual compilado renderiza literalmente o mesmo componente do preview, então WYSIWYG continua garantido por construção. Imports nomeados dão tree-shaking — o bundle leva só os nós usados. | Codegen emitindo Recharts direto (preview e final divergem em semanas); interpretador genérico (sem tree-shaking, e o registro perde sentido). |
 | **ADR-07** | Config transportada em **base64** dentro do literal de string. | Elimina qualquer problema de escaping de aspas, quebras de linha e barras invertidas ao injetar em JS minificado. | JSON cru no literal — quebra com aspas no título do usuário. |
+| **ADR-11** | **A inspeção do artefato é um portão do pipeline, não um teste.** O worker abre o `.pbiviz` com `inspectPbiviz` e recusa a entrega se qualquer invariante falhar. | `pbiviz package` já reportou sucesso produzindo pacote quebrado três vezes neste projeto (achados 20, 34, 41). Confiar no código de saída entrega ao usuário um arquivo que o Power BI recusa com mensagem genérica — e o suporte não tem por onde começar. Verificando no servidor, a falha vira `ARTIFACT_REJECTED` com o número que estourou, antes de o usuário baixar qualquer coisa. | Confiar no código de saída do `pbiviz` (já provado insuficiente); verificar só no CI (não protege build de produção). |
+| **ADR-12** | O `capabilities.json` declara **apenas os papéis que a árvore consome**, não todos os que o projeto declarou. | Um papel declarado e não ligado a nenhum nó viraria um campo no painel do Power BI que o visual nunca lê: o usuário arrasta a coluna e nada acontece. Derivando da árvore, "campo pedido" e "campo usado" são a mesma coisa por construção. | Declarar todos os papéis do projeto (pede coluna que ninguém lê); exigir que todo papel declarado seja usado (transforma um rascunho em erro de validação). |
 
 ---
 
@@ -1268,6 +1270,46 @@ GUID declarado como `var` no bundle, dentro dos dois orçamentos.
   `resolve.symlinks: false`) **desaparece por construção**: sem symlinks, não há como duplicar.
 - `pbiviz package` imprime `error` de certificado e conclui com sucesso ([achado 41](#a7-achados-da-fase-3--export-2026-07-30)).
 
+### Sprint 4 — API de build — ✅ **CONCLUÍDO no código em 2026-07-30**
+
+O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) saiu do papel: uma spec entra por HTTP e um `.pbiviz`
+compilado de verdade sai, com o nome que o usuário escolheu.
+
+**O que passou a existir:**
+
+| Peça | Papel |
+|---|---|
+| `@vislow/visual-kit/nodes` | Os sete componentes do catálogo, sobre Recharts. Subcaminho **fora do barril**, pelo mesmo motivo de `config-schema/packaging`: o Runtime Core importa o barril, e reexportar levaria Recharts (~575 KB) para dentro do bundle dele. |
+| `@vislow/codegen` | Árvore → `visual.tsx` + `capabilities.json` + `pbiviz.json`. Emite **imports nomeados** dos componentes do kit ([ADR-10](#35-decisões-de-arquitetura-adr)). |
+| `@vislow/visual-template` | Scaffold `npm` estático do projeto `pbiviz` e vendorização dos `@vislow/*`. |
+| `@vislow/api` | NestJS: `POST /builds`, `GET /builds/:id`, `GET /builds/:id/artifact`. Fila com concorrência limitada, timeout duro, diretório temporário por build e o portão da [ADR-11](#35-decisões-de-arquitetura-adr). |
+
+**Medido no ciclo completo por HTTP**, com uma árvore usando **os sete tipos de nó**:
+
+| Medida | Valor | Limite |
+|---|---|---|
+| Pacote | 224,1 KB | 2048 KB |
+| `content.js` | 762,6 KB | 1024 KB |
+| Build de ponta a ponta | 11,8 s | — |
+
+Confirma a projeção do gate do Sprint 2 (~575 KB de base + ~17 KB por tipo) e deixa **261 KB de folga** no pior
+caso do catálogo atual.
+
+**Gate de aceite:** `apps/api/src/builds/compiledVisual.e2e.test.ts` compila um `.pbiviz` de verdade e executa o
+bundle minificado num jsdom — herdeiro direto do `renderRealBundle.test.ts`, o único teste que pegou o
+[achado 39](#a7-achados-da-fase-3--export-2026-07-30). Verifica identidade, orçamentos, CSS no bundle e a
+[RN-04](#6-regras-de-negócio) nos dois lados: com dados renderiza dados (SVG do Recharts e as categorias na
+tela), sem dados renderiza o estado vazio com instrução. No CI, `VISLOW_REQUIRE_BUILD=1` impede que a ausência
+do template passe como "teste ignorado".
+
+**DoD:** ✅ código, testes e CI. ⏳ **Falta a validação manual no Power BI Desktop** — importar o `.pbiviz`
+gerado pela API, arrastar campos e confirmar que os quatro gráficos e o KPI renderizam com dados reais.
+
+**Próximo: Sprint 5 — editor de composição.** Paleta, árvore navegável, painel de propriedades gerado do
+registro, canvas de preview e mapeamento de papéis. O botão de export passa a chamar esta API.
+
+---
+
 ### Fase 4 — KPI Card, Acessibilidade e Robustez (~1 semana)
 
 - [ ] KPI Card (RF-16) com a role `target`.
@@ -1403,3 +1445,13 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 39 | **O webpack do `pbiviz` usa `resolve.symlinks: false`** (`webpack.config.js:106`), então não resolve symlink para realpath. `packages/runtime/node_modules/react` e `packages/runtime/node_modules/@vislow/visual-kit/node_modules/react` — dois symlinks para o **mesmo** pacote — entraram no bundle como **dois módulos distintos**. O `react-dom` instala o dispatcher de hooks na cópia dele; o `visual-kit` chamava `useMemo` na outra, cujo dispatcher é `null`. | **Alto e enganoso.** Elementos JSX atravessam cópias sem problema (o `$$typeof` é um `Symbol.for`, global), então o KPI Card renderizava normalmente e só o gráfico de barras — o único componente com hook — caía no `ErrorBoundary` com `Cannot read properties of null (reading 'useMemo')`. Nenhum teste de fonte pegaria: o bug só existe no artefato empacotado. Mesma família do achado 24. | `autoInstallPeers: false` no `pnpm-workspace.yaml` e remoção do `react` das `devDependencies` do `visual-kit`. Sem `packages/visual-kit/node_modules/react`, a busca do webpack sobe e encontra o `react` do runtime — uma cópia só. Guarda permanente: `packages/runtime/test/renderRealBundle.test.ts` executa o bundle minificado num jsdom e verifica o DOM. **Confirmado que o teste falha com o bug presente e passa sem ele**, e **validado no Power BI Desktop em 2026-07-30**: os dois candidatos do sprint de diagnóstico (`fe260c08`, só a deduplicação; `1f9da5e2`, deduplicação + `visual-kit` sem hooks) importaram e renderizaram barras com dados reais. A deduplicação basta; a remoção dos hooks fica como defesa em profundidade. |
 | 41 | **`pbiviz package` imprime `error` de certificado e conclui com sucesso.** Num container sem `openssl`: `warn Certificate verification error` seguido de `error Create certificate error: openssl: not found` e, depois, `done Build completed successfully`. O certificado é exigido pelo `pbiviz start` (servidor de dev), não pelo `package`. | O worker de build do backend que tratasse `error` na saída como falha rejeitaria **todo** build bem-sucedido. É o inverso do padrão de falha silenciosa desta toolchain: aqui é um erro *falso*. | O worker decide por **código de saída** e pela verificação do artefato com `inspectPbiviz`, nunca por varredura de texto na saída. |
 | 40 | **Um pacote que não identifica a si mesmo torna o diagnóstico impossível.** Depois da correção do achado 39, um relato de "continua falhando" ficou indistinguível de "importou o arquivo antigo" — e era o arquivo antigo. Uma sessão inteira gasta nisso. | Diagnóstico remoto de artefato binário sem identidade é adivinhação. | `stamp-build-id.mjs` sela o prefixo do sha256 do `content.js` depois do `pbiviz package`, determinístico por fonte. `BuildStamp` exibe o id no canto do visual, **fora** do `ErrorBoundary` e também no caminho de sucesso — senão "renderizou" não diz *qual* pacote renderizou. Regra em `CLAUDE.md`: pedir o id antes de diagnosticar qualquer coisa no Desktop. |
+
+### A8 — Achados do Sprint 4: API de build (2026-07-30)
+
+| # | Achado | Impacto | Correção |
+|---|---|---|---|
+| 42 | **`NODE_ENV=production` no ambiente do build faz o `npm ci` omitir as `devDependencies`** — e o `powerbi-visuals-tools` é uma delas. | Alto e completamente enganoso: o `npm ci` termina **com sucesso**, e a falha aparece só no passo seguinte, como um `404 Not Found - GET https://registry.npmjs.org/pbiviz`. A mensagem sugere um pacote inexistente no registro, não um compilador que não foi instalado. Custou uma rodada de diagnóstico. | O ambiente do worker (`pipeline.ts`, `buildEnv`) **não define `NODE_ENV`**, com o motivo comentado, e o `npm ci` passa `--include=dev` explícito. A redundância é deliberada: quem mexer em um dos dois esbarra no outro. |
+| 43 | **O `powerbi-visuals-tools` lê o `tsconfig.json` do projeto com `JSON.parse` cru** (`lib/utils.js`, `safelyParse`), não com um parser de JSONC. | Um comentário `//` no `tsconfig.json` derruba o build com `SyntaxError: Expected double-quoted property name in JSON`, apontando para a linha do próprio comentário — mensagem que não sugere em nada que o problema é o formato do arquivo. O resto do monorepo comenta tsconfigs livremente, então o hábito leva direto ao erro. | O `tsconfig.json` do template não tem comentário nenhum. Toda a explicação vive no `template/README.md`. |
+| 44 | **A resolução `node` (node10) ignora o campo `exports`.** O `visual-kit` publica os componentes de nó pelo subcaminho `@vislow/visual-kit/nodes`; o webpack do `pbiviz` honra `exports`, o TypeScript com `moduleResolution: node` não. | Falha só do lado dos tipos, com `Cannot find module`, num projeto que compila por webpack — a assimetria entre as duas resoluções não é óbvia. | `moduleResolution: "bundler"` no `tsconfig.json` do template. |
+| 45 | **`npm ci` apaga `node_modules` inteiro antes de instalar.** Os pacotes `@vislow/*` são privados: não estão em registro nenhum e não podem entrar no `package.json` do template. | Vendorizar antes do `npm ci` é trabalho jogado fora, e o erro só apareceria depois, na resolução do webpack, sem explicar a causa. | `stage-vendor.mjs` prepara `vendor/@vislow/`, e o pipeline copia para `node_modules/` **depois** do `npm ci`. Cópia de diretório, não symlink nem `file:`: symlink reintroduziria a condição exata do [achado 39](#a7-achados-da-fase-3--export-2026-07-30), e `file:` faria o `npm ci` recusar o lockfile a cada byte alterado no kit. |
+| 46 | **O jsdom não tem motor de layout nem `ResizeObserver`**, e o `ResponsiveContainer` do Recharts depende dos dois. | O gate de aceite passaria enganado: o visual monta, o container do gráfico aparece no DOM, e **nenhum SVG é desenhado** — exatamente o sintoma do achado 39, o bug que este teste existe para pegar. | O harness instala um `ResizeObserver` que reporta medida fixa e sobrescreve `offsetWidth`/`clientWidth`/`getBoundingClientRect`. Equipar o harness, não afrouxar a asserção: o que se prova é que o gráfico desenha **quando tem espaço**, que é a condição real dentro do Power BI. |

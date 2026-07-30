@@ -40,6 +40,10 @@ describe('cobertura de tokens (T-02)', () => {
       Object.keys(CLASS_MAPS.radius).sort(),
     );
   });
+
+  it('gap cobre exatamente os mesmos valores de spacing', () => {
+    expect(Object.keys(CLASS_MAPS.gap).sort()).toEqual(Object.keys(CLASS_MAPS.spacing).sort());
+  });
 });
 
 describe('classes literais (invariante do ADR-02)', () => {
