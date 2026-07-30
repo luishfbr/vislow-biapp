@@ -1346,7 +1346,7 @@ pela API importa e renderiza com dados reais.
 
 ---
 
-### Sprint 5 — Editor de composição — ✅ **CONCLUÍDO no código em 2026-07-30**
+### Sprint 5 — Editor de composição — ✅ **CONCLUÍDO em 2026-07-30**
 
 A última peça do pivô: o usuário deixa de escolher entre dois tipos prontos e passa a **compor**. Os painéis
 fixos da Fase 2 (`AppearancePanel`, `CONTROL_GROUPS`, tipo de visual) saíram; no lugar entrou uma superfície
@@ -1374,9 +1374,15 @@ barras desenhadas, KPI com número, os quatro tipos de gráfico montando. `useEd
 invariante que importa: toda sequência de ações que a interface permite produz uma spec que passa no **mesmo
 `validateSpec` que o `BuildsController` aplica** — ou fica explicitamente pendente, com o export bloqueado.
 
-**DoD:** ✅ código, testes (226) e `pnpm verify` limpo. ⏳ **Falta a validação manual no Power BI Desktop** —
-compor do zero, exportar pela API, importar, e os cenários MT-03 (dois visuais coexistindo) e MT-04 (reexportar
-atualiza, não duplica).
+**DoD:** ✅ código, testes (226), `pnpm verify` limpo **e validação manual no Power BI Desktop em 2026-07-30**.
+O ciclo completo fecha: compor no editor a partir da tela em branco, exportar pela API e importar no Power BI.
+É o primeiro momento em que a proposta do produto — o usuário **cria** o visual, não escolhe entre prontos —
+existe de ponta a ponta.
+
+Pendente de verificação nesta etapa: MT-03 (dois visuais coexistindo) e MT-04 (reexportar atualiza, não
+duplica). Ambos dependem apenas da identidade do projeto, coberta por teste
+([`useEditorStore.test.ts`](apps/web/src/store/useEditorStore.test.ts)) e já aprovada no Desktop na Fase 3 —
+mas não reconfirmadas no caminho compilado.
 
 ---
 

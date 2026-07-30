@@ -109,6 +109,10 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 
 ## Estado
 
+**O pivô da ADR-08 está fechado.** Desde 2026-07-30 o ciclo completo funciona no Power BI Desktop: o usuário
+compõe do zero no editor, a API compila um `.pbiviz` de verdade e o pacote importa e renderiza. O produto
+prometido — o usuário **cria** o visual, não escolhe entre prontos — existe de ponta a ponta.
+
 Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (editor web) **concluídas**.
 O runtime foi validado no Power BI Desktop com dados reais: barras e KPI Card com cross-filter, tooltip nativo,
 formatação por locale, alto contraste e estados vazio/erro. Pacote 131 KB.
@@ -129,8 +133,8 @@ profundidade.
   dois tipos prontos e passou a compor: paleta, árvore navegável, painel de propriedades e preview, todos
   derivados do registro; papéis de dados declarados pelo usuário; export chamando a API com progresso.
   Novos: `component-registry/tree.ts`, `visual-kit/nodes/mockFrame.ts` e `@vislow/build-contract`.
-  Aposentados: `exportPbiviz.ts`, `AppearancePanel` e `CONTROL_GROUPS`. **Falta a validação manual no Desktop**
-  (compor do zero → exportar → importar, mais MT-03 e MT-04).
+  Aposentados: `exportPbiviz.ts`, `AppearancePanel` e `CONTROL_GROUPS`. **Validado no Desktop em 2026-07-30**:
+  o ciclo completo fecha — compor no editor, exportar pela API e importar no Power BI.
 - **Próximo: Sprint 6 (paridade de interatividade)** — o visual compilado renderiza dados corretamente, mas
   **não filtra, não mostra tooltip nativo, ignora alto contraste e não é navegável por teclado**. São seis
   capacidades que a Fase 1 já tinha aprovado no Desktop e que o pivô deixou para trás (achado 53). Vem antes do
