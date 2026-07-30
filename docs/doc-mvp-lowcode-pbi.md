@@ -1380,12 +1380,54 @@ atualiza, não duplica).
 
 ---
 
-### Fase 4 — KPI Card, Acessibilidade e Robustez (~1 semana)
+### Sprint 6 — Paridade de interatividade — ⏳ **PRÓXIMO**
 
-- [ ] KPI Card (RF-16) com a role `target`.
-- [ ] Alto contraste, navegação por teclado, menu de contexto, aviso de truncamento.
+Existe porque o pivô deixou seis capacidades para trás
+([achado 53](#a9--achados-do-sprint-5-editor-de-composição-2026-07-30)). Não é escopo novo: as seis foram
+entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual que a API compila hoje desenha
+corretamente, mas **clicar numa barra não filtra o relatório**.
+
+| Capacidade | Referência a portar | Requisito |
+|---|---|---|
+| Cross-filter (`selectionManager`, `createSelectionId`) | `runtime/src/visual.tsx`, `viewModel.ts` | [RF-18](#45-runtime-core) |
+| Tooltip nativo (`tooltipService`) | `runtime/src/visual.tsx` | [RF-19](#45-runtime-core) |
+| Alto contraste | `visual-kit/theme.ts` (a lógica existe; falta o caminho até os nós) | [RF-21](#45-runtime-core) |
+| Navegação por teclado | `visual-kit/BarChart.tsx` (`tabIndex`, `aria-label`) | [RF-23](#45-runtime-core) |
+| Menu de contexto | `runtime/src/visual.tsx:47` | [RF-24](#45-runtime-core) |
+| Aviso de truncamento | `TruncationNotice` + `runtime/src/visual.tsx:195` | [RF-25](#45-runtime-core) |
+
+Os nós novos ([`visual-kit/src/nodes/`](packages/visual-kit/src/nodes/)) não têm **um único** `tabIndex`,
+`aria-label` ou `onKeyDown` — o que a Fase 1 tinha vive em `BarChart.tsx`/`KpiCard.tsx`, que o caminho novo não
+usa. Um visual acessível é requisito de publicação no AppSource, não enfeite.
+
+**O que torna isto diferente de um port simples:** o contrato dos nós mudou. Os componentes da Fase 1 recebiam
+`DataPoint[]` já resolvido e um `RenderContext` com tema; os nós novos recebem `DataFrame` e props literais
+([`nodes/frame.ts`](packages/visual-kit/src/nodes/frame.ts)). Selection id e serviço de tooltip são objetos do
+host — precisam chegar aos nós sem virar prop de cada descritor e **sem introduzir hook no `visual-kit`**
+(regra do achado 39, verificada por ESLint).
+
+**Restrição que decide o desenho:** os gráficos agora são Recharts, não SVG nosso. Cross-filter e tooltip
+passam a depender dos handlers do Recharts (`onClick` na série, `content` customizado no `Tooltip`), não de
+elementos que controlamos diretamente.
+
+⚠️ **`packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` não podem ser apagados antes
+deste sprint.** Estão sem chamador desde o Sprint 5, mas são a única implementação das seis capacidades.
+
+**DoD:** as seis funcionando num `.pbiviz` compilado pela API e aprovadas no Desktop; gate de aceite estendido
+para cobrir cross-filter (o `compiledVisual.e2e.test.ts` hoje verifica que renderiza dados e a
+[RN-04](#6-regras-de-negócio), não que a seleção propaga).
+
+---
+
+### Fase 4 — KPI Card, Robustez e Matriz Completa
+
+Depois do Sprint 6, porque a matriz manual tem cenários de cross-filter que hoje reprovariam.
+
+- [ ] KPI Card com comparação ([RF-16](#45-runtime-core)). **Mudou com o pivô:** não é mais a role fixa
+      `target` do `capabilities.json` — vira um campo de papel opcional no descritor do `KpiNode`, que o
+      usuário liga como qualquer outro.
 - [ ] Matriz manual completa (MT-01 a MT-14), incluindo o Service.
-- [ ] E2E Playwright.
+- [ ] E2E Playwright do editor de composição.
 
 **DoD:** matriz completa aprovada; zero ocorrências de tela branca; métricas M-01 a M-05 mensuráveis no piloto.
 
@@ -1536,3 +1578,4 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 50 | **O `visual-kit` não declara `react` nem em `devDependencies`** (achado 39), então nenhum teste conseguia importar seus componentes a partir do fonte. | Bloqueava qualquer teste de render do preview — justamente a classe de teste que pegou o achado 39. | Alias de `react`/`react-dom` no `vitest.config.ts`, apontando para a cópia do editor. Resolve só no vitest, **sem tocar no layout de `node_modules`**, que é o que não pode mudar. |
 | 51 | **O `apps/web/tsconfig.json` usa `jsx: "preserve"`** porque quem transforma o JSX é o Next — e o vitest lê esse mesmo tsconfig. | Todo teste `.tsx` do editor falhava no parse com `Unexpected JSX expression`, erro que aponta para o código e não para a configuração. O Vite 8 usa `oxc`: definir `esbuild.jsx` é aceito e **silenciosamente ignorado**, com um aviso fácil de não ler. | `oxc: { jsx: { runtime: 'automatic' } }` no `vitest.config.ts`. |
 | 52 | **Um seletor de zustand que constrói o valor a cada chamada re-renderiza em loop.** `selectIssuesByNode` devolvia um `Map` novo; o zustand v5 compara com `Object.is`. | Trava o editor, e o sintoma (aba congelada) não aponta para o seletor. | As derivações que criam objeto saíram do store para `lib/issues.ts` e são memoizadas no componente. O que fica como seletor devolve **referência vinda do estado**, nunca valor construído — com o motivo comentado no arquivo. |
+| 53 | **O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) deixou seis capacidades para trás.** O caminho novo — `codegen` + `visual-template` + `visual-kit/nodes` — não tem **cross-filter**, **tooltip nativo**, **alto contraste**, **navegação por teclado**, **menu de contexto** nem **aviso de truncamento** (RF-18, 19, 21, 23, 24, 25). Vivem em `packages/runtime/src/visual.tsx` e nos componentes `BarChart`/`KpiCard` do `visual-kit` — nenhum dos dois usado pelo caminho novo. Os nós de `visual-kit/src/nodes/` não têm um único `tabIndex` ou `aria-label`. | Regressão, não escopo futuro: as seis foram entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual compilado hoje desenha certo, então nenhum teste acusa — `compiledVisual.e2e.test.ts` verifica que renderiza dados e a RN-04, não que clicar numa barra filtra o relatório. Descoberto ao planejar a Fase 4, não por falha. | Sprint 6 dedicado à paridade, **antes** do resto da Fase 4: a matriz MT-01…MT-14 tem cenários de cross-filter que hoje reprovariam, e acessibilidade é requisito de publicação no AppSource. Enquanto isso, `packages/runtime` e os componentes antigos do `visual-kit` **não podem ser apagados** — estão sem chamador desde o Sprint 5, mas são a única implementação de referência das seis. Anotado no `CLAUDE.md` junto da lista de aposentadoria, que sem o aviso convidava exatamente a esse apagamento. |

@@ -131,11 +131,19 @@ profundidade.
   Novos: `component-registry/tree.ts`, `visual-kit/nodes/mockFrame.ts` e `@vislow/build-contract`.
   Aposentados: `exportPbiviz.ts`, `AppearancePanel` e `CONTROL_GROUPS`. **Falta a validação manual no Desktop**
   (compor do zero → exportar → importar, mais MT-03 e MT-04).
+- **Próximo: Sprint 6 (paridade de interatividade)** — o visual compilado renderiza dados corretamente, mas
+  **não filtra, não mostra tooltip nativo, ignora alto contraste e não é navegável por teclado**. São seis
+  capacidades que a Fase 1 já tinha aprovado no Desktop e que o pivô deixou para trás (achado 53). Vem antes do
+  resto da Fase 4: a matriz MT-01…MT-14 tem cenários de cross-filter que hoje reprovariam.
 
 **Ainda por aposentar:** `buildPbiviz`/`CONFIG_PLACEHOLDER` em `config-schema/packaging` e os testes T-03…T-08
-não têm mais chamador desde o Sprint 5 — o editor não empacota no browser. `packages/runtime` idem. Foram
-mantidos de propósito para não misturar remoção com entrega; `inspectPbiviz` **sobrevive**, é o portão da
-ADR-11.
+não têm mais chamador desde o Sprint 5 — o editor não empacota no browser. `inspectPbiviz` **sobrevive**, é o
+portão da ADR-11.
+
+⚠️ **`packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` NÃO podem ser apagados ainda**
+(achado 53). Também estão sem chamador, mas são a única implementação de seis capacidades que o caminho novo
+não tem — cross-filter, tooltip nativo, alto contraste, navegação por teclado, menu de contexto e aviso de
+truncamento. Apagá-los destrói a referência antes de a portabilidade existir. Ver o Sprint 6 no doc de MVP.
 
 ```bash
 # Numa árvore limpa, nesta ordem:
