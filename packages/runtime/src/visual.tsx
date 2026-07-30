@@ -3,6 +3,7 @@ import { StrictMode, type ReactElement } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import {
   BarChart,
+  BuildStamp,
   ErrorBoundary,
   ErrorCard,
   EmptyState,
@@ -14,6 +15,7 @@ import {
 import type { VisualConfig } from '@vislow/config-schema';
 import '@vislow/visual-kit/styles.css';
 
+import { BUILD_ID } from './buildId';
 import { readEmbeddedConfig } from './embeddedConfig';
 import { buildViewModel, CATEGORY_LIMIT, type ViewModel } from './viewModel';
 
@@ -122,7 +124,12 @@ export class Visual implements IVisual {
     try {
       this.root.render(
         <StrictMode>
-          <ErrorBoundary>{this.buildTree()}</ErrorBoundary>
+          {/* O selo de build fica FORA do ErrorBoundary: se a arvore falhar, ele
+              ainda precisa dizer qual pacote falhou. */}
+          <div className="pbi:relative pbi:w-full pbi:h-full">
+            <ErrorBoundary buildId={BUILD_ID}>{this.buildTree()}</ErrorBoundary>
+            <BuildStamp id={BUILD_ID} />
+          </div>
         </StrictMode>,
       );
     } catch (error) {
@@ -131,14 +138,14 @@ export class Visual implements IVisual {
       // ErrorBoundary acima — o try/catch nao as alcanca, porque a fase de
       // render do React e assincrona no modo concorrente.
       const detail = error instanceof Error ? error.message : 'Falha inesperada na renderizacao.';
-      this.root.render(<ErrorCard code="RENDER_FAIL" detail={detail} />);
+      this.root.render(<ErrorCard code="RENDER_FAIL" detail={detail} buildId={BUILD_ID} />);
     }
   }
 
   private buildTree(): ReactElement {
     if (!this.config) {
       const err = this.bootError ?? { code: 'UNKNOWN', detail: '' };
-      return <ErrorCard code={err.code} detail={err.detail} />;
+      return <ErrorCard code={err.code} detail={err.detail} buildId={BUILD_ID} />;
     }
     if (!this.lastOptions) return <EmptyState missing={['Categoria', 'Valor']} />;
 

@@ -60,6 +60,12 @@ check(
   /^[A-Za-z][A-Za-z0-9]*$/.test(pkg.visual.guid),
   pkg.visual.guid,
 );
+
+// --- Impressao digital de build -------------------------------------------
+// Um pacote nao selado nao identifica a si mesmo, e foi essa cegueira que
+// custou uma sessao inteira de diagnostico. `stamp-build-id.mjs` ja falha se o
+// token nao aparecer exatamente 1x; aqui basta provar que ele foi consumido.
+check('build id selado no bundle', !js.includes('__VISLOW_BUILD_ID__'));
 check('guid declarado como var no bundle', new RegExp(`var ${pkg.visual.guid}\\b`).test(js));
 
 // --- Orcamentos (RNF-04 / RNF-05) -----------------------------------------

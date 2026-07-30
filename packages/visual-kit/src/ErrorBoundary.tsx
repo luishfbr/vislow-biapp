@@ -10,7 +10,7 @@ import { ErrorCard } from './states.js';
  * Somente um error boundary captura falhas de render de componente.
  */
 export class ErrorBoundary extends Component<
-  { children: ReactNode },
+  { children: ReactNode; buildId?: string | undefined },
   { message: string | null }
 > {
   public override state: { message: string | null } = { message: null };
@@ -26,7 +26,10 @@ export class ErrorBoundary extends Component<
 
   public override render(): ReactNode {
     if (this.state.message !== null) {
-      return <ErrorCard code="RENDER_FAIL" detail={this.state.message} />;
+      // O buildId vai no card porque e ele que o usuario fotografa ao relatar.
+      return (
+        <ErrorCard code="RENDER_FAIL" detail={this.state.message} buildId={this.props.buildId} />
+      );
     }
     return this.props.children;
   }
