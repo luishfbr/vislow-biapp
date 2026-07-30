@@ -1,0 +1,2 @@
+# O pacote base (base-runtime.pbiviz) e artefato de build e nao e versionado.
+# Produza com: pnpm --filter @vislow/runtime build:runtime

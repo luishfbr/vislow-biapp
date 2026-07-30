@@ -13,6 +13,8 @@
     "typecheck": "tsc -b && tsc -p packages/runtime/tsconfig.check.json && tsc -p apps/web/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:packaging": "vitest run buildPbiviz",
+    "stage:template": "node packages/runtime/scripts/stage-template.mjs",
     "build": "tsc -b && pnpm -r build:css",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
     "clean": "tsc -b --clean && rm -rf packages/*/dist",

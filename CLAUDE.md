@@ -39,6 +39,13 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 - **Coordenadas do `tooltipService` são relativas ao elemento do visual**, não à viewport.
 - **Props opcionais de React declaram `prop?: T | undefined`** — `exactOptionalPropertyTypes` está ligado e
   proíbe repassar `undefined` explícito para `prop?: T`.
+- **A reescrita de identidade no `.pbiviz` é UMA passada, com alternação de regex.** Duas passadas sequenciais
+  (GUID, depois nome) duplicam o sufixo hex dentro dos GUIDs novos quando o slug do projeto coincide com o nome
+  do pacote base — e `slugify("vislow Runtime")` produz exatamente esse slug.
+- **Identidade primeiro, payload base64 depois.** Injetar antes é o que expõe o payload à reescrita.
+- **`buildPbiviz` vive em `@vislow/config-schema/packaging`, fora do `index.ts`.** O Runtime Core importa o
+  barril; reexportar levaria o JSZip para dentro do bundle do visual, contra o orçamento de 1 MB.
+- **`Uint8Array` do TS 5.9 é genérico sobre `ArrayBufferLike`** e `BlobPart` só aceita `Uint8Array<ArrayBuffer>`.
 
 ## Estado
 
@@ -46,11 +53,20 @@ Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (ed
 O runtime foi validado no Power BI Desktop com dados reais: barras e KPI Card com cross-filter, tooltip nativo,
 formatação por locale, alto contraste e estados vazio/erro. Pacote 131 KB.
 
-Próximo: **Fase 3 — export** (`buildPbiviz` em `config-schema` + botão do cabeçalho + testes T-03…T-08).
+**Fase 3 (export)** com o código concluído: `buildPbiviz` e `inspectPbiviz` em
+`@vislow/config-schema/packaging`, botão do cabeçalho ligado com estados de erro, diálogo de instruções de
+importação, e T-03…T-08 no CI. Falta a matriz manual MT-01…MT-08 no Power BI Desktop.
+
+Próximo: **Fase 4** — KPI Card com a role `target`, acessibilidade e robustez.
 
 ```bash
 pnpm dev                                        # editor em http://localhost:3000
 pnpm verify                                     # typecheck + lint + testes
-pnpm --filter @vislow/runtime build:runtime     # empacota + 11 guardas do .pbiviz
+pnpm --filter @vislow/runtime build:runtime     # empacota + 11 guardas + copia o template para o editor
+pnpm stage:template                             # só a copia, se o dist já existe
+pnpm test:packaging                             # T-03…T-08 isolados
 node packages/runtime/scripts/make-samples.mjs  # amostras para teste manual no Power BI
 ```
+
+**O editor precisa do pacote base para exportar.** Ele busca `/templates/base-runtime.pbiviz`; rode
+`pnpm --filter @vislow/runtime build:runtime` antes do `pnpm dev` numa árvore limpa.

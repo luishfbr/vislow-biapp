@@ -45,6 +45,28 @@ jobs:
       - name: Empacotar Runtime Core
         run: pnpm --filter @vislow/runtime build:runtime
 
+      # T-03..T-08 (secao 12.3). `pnpm test`, acima, ja rodou a parte sintetica;
+      # aqui as assertivas que dependem do bundle minificado de verdade rodam
+      # contra o pacote recem-construido. VISLOW_REQUIRE_TEMPLATE=1 impede que a
+      # ausencia do artefato passe como "teste ignorado".
+      - name: Testes de empacotamento contra o pacote real
+        env:
+          VISLOW_REQUIRE_TEMPLATE: '1'
+        run: pnpm test:packaging
+
+      # Depois do empacotamento, porque o export estatico precisa levar o pacote
+      # base em public/templates/ — o editor faz `fetch` dele para gerar o
+      # .pbiviz no browser. Sem esta etapa, quebrar a resolucao do subcaminho
+      # `@vislow/config-schema/packaging` so apareceria em producao.
+      - name: Build do editor
+        run: pnpm --filter @vislow/web build:app
+
+      - name: Verificar que o export estatico levou o pacote base
+        run: |
+          TPL=apps/web/out/templates/base-runtime.pbiviz
+          test -s "$TPL" || { echo "::error::pacote base ausente no export estatico"; exit 1; }
+          echo "pacote base publicado: $(wc -c < "$TPL") bytes"
+
       # Guarda do ADR-02: o CSS gerado precisa conter as classes do mapa de
       # tokens. Se o mapa quebrar a regra de strings literais, o Tailwind nao
       # gera a classe e o estilo sumiria em silencio dentro do Power BI.

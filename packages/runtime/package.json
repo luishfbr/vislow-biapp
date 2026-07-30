@@ -5,7 +5,7 @@
   "description": "Runtime Core: visual pbiviz pre-compilado que interpreta o VisualConfig",
   "scripts": {
     "build:pbiviz": "pbiviz package",
-    "build:runtime": "pbiviz package && node scripts/assert-package.mjs",
+    "build:runtime": "pbiviz package && node scripts/assert-package.mjs && node scripts/stage-template.mjs",
     "verify:package": "node scripts/assert-package.mjs"
   },
   "dependencies": {

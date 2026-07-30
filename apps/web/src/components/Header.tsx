@@ -1,11 +1,11 @@
 'use client';
 
-import { selectCanExport, useEditorStore } from '@/store/useEditorStore';
+import { ExportButton } from '@/components/ExportButton';
+import { useEditorStore } from '@/store/useEditorStore';
 
 export function Header() {
   const config = useEditorStore((s) => s.config);
   const rename = useEditorStore((s) => s.rename);
-  const canExport = useEditorStore(selectCanExport);
 
   const nameTooShort = config.project.name.trim().length < 3;
 
@@ -41,16 +41,9 @@ export function Header() {
       <span className="text-[11px] text-slate-400">v{config.project.packageVersion}</span>
 
       <div className="ml-auto flex items-center gap-2">
-        {/* Fase 3: liga em buildPbiviz(). Desabilitado quando a config nao valida
-            — RN-03 impede exportar um pacote que so quebraria dentro do Power BI. */}
-        <button
-          type="button"
-          disabled={!canExport}
-          title={canExport ? 'Disponivel na proxima entrega' : 'Corrija a configuracao para exportar'}
-          className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-slate-300 dark:disabled:bg-slate-700"
-        >
-          Baixar .pbiviz
-        </button>
+        {/* O botao fica desabilitado com config invalida: RN-03 impede exportar
+            um pacote que so quebraria dentro do Power BI. */}
+        <ExportButton />
       </div>
     </header>
   );

@@ -620,64 +620,77 @@ Quatro detalhes que são requisitos, não estilo:
 
 ### 8.3 Algoritmo de Export
 
-✅ **Validado no spike.** O código abaixo é o algoritmo que efetivamente gerou dois pacotes importados com
-sucesso no Power BI Desktop, com 27 assertivas automatizadas passando.
+✅ **Implementado e verificado na Fase 3.** A origem é o spike, que gerou dois pacotes importados com sucesso no
+Power BI Desktop. Duas correções foram aplicadas na implementação definitiva — reescrita de identidade em passada
+única e inversão da ordem entre identidade e payload. Ambas estão nos passos abaixo e no
+[Anexo A.7](#a7-achados-da-fase-3--export-2026-07-30), achados 34 e 35.
 
 ```ts
 // packages/config-schema/src/packaging/buildPbiviz.ts (executável em browser e em Node)
 import JSZip from 'jszip';
 
-export async function buildPbiviz(template: ArrayBuffer, config: VisualConfig): Promise<Blob> {
+export async function buildPbiviz(
+  template: ArrayBuffer | Uint8Array,
+  config: VisualConfig,
+): Promise<PbivizPackage> {          // { bytes, filename, guid, version }
+  // 0. Defesa em profundidade (seção 13): o editor já bloqueia o botão com
+  //    config inválida, mas a config também chega por import de arquivo.
+  const valid = assertValidConfig(config);
+
   const zip = await JSZip.loadAsync(template);
 
   // 1. Identidade atual do pacote base
   const pkg = JSON.parse(await zip.file('package.json')!.async('string'));
-  const oldGuid = pkg.visual.guid;
-  const oldName = pkg.visual.name;
+  const from = { guid: pkg.visual.guid, name: pkg.visual.name };
 
-  // 2. Nova identidade, derivada do projeto (RN-01, RN-06)
-  const newGuid = config.project.id;   // ex.: "VendasporRegiao2026E4535402BCA2...
-  const newName = newGuid;             // no pacote base, name === guid
-  const version = config.project.packageVersion;
+  // 2. Nova identidade, derivada do projeto (RN-01, RN-06). O pacote gerado usa
+  //    name === guid, como faz a CLI oficial.
+  const to = { guid: valid.project.id, name: valid.project.id };
+  const version = valid.project.packageVersion;
 
   // 3. Recurso principal — localizado pelo package.json, não por caminho montado à mão
   const resPath: string = pkg.resources.find(r => r.file.endsWith('.pbiviz.json')).file;
   const res = JSON.parse(await zip.file(resPath)!.async('string'));
 
-  // 4. Injeta a config no bundle (ADR-01/ADR-07)
+  // 4. Guarda de R-01 ANTES de qualquer escrita
   assertOccursOnce(res.content.js, '__VISLOW_CONFIG_B64__');
-  const payload = toBase64Utf8(JSON.stringify(config));
-  res.content.js = res.content.js.replace('__VISLOW_CONFIG_B64__', payload);
 
   // 5. Reescreve a identidade dentro do bundle — ADR-03.
   //    O GUID é NOME DE VARIÁVEL JS aqui, não só metadado (ver 8.4).
-  //    Ordem: GUID primeiro (mais específico), depois o nome residual — como
-  //    guid = nome + hex, inverter a ordem corromperia os GUIDs.
-  res.content.js = replaceAll(res.content.js, oldGuid, newGuid);
-  if (oldName !== oldGuid) res.content.js = replaceAll(res.content.js, oldName, newName);
+  //    UMA passada, com alternação: duas passadas sequenciais corrompem o GUID
+  //    quando o slug do usuário é igual ao `name` base (achado 34).
+  let js = res.content.js.replace(
+    new RegExp(`${escapeRegExp(from.guid)}|${escapeRegExp(from.name)}`, 'g'),
+    m => (m === from.guid ? to.guid : to.name),
+  );
 
-  // 6. Reescreve os metadados do recurso
-  res.visual.guid        = newGuid;
-  res.visual.name        = newName;
-  res.visual.displayName = config.project.name;
+  // 6. Injeta a config DEPOIS da identidade (ADR-01/ADR-07, achado 35)
+  js = js.replace('__VISLOW_CONFIG_B64__', () => toBase64Utf8(JSON.stringify(valid)));
+
+  // 7. Reescreve os metadados do recurso
+  res.content.js         = js;
+  res.visual.guid        = to.guid;
+  res.visual.name        = to.name;
+  res.visual.displayName = valid.project.name;
   res.visual.version     = version;
 
-  // 7. Renomeia o recurso e atualiza a referência (passo mais fácil de esquecer)
+  // 8. Renomeia o recurso e atualiza a referência (passo mais fácil de esquecer)
   zip.remove(resPath);
-  zip.file(`resources/${newGuid}.pbiviz.json`, JSON.stringify(res));
+  zip.file(`resources/${to.guid}.pbiviz.json`, JSON.stringify(res));
 
-  // 8. Atualiza o package.json. `metadata.pbivizjson.resourceId` aponta para o
+  // 9. Atualiza o package.json. `metadata.pbivizjson.resourceId` aponta para o
   //    resourceId, não para o caminho — por isso só o campo `file` muda.
-  pkg.visual.guid        = newGuid;
-  pkg.visual.name        = newName;
-  pkg.visual.displayName = config.project.name;
+  pkg.visual.guid        = to.guid;
+  pkg.visual.name        = to.name;
+  pkg.visual.displayName = valid.project.name;
   pkg.visual.version     = version;
   pkg.version            = version;
   pkg.resources = pkg.resources.map((r: any) =>
-    r.file === resPath ? { ...r, file: `resources/${newGuid}.pbiviz.json` } : r);
+    r.file === resPath ? { ...r, file: `resources/${to.guid}.pbiviz.json` } : r);
   zip.file('package.json', JSON.stringify(pkg));
 
-  return zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+  const bytes = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+  return { bytes, filename: `${to.guid}.${version}.pbiviz`, guid: to.guid, version };
 }
 ```
 
@@ -685,14 +698,19 @@ Nome do arquivo baixado: `{guid}.{packageVersion}.pbiviz`, seguindo a convençã
 
 **Notas de implementação de força total:**
 
-- O passo 7 é o mais fácil de errar e o mais silencioso: se o arquivo não for renomeado *ou* a referência em
+- O passo 8 é o mais fácil de errar e o mais silencioso: se o arquivo não for renomeado *ou* a referência em
   `package.json` não for atualizada, o Power BI recusa o import com uma mensagem genérica. Coberto por
   [T-03](#123-testes-de-empacotamento).
-- No passo 5 a **ordem é obrigatória**, não preferência. Como o GUID começa pelo nome do visual
-  (`vislowSpike` + 32 hex), substituir o nome antes do GUID corromperia todas as ocorrências do GUID. No pacote
-  base do spike, o GUID aparecia 4× e o nome 5× no `content.js`.
-- O `replaceAll` do passo 5 roda **depois** da injeção da config (passo 4), para o caso improvável de o GUID
-  antigo aparecer dentro do payload base64.
+- No passo 5 a **passada única é obrigatória**, não estilo. Como o GUID começa pelo nome do visual
+  (`vislowRuntime` + 32 hex), duas passadas sequenciais duplicam o sufixo hex dentro dos GUIDs novos quando o
+  slug do usuário coincide com o nome base — e `slugify("vislow Runtime")` produz exatamente esse slug. No
+  pacote base, o GUID aparece 4× e o nome 5× no `content.js`.
+- A saída é `Uint8Array`, não `Blob`: é o único formato que o JSZip produz sem detecção de recursos e que serve
+  ao browser e ao Node. Quem baixa embrulha com `toPbivizBlob`.
+- As datas das entradas reescritas são herdadas do template, então **reexportar a mesma config produz bytes
+  idênticos**. Facilita diagnóstico e é verificado em T-07.
+- `buildPbiviz` vive num subcaminho (`@vislow/config-schema/packaging`) e **não** é reexportado pelo `index.ts`:
+  o Runtime Core importa esse barril, e o JSZip cairia dentro do bundle do visual (achado 36).
 
 ### 8.4 Geração da Identidade
 
@@ -1010,6 +1028,15 @@ e renderizadas em snapshot. Um config que renderiza no editor tem de renderizar 
 Executam `buildPbiviz` em Node sobre o `base-runtime.pbiviz` recém-construído. São os testes mais importantes do
 projeto — cobrem exatamente o que o usuário quer garantir.
 
+Divididos em duas camadas, porque o pacote real leva ~1 min de `pbiviz package` e `pnpm test` roda antes de
+qualquer build (achado 38):
+
+- **`buildPbiviz.test.ts`** — template sintético (`template.fixture.ts`) que reproduz a estrutura do pacote base.
+  Cobre T-03, T-05, T-07, os caminhos de erro e os casos de borda de identidade. ~300 ms; roda sempre.
+- **`buildPbiviz.real.test.ts`** — o pacote de verdade. Cobre o que só o bundle minificado prova: T-04 (o
+  minificador não duplicou o placeholder), T-06 (nenhum rastro do GUID base) e T-08 (orçamentos de tamanho).
+  Sem o artefato, é ignorado com aviso; no CI, `VISLOW_REQUIRE_TEMPLATE=1` transforma a ausência em falha.
+
 | ID | Assertiva | Protege |
 |---|---|---|
 | T-03 | Zip reabre; `resources/{novoGuid}.pbiviz.json` existe; o antigo não; `package.json.resources` aponta para o novo | [8.3](#83-algoritmo-de-export) passo 7 |
@@ -1174,14 +1201,21 @@ de fronteira do produto ([1.5](#15-premissa-de-fronteira-do-produto)), não como
 > `visual-kit`, prefixado `pbi:`. Os dois convivem na mesma página sem colidir — que é exatamente a razão de o
 > runtime usar prefixo, agora comprovada num cenário real em vez de hipotética.
 
-### Fase 3 — Export e Integração (~1 semana)
+### Fase 3 — Export e Integração — ⏳ **código concluído em 2026-07-30, aguardando matriz manual**
 
-- [ ] `buildPbiviz` em `config-schema`, isomórfico.
-- [ ] Ligação com a interface, estados de erro e instruções de importação.
-- [ ] Testes de empacotamento T-03 a T-08 no CI.
-- [ ] Matriz manual MT-01 a MT-08.
+- [x] `buildPbiviz` em `config-schema`, isomórfico, no subcaminho `packaging` (achado 36).
+- [x] `inspectPbiviz` — leitura de um pacote pronto, para os testes e para diagnóstico.
+- [x] Ligação com a interface: botão com estados (`idle`/`building`/`done`/`error`), erros descritos com
+      instrução de correção, e diálogo de instruções de importação após o download (RF-13).
+- [x] Testes de empacotamento T-03 a T-08 no CI, em duas camadas ([12.3](#123-testes-de-empacotamento)).
+- [x] `make-samples.mjs` passa a usar o `buildPbiviz` de produção — a amostra não pode divergir do artefato real.
+- [x] `next build` e a presença do pacote base no export estático verificados no CI.
+- [ ] Matriz manual MT-01 a MT-08 no Power BI Desktop.
 
 **DoD:** ciclo completo editar → exportar → importar → renderizar funcionando; MT-03 e MT-04 aprovados.
+
+O editor busca o pacote base em `/templates/base-runtime.pbiviz`, copiado de `packages/runtime/dist/` por
+`scripts/stage-template.mjs` no fim do `build:runtime`. É artefato de build e não é versionado.
 
 ### Fase 4 — KPI Card, Acessibilidade e Robustez (~1 semana)
 
@@ -1305,3 +1339,13 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 31 | Os dois Tailwind — o do editor (sem prefixo) e o do `visual-kit` (`pbi:`) — **convivem na mesma página sem colidir**. | Confirma [ADR-06](#35-decisões-de-arquitetura-adr) num cenário real. | Nenhuma. Registrado como validação. |
 | 32 | `next.config.ts` fica fora de qualquer `tsconfig` de pacote e o ESLint não conseguia analisá-lo. | Lint quebrado na raiz do app. | `tseslint.configs.base` no bloco de arquivos de configuração: traz o parser de TypeScript sem as regras que exigem informação de tipos. |
 | 33 | Modelar `Field` com `token?: TokenKind` obrigava asserção não-nula no ponto de uso, e o lint (corretamente) reprovou. | Convenção não verificada pelo compilador. | União discriminada: `token` só existe, e é obrigatório, quando `kind === 'token'`. O compilador passa a garantir o que era convenção. |
+
+### A.7 Achados da Fase 3 — Export (2026-07-30)
+
+| # | Achado | Impacto | Correção |
+|---|---|---|---|
+| 34 | **Duas passadas sequenciais de `replaceAll` corrompem o GUID quando o slug do projeto é igual ao `name` do pacote base.** Depois de trocar o GUID, todo GUID novo começa pelo slug do usuário; a segunda passada (nome) casa com esse prefixo e duplica o sufixo hex *dentro* dos GUIDs recém-escritos. Não é hipotético: `slugify("vislow Runtime")` produz exatamente `vislowRuntime`. | Pacote silenciosamente corrompido e recusado no import, com mensagem genérica. A ordem documentada em [8.3](#83-algoritmo-de-export) não protegia desse caso — só do inverso. | **Uma passada única** com alternação de regex (`guid|name`, GUID primeiro) e `/g`. `String.replace` nunca reexamina o texto que acabou de inserir, e a ordem das alternativas resolve as posições em que ambos casariam. Coberto por teste dedicado em T-06. |
+| 35 | A nota de [8.3](#83-algoritmo-de-export) que mandava rodar a reescrita de identidade **depois** da injeção do payload tinha o raciocínio invertido: é injetar primeiro que expõe o base64 à reescrita. | Risco (remoto) de corromper o payload. | Ordem trocada: **identidade primeiro, payload depois**. O placeholder não contém o GUID nem o nome, então a etapa de identidade não tem como danificá-lo. |
+| 36 | Reexportar `@vislow/config-schema` inteiro arrastaria o **JSZip para dentro do bundle do visual**, porque o Runtime Core importa esse barril. | ~100 KB contra o orçamento de 1 MB do [RNF-04](#5-requisitos-não-funcionais), sem nenhum sinal de erro. | Subcaminho dedicado `@vislow/config-schema/packaging`, ausente do `index.ts`. O motivo está comentado nos dois arquivos. |
+| 37 | `Uint8Array` do TypeScript 5.9 é genérico sobre `ArrayBufferLike`, e `BlobPart` só aceita views sobre `ArrayBuffer`. A tipagem do JSZip devolve o genérico aberto. | `new Blob([bytes])` não compila. | `PbivizPackage.bytes` declara `Uint8Array<ArrayBuffer>`; a asserção fica num único ponto, na saída do `generateAsync`. |
+| 38 | Os testes de empacotamento precisam do `.pbiviz` real, que leva ~1 min de `pbiviz package` — mas `pnpm test` roda antes de qualquer build. | Ou o `pnpm verify` local fica lento, ou os testes mais importantes do projeto ficam sem rodar no CI. | Divisão em dois: template sintético (`template.fixture.ts`) cobre lógica e casos de borda em ~300 ms e roda sempre; `buildPbiviz.real.test.ts` cobre o que só o bundle minificado prova. No CI, `VISLOW_REQUIRE_TEMPLATE=1` transforma a ausência do artefato em falha — não há como o CI passar sem verificar o pacote real. |
