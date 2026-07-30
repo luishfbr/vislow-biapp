@@ -68,11 +68,15 @@ Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (ed
 O runtime foi validado no Power BI Desktop com dados reais: barras e KPI Card com cross-filter, tooltip nativo,
 formatação por locale, alto contraste e estados vazio/erro. Pacote 131 KB.
 
-**Fase 3 (export)** com o código concluído: `buildPbiviz` e `inspectPbiviz` em
-`@vislow/config-schema/packaging`, botão do cabeçalho ligado com estados de erro, diálogo de instruções de
-importação, e T-03…T-08 no CI. Falta a matriz manual MT-01…MT-08 no Power BI Desktop.
+**Fase 3 (export)** concluída no código e o ciclo completo **validado no Desktop em 2026-07-30**: pacote gerado
+pelo editor importa, lê o modelo e renderiza barras com dados reais (MT-01 e MT-02 aprovados). O achado 39
+(React duplicado) está fechado — a deduplicação basta, e o `visual-kit` ficou sem hooks como defesa em
+profundidade.
 
-Próximo: **Fase 4** — KPI Card com a role `target`, acessibilidade e robustez.
+**Próximo: pivô para compilação real por usuário.** Decisão de produto de 2026-07-30: o usuário deve montar o
+visual do zero a partir de um catálogo de componentes, e o backend compila um `.pbiviz` de verdade com o nome
+que ele escolheu. Isso reverte a **ADR-01** (patch de placeholder) e a **ADR-05** (zero backend). Plano em
+`~/.claude/plans/`. Sprint 2 é o gate: Recharts cabe em 1 MB? `pbiviz package` roda headless?
 
 ```bash
 pnpm dev                                        # editor em http://localhost:3000
