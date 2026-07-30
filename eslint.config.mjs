@@ -16,7 +16,11 @@ export default defineConfig([
 
   // Codigo de produto: lint com informacao de tipos.
   {
-    files: ['packages/*/src/**/*.{ts,tsx}', 'apps/*/src/**/*.{ts,tsx}'],
+    files: [
+      'packages/*/src/**/*.{ts,tsx}',
+      'apps/*/src/**/*.{ts,tsx}',
+      'packages/*/test/**/*.{ts,tsx}',
+    ],
     extends: [
       eslint.configs.recommended,
       tseslint.configs.strictTypeChecked,
@@ -53,7 +57,7 @@ export default defineConfig([
   // toolchain do pbiviz (cujo visualPlugin.ts gerado nao passa em
   // strictNullChecks). O lint precisa apontar para o config estrito.
   {
-    files: ['packages/runtime/src/**/*.{ts,tsx}'],
+    files: ['packages/runtime/src/**/*.{ts,tsx}', 'packages/runtime/test/**/*.{ts,tsx}'],
     languageOptions: {
       parserOptions: {
         project: ['./packages/runtime/tsconfig.check.json'],

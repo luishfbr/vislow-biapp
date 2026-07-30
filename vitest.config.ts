@@ -2,7 +2,14 @@ import { defineConfig } from 'vitest/config';
 
 export default defineConfig({
   test: {
-    include: ['packages/*/src/**/*.test.{ts,tsx}', 'apps/*/src/**/*.test.{ts,tsx}'],
+    include: [
+      'packages/*/src/**/*.test.{ts,tsx}',
+      'apps/*/src/**/*.test.{ts,tsx}',
+      // `packages/runtime` nao pode ter teste em `src/`: a toolchain do pbiviz
+      // compila aquele diretorio e o `tsconfig.json` dele lista os arquivos um a
+      // um. Os testes do runtime vivem fora, em `test/`.
+      'packages/*/test/**/*.test.{ts,tsx}',
+    ],
     exclude: ['**/node_modules/**', '**/dist/**', 'spike/**'],
     coverage: {
       provider: 'v8',

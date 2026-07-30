@@ -13,7 +13,7 @@
     "typecheck": "tsc -b && tsc -p packages/runtime/tsconfig.check.json && tsc -p apps/web/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:packaging": "vitest run buildPbiviz",
+    "test:packaging": "vitest run buildPbiviz renderRealBundle",
     "stage:template": "node packages/runtime/scripts/stage-template.mjs",
     "build": "tsc -b && pnpm -r build:css",
     "verify": "pnpm typecheck && pnpm lint && pnpm test",
@@ -22,10 +22,12 @@
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@types/jsdom": "^28.0.3",
     "@types/node": "26.1.2",
     "@vitest/coverage-v8": "4.1.10",
     "eslint": "10.8.0",
     "globals": "17.8.0",
+    "jsdom": "^30.0.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.10"

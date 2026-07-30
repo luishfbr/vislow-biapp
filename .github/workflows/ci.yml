@@ -45,11 +45,13 @@ jobs:
       - name: Empacotar Runtime Core
         run: pnpm --filter @vislow/runtime build:runtime
 
-      # T-03..T-08 (secao 12.3). `pnpm test`, acima, ja rodou a parte sintetica;
-      # aqui as assertivas que dependem do bundle minificado de verdade rodam
-      # contra o pacote recem-construido. VISLOW_REQUIRE_TEMPLATE=1 impede que a
+      # T-03..T-08 (secao 12.3) mais o render do bundle real num jsdom, que e a
+      # unica verificacao executavel da RN-04 e a guarda do achado 39 (React
+      # duplicado pelo `resolve.symlinks: false` do pbiviz). `pnpm test`, acima,
+      # ja rodou a parte sintetica; aqui rodam as assertivas que dependem do
+      # bundle minificado de verdade. VISLOW_REQUIRE_TEMPLATE=1 impede que a
       # ausencia do artefato passe como "teste ignorado".
-      - name: Testes de empacotamento contra o pacote real
+      - name: Testes de empacotamento e render contra o pacote real
         env:
           VISLOW_REQUIRE_TEMPLATE: '1'
         run: pnpm test:packaging

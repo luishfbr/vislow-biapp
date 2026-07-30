@@ -1036,6 +1036,14 @@ qualquer build (achado 38):
 - **`buildPbiviz.real.test.ts`** — o pacote de verdade. Cobre o que só o bundle minificado prova: T-04 (o
   minificador não duplicou o placeholder), T-06 (nenhum rastro do GUID base) e T-08 (orçamentos de tamanho).
   Sem o artefato, é ignorado com aviso; no CI, `VISLOW_REQUIRE_TEMPLATE=1` transforma a ausência em falha.
+- **`packages/runtime/test/renderRealBundle.test.ts`** — executa o `content.js` minificado dentro de um jsdom,
+  com o `powerbi` global e um `DataView` falso, exatamente como o Power BI faz. É o **único** teste que verifica
+  o artefato de ponta a ponta e a única verificação executável da [RN-04](#6-regras-de-negócio). Nasceu do
+  achado 39: um bug que só existe no pacote empacotado e que nenhum teste de fonte alcança. Mesmo gate de
+  `VISLOW_REQUIRE_TEMPLATE`.
+
+> Os testes do runtime vivem em `packages/runtime/test/`, não em `src/`: aquele diretório é compilado pela
+> toolchain do `pbiviz`, cujo `tsconfig.json` lista os arquivos um a um.
 
 | ID | Assertiva | Protege |
 |---|---|---|
@@ -1349,3 +1357,4 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 36 | Reexportar `@vislow/config-schema` inteiro arrastaria o **JSZip para dentro do bundle do visual**, porque o Runtime Core importa esse barril. | ~100 KB contra o orçamento de 1 MB do [RNF-04](#5-requisitos-não-funcionais), sem nenhum sinal de erro. | Subcaminho dedicado `@vislow/config-schema/packaging`, ausente do `index.ts`. O motivo está comentado nos dois arquivos. |
 | 37 | `Uint8Array` do TypeScript 5.9 é genérico sobre `ArrayBufferLike`, e `BlobPart` só aceita views sobre `ArrayBuffer`. A tipagem do JSZip devolve o genérico aberto. | `new Blob([bytes])` não compila. | `PbivizPackage.bytes` declara `Uint8Array<ArrayBuffer>`; a asserção fica num único ponto, na saída do `generateAsync`. |
 | 38 | Os testes de empacotamento precisam do `.pbiviz` real, que leva ~1 min de `pbiviz package` — mas `pnpm test` roda antes de qualquer build. | Ou o `pnpm verify` local fica lento, ou os testes mais importantes do projeto ficam sem rodar no CI. | Divisão em dois: template sintético (`template.fixture.ts`) cobre lógica e casos de borda em ~300 ms e roda sempre; `buildPbiviz.real.test.ts` cobre o que só o bundle minificado prova. No CI, `VISLOW_REQUIRE_TEMPLATE=1` transforma a ausência do artefato em falha — não há como o CI passar sem verificar o pacote real. |
+| 39 | **O webpack do `pbiviz` usa `resolve.symlinks: false`** (`webpack.config.js:106`), então não resolve symlink para realpath. `packages/runtime/node_modules/react` e `packages/runtime/node_modules/@vislow/visual-kit/node_modules/react` — dois symlinks para o **mesmo** pacote — entraram no bundle como **dois módulos distintos**. O `react-dom` instala o dispatcher de hooks na cópia dele; o `visual-kit` chamava `useMemo` na outra, cujo dispatcher é `null`. | **Alto e enganoso.** Elementos JSX atravessam cópias sem problema (o `$$typeof` é um `Symbol.for`, global), então o KPI Card renderizava normalmente e só o gráfico de barras — o único componente com hook — caía no `ErrorBoundary` com `Cannot read properties of null (reading 'useMemo')`. Nenhum teste de fonte pegaria: o bug só existe no artefato empacotado. Mesma família do achado 24. | `autoInstallPeers: false` no `pnpm-workspace.yaml` e remoção do `react` das `devDependencies` do `visual-kit`. Sem `packages/visual-kit/node_modules/react`, a busca do webpack sobe e encontra o `react` do runtime — uma cópia só. Guarda permanente: `packages/runtime/test/renderRealBundle.test.ts` executa o bundle minificado num jsdom e verifica o DOM. **Confirmado que o teste falha com o bug presente e passa sem ele.** |

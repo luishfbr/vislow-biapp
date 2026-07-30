@@ -46,6 +46,15 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 - **`buildPbiviz` vive em `@vislow/config-schema/packaging`, fora do `index.ts`.** O Runtime Core importa o
   barril; reexportar levaria o JSZip para dentro do bundle do visual, contra o orçamento de 1 MB.
 - **`Uint8Array` do TS 5.9 é genérico sobre `ArrayBufferLike`** e `BlobPart` só aceita `Uint8Array<ArrayBuffer>`.
+- **O webpack do `pbiviz` usa `resolve.symlinks: false`, então dois symlinks para o mesmo pacote viram dois
+  módulos.** Foi assim que o React entrou duas vezes no bundle e o dispatcher de hooks ficou `null` — só
+  componentes com hook falhavam, o resto renderizava. Por isso `autoInstallPeers: false` e nenhum `react` nas
+  `devDependencies` do `visual-kit`. **Não reintroduza**, e não adicione dependência duplicada entre pacotes que
+  o runtime empacota.
+- **Testes do runtime vivem em `packages/runtime/test/`, nunca em `src/`** — `src/` é compilado pela toolchain do
+  `pbiviz`, cujo `tsconfig.json` lista os arquivos um a um.
+- **`renderRealBundle.test.ts` é o único teste que executa o artefato.** Se você mexer no bundle, na resolução de
+  módulos ou nas dependências do runtime, é ele que pega o estrago.
 
 ## Estado
 
