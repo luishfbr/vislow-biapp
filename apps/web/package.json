@@ -1,0 +1,25 @@
+{
+  "name": "@vislow/web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Editor low-code: produz e valida o VisualConfig e empacota o .pbiviz",
+  "scripts": {
+    "dev": "next dev",
+    "build:app": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@vislow/config-schema": "workspace:*",
+    "@vislow/visual-kit": "workspace:*",
+    "next": "16.2.12",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zustand": "5.0.14"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "4.3.3",
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "tailwindcss": "4.3.3"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "name": "vislow-biapp",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Plataforma low-code para geracao de visuais customizados do Power BI",
+  "packageManager": "pnpm@11.12.0",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=11.0.0"
+  },
+  "scripts": {
+    "lint": "eslint .",
+    "typecheck": "tsc -b && tsc -p packages/runtime/tsconfig.check.json && tsc -p apps/web/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "tsc -b && pnpm -r build:css",
+    "verify": "pnpm typecheck && pnpm lint && pnpm test",
+    "clean": "tsc -b --clean && rm -rf packages/*/dist",
+    "dev": "pnpm --filter @vislow/web dev"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "26.1.2",
+    "@vitest/coverage-v8": "4.1.10",
+    "eslint": "10.8.0",
+    "globals": "17.8.0",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.65.0",
+    "vitest": "4.1.10"
+  }
+}

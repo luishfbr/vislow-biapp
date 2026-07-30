@@ -1,0 +1,24 @@
+/*
+ * Fonte do Tailwind para o Runtime Core e para o preview do editor.
+ *
+ * ESTRATEGIA (validada no spike, ADR-06 revisado para Tailwind v4):
+ * este CSS e PRE-COMPILADO pelo CLI do Tailwind e entregue como CSS puro. O
+ * `powerbi-visuals-tools` nao traz PostCSS (so less-loader e css-loader), entao
+ * tentar plugar o Tailwind no webpack dele seria luta desnecessaria. O runtime
+ * apenas importa o CSS ja gerado.
+ *
+ * Sem preflight: importamos apenas as camadas `theme` e `utilities`, nunca
+ * `base`. O visual roda dentro de um iframe sandbox junto com os estilos que o
+ * host injeta; um reset global entraria em conflito com eles (secao 9.3).
+ */
+
+@layer theme, utilities;
+
+@import 'tailwindcss/theme.css' layer(theme) prefix(pbi);
+@import 'tailwindcss/utilities.css' layer(utilities) prefix(pbi);
+
+/*
+ * O Tailwind descobre as classes por analise estatica do fonte. Como o mapa de
+ * tokens usa strings literais completas (ver tokens.ts), este `@source` basta.
+ */
+@source './**/*.{ts,tsx}';

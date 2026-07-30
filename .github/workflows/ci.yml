@@ -1,0 +1,61 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.12.0'
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      # tsc -b emite os .d.ts dos pacotes; o lint com informacao de tipos
+      # depende deles, entao typecheck vem antes.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Testes
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # Empacota o Runtime Core e roda as guardas do pacote: placeholder unico,
+      # CSS presente, GUID valido e orcamentos de tamanho. Sao os testes que
+      # provam que o artefato entregue ao usuario e valido.
+      - name: Empacotar Runtime Core
+        run: pnpm --filter @vislow/runtime build:runtime
+
+      # Guarda do ADR-02: o CSS gerado precisa conter as classes do mapa de
+      # tokens. Se o mapa quebrar a regra de strings literais, o Tailwind nao
+      # gera a classe e o estilo sumiria em silencio dentro do Power BI.
+      - name: Verificar CSS gerado
+        run: |
+          CSS=packages/visual-kit/dist/styles.css
+          test -s "$CSS" || { echo "::error::CSS do visual-kit vazio ou ausente"; exit 1; }
+          for cls in 'pbi\\:p-4' 'pbi\\:rounded-xl' 'pbi\\:text-lg' 'pbi\\:shadow-sm'; do
+            grep -q "$cls" "$CSS" || { echo "::error::classe ausente no CSS: $cls"; exit 1; }
+          done
+          if grep -qE '^\s*(html|body)\s*\{' "$CSS"; then
+            echo "::error::preflight vazou para o CSS do runtime"; exit 1
+          fi
+          echo "CSS verificado: $(wc -c < "$CSS") bytes"

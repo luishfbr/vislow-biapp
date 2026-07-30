@@ -1,0 +1,11 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+allowBuilds:
+  # Watcher nativo do CLI do Tailwind. Nao roda script de instalacao: mantem o
+  # install deterministico e sem compilacao nativa no CI (RNF-13). O Tailwind
+  # cai para o watcher em JS, suficiente para o nosso uso.
+  '@parcel/watcher': false
+  # Otimizador de imagens do Next.js. Com `output: 'export'` a otimizacao em
+  # servidor nao existe, entao o binario nativo nao e usado.
+  sharp: false

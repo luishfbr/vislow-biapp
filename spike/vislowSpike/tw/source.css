@@ -1,0 +1,11 @@
+/* Fonte do Tailwind para o Runtime Core.
+   prefix(pbi) -> classes viram pbi:flex, pbi:bg-white ...
+   Sem preflight: importamos apenas theme + utilities. */
+@layer theme, utilities;
+@import "tailwindcss/theme.css" layer(theme) prefix(pbi);
+@import "tailwindcss/utilities.css" layer(utilities) prefix(pbi);
+
+/* Simula o mapa de tokens do visual-kit: classes como strings literais. */
+@source inline("pbi:flex pbi:h-full pbi:w-full pbi:flex-col pbi:items-end");
+@source inline("pbi:p-2 pbi:p-4 pbi:p-6 pbi:rounded-lg pbi:rounded-xl pbi:shadow-sm");
+@source inline("pbi:text-xs pbi:text-lg pbi:font-bold pbi:truncate");

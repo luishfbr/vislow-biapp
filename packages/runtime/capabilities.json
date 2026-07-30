@@ -1,0 +1,47 @@
+{
+  "dataRoles": [
+    {
+      "displayName": "Categoria",
+      "description": "Campo de agrupamento usado no eixo do grafico de barras",
+      "name": "category",
+      "kind": "Grouping"
+    },
+    {
+      "displayName": "Valor",
+      "description": "Medida principal",
+      "name": "measure",
+      "kind": "Measure"
+    },
+    {
+      "displayName": "Valor de comparacao",
+      "description": "Opcional. Usado pelo KPI Card para calcular a variacao",
+      "name": "target",
+      "kind": "Measure"
+    }
+  ],
+  "dataViewMappings": [
+    {
+      "conditions": [
+        {
+          "category": { "max": 1 },
+          "measure": { "max": 1 },
+          "target": { "max": 1 }
+        }
+      ],
+      "categorical": {
+        "categories": {
+          "for": { "in": "category" },
+          "dataReductionAlgorithm": { "top": { "count": 1000 } }
+        },
+        "values": {
+          "select": [{ "bind": { "to": "measure" } }, { "bind": { "to": "target" } }]
+        }
+      }
+    }
+  ],
+  "supportsHighlight": true,
+  "supportsKeyboardFocus": true,
+  "supportsMultiVisualSelection": true,
+  "objects": {},
+  "privileges": []
+}

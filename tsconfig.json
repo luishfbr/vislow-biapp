@@ -1,0 +1,9 @@
+{
+  // Solution file: nao compila nada por si so, apenas declara a ordem do grafo.
+  // `tsc -b` a partir daqui constroi os pacotes na ordem correta de dependencia.
+  "files": [],
+  "references": [
+    { "path": "./packages/config-schema/tsconfig.build.json" },
+    { "path": "./packages/visual-kit/tsconfig.build.json" }
+  ]
+}

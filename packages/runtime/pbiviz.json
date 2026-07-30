@@ -1,0 +1,26 @@
+{
+  "visual": {
+    "name": "vislowRuntime",
+    "displayName": "Vislow Runtime",
+    "guid": "vislowRuntime7F3A9C2E5D8B4A1F6E0C3B7D9A2E5F81",
+    "visualClassName": "Visual",
+    "version": "1.0.0.0",
+    "description": "Runtime Core do Vislow. Pacote base; a identidade e a config sao reescritas no export.",
+    "supportUrl": "https://github.com/luishenrique/vislow-biapp",
+    "gitHubUrl": "https://github.com/luishenrique/vislow-biapp"
+  },
+  "apiVersion": "5.11.1",
+  "author": {
+    "name": "Vislow",
+    "email": "contato@vislow.app"
+  },
+  "assets": {
+    "icon": "assets/icon.png"
+  },
+  "externalJS": null,
+  "style": "style/visual.less",
+  "capabilities": "capabilities.json",
+  "dependencies": null,
+  "stringResources": [],
+  "version": "1.0.0.0"
+}
