@@ -1,0 +1,21 @@
+{
+  "name": "recharts-budget-spike",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SPIKE R-A: mede se Recharts cabe nos limites rigidos de 1 MB (content.js) e 2 MB (pacote). Projeto npm standalone de proposito — e o que o backend fara por build.",
+  "scripts": {
+    "package": "pbiviz package"
+  },
+  "dependencies": {
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "recharts": "3.10.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "powerbi-visuals-api": "5.11.1",
+    "powerbi-visuals-tools": "7.2.1",
+    "typescript": "5.9.3"
+  }
+}

@@ -1,0 +1,11 @@
+# Artefatos de um build feito a mao dentro do template. O build de verdade
+# acontece numa copia, num diretorio temporario.
+node_modules/
+.tmp/
+dist/
+*.pbiviz
+# Gerados pelo codegen a cada build. Versionar confundiria: o template so
+# guarda o que e IGUAL em todo visual.
+src/visual.tsx
+capabilities.json
+pbiviz.json

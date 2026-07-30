@@ -1,0 +1,43 @@
+{
+  "name": "@vislow/visual-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Componentes e mapa token->classe compartilhados entre o Runtime Core e o preview do editor (ADR-04)",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./nodes": {
+      "types": "./dist/nodes/index.d.ts",
+      "default": "./dist/nodes/index.js"
+    },
+    "./styles.css": "./dist/styles.css"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "scripts": {
+    "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify"
+  },
+  "dependencies": {
+    "@vislow/config-schema": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "recharts": "^3.10.0"
+  },
+  "peerDependenciesMeta": {
+    "recharts": { "optional": true }
+  },
+  "devDependencies": {
+    "@tailwindcss/cli": "4.3.3",
+    "@types/react": "19.2.7",
+    "recharts": "3.10.1",
+    "tailwindcss": "4.3.3"
+  }
+}

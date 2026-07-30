@@ -1,0 +1,102 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '22.12.0'
+          cache: pnpm
+
+      - name: Instalar dependencias
+        run: pnpm install --frozen-lockfile
+
+      # tsc -b emite os .d.ts dos pacotes; o lint com informacao de tipos
+      # depende deles, entao typecheck vem antes.
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Testes
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # Empacota o Runtime Core e roda as guardas do pacote: placeholder unico,
+      # CSS presente, GUID valido e orcamentos de tamanho. Sao os testes que
+      # provam que o artefato entregue ao usuario e valido.
+      - name: Empacotar Runtime Core
+        run: pnpm --filter @vislow/runtime build:runtime
+
+      # T-03..T-08 (secao 12.3) mais o render do bundle real num jsdom, que e a
+      # unica verificacao executavel da RN-04 e a guarda do achado 39 (React
+      # duplicado pelo `resolve.symlinks: false` do pbiviz). `pnpm test`, acima,
+      # ja rodou a parte sintetica; aqui rodam as assertivas que dependem do
+      # bundle minificado de verdade. VISLOW_REQUIRE_TEMPLATE=1 impede que a
+      # ausencia do artefato passe como "teste ignorado".
+      - name: Testes de empacotamento e render contra o pacote real
+        env:
+          VISLOW_REQUIRE_TEMPLATE: '1'
+        run: pnpm test:packaging
+
+      # Copia `visual-kit` e `config-schema` compilados para dentro do template
+      # do backend. Sao pacotes privados: nao estao em registro nenhum e entram
+      # em `node_modules` como diretorios reais, depois do `npm ci` de cada
+      # build. Depende do `pnpm build` acima ter gerado dist/ e o CSS.
+      - name: Preparar o template de compilacao
+        run: pnpm --filter @vislow/visual-template stage:vendor
+
+      # O GATE DE ACEITE do ADR-08: compila um .pbiviz de verdade a partir de uma
+      # spec e executa o bundle minificado num jsdom. E o herdeiro do teste que
+      # pegou o achado 39 — nenhum teste de fonte enxerga o que o webpack fez
+      # com o bundle. VISLOW_REQUIRE_BUILD=1 impede que a ausencia do template
+      # passe como "teste ignorado".
+      - name: Gate de compilacao real (spec -> .pbiviz -> render)
+        env:
+          VISLOW_REQUIRE_BUILD: '1'
+        run: pnpm test:build
+
+      # Depois do empacotamento, porque o export estatico precisa levar o pacote
+      # base em public/templates/ — o editor faz `fetch` dele para gerar o
+      # .pbiviz no browser. Sem esta etapa, quebrar a resolucao do subcaminho
+      # `@vislow/config-schema/packaging` so apareceria em producao.
+      - name: Build do editor
+        run: pnpm --filter @vislow/web build:app
+
+      - name: Verificar que o export estatico levou o pacote base
+        run: |
+          TPL=apps/web/out/templates/base-runtime.pbiviz
+          test -s "$TPL" || { echo "::error::pacote base ausente no export estatico"; exit 1; }
+          echo "pacote base publicado: $(wc -c < "$TPL") bytes"
+
+      # Guarda do ADR-02: o CSS gerado precisa conter as classes do mapa de
+      # tokens. Se o mapa quebrar a regra de strings literais, o Tailwind nao
+      # gera a classe e o estilo sumiria em silencio dentro do Power BI.
+      - name: Verificar CSS gerado
+        run: |
+          CSS=packages/visual-kit/dist/styles.css
+          test -s "$CSS" || { echo "::error::CSS do visual-kit vazio ou ausente"; exit 1; }
+          for cls in 'pbi\\:p-4' 'pbi\\:rounded-xl' 'pbi\\:text-lg' 'pbi\\:shadow-sm'; do
+            grep -q "$cls" "$CSS" || { echo "::error::classe ausente no CSS: $cls"; exit 1; }
+          done
+          if grep -qE '^\s*(html|body)\s*\{' "$CSS"; then
+            echo "::error::preflight vazou para o CSS do runtime"; exit 1
+          fi
+          echo "CSS verificado: $(wc -c < "$CSS") bytes"

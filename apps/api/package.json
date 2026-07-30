@@ -1,0 +1,30 @@
+{
+  "name": "@vislow/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "API de build: recebe a arvore, gera o projeto pbiviz, compila e devolve o .pbiviz",
+  "scripts": {
+    "// dev": "Compila e roda. Sem --experimental-strip-types: ele nao emite os metadados de decorator que a injecao do NestJS le em runtime.",
+    "dev": "tsc -p tsconfig.build.json && node dist/main.js",
+    "build:app": "tsc -p tsconfig.build.json",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@nestjs/common": "11.1.6",
+    "@nestjs/core": "11.1.6",
+    "@nestjs/platform-express": "11.1.6",
+    "@vislow/codegen": "workspace:*",
+    "@vislow/component-registry": "workspace:*",
+    "@vislow/config-schema": "workspace:*",
+    "@vislow/visual-template": "workspace:*",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "11.1.6",
+    "@types/express": "5.0.5",
+    "@types/supertest": "6.0.3",
+    "supertest": "7.1.4"
+  }
+}

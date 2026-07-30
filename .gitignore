@@ -1,0 +1,25 @@
+node_modules/
+dist/
+.tmp/
+coverage/
+*.tsbuildinfo
+
+# Artefatos de build do Runtime Core — nunca versionados (secao 11 do doc de MVP)
+apps/web/public/templates/*.pbiviz
+packages/runtime/dist/
+
+# Relatorio do analisador de bundle do webpack do pbiviz — regerado a cada build
+webpack.statistics.prod.html
+
+# Next.js
+.next/
+out/
+
+.DS_Store
+*.log
+.env
+.env.local
+
+# Pacotes internos compilados para dentro do template. Saida de
+# `pnpm --filter @vislow/visual-template stage:vendor`.
+packages/visual-template/vendor/

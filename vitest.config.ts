@@ -1,0 +1,44 @@
+import { defineConfig } from 'vitest/config';
+
+export default defineConfig({
+  test: {
+    include: [
+      'packages/*/src/**/*.test.{ts,tsx}',
+      'apps/*/src/**/*.test.{ts,tsx}',
+      // `packages/runtime` nao pode ter teste em `src/`: a toolchain do pbiviz
+      // compila aquele diretorio e o `tsconfig.json` dele lista os arquivos um a
+      // um. Os testes do runtime vivem fora, em `test/`.
+      'packages/*/test/**/*.test.{ts,tsx}',
+    ],
+    exclude: ['**/node_modules/**', '**/dist/**', 'spike/**'],
+    coverage: {
+      provider: 'v8',
+      include: ['packages/*/src/**/*.ts', 'packages/*/src/**/*.tsx'],
+      exclude: ['**/*.test.*', '**/index.ts'],
+    },
+  },
+  resolve: {
+    alias: {
+      // O subcaminho vem ANTES: os alias de string do Vite casam por prefixo, e
+      // a entrada generica reescreveria "@vislow/config-schema/packaging" para
+      // ".../src/index.tspackaging".
+      '@vislow/config-schema/packaging': new URL(
+        './packages/config-schema/src/packaging/index.ts',
+        import.meta.url,
+      ).pathname,
+      '@vislow/config-schema': new URL('./packages/config-schema/src/index.ts', import.meta.url)
+        .pathname,
+      // Mesma armadilha do subcaminho de packaging: o especifico vem ANTES.
+      '@vislow/visual-kit/nodes': new URL(
+        './packages/visual-kit/src/nodes/index.ts',
+        import.meta.url,
+      ).pathname,
+      '@vislow/visual-kit': new URL('./packages/visual-kit/src/index.ts', import.meta.url).pathname,
+      '@vislow/component-registry': new URL(
+        './packages/component-registry/src/index.ts',
+        import.meta.url,
+      ).pathname,
+      '@vislow/codegen': new URL('./packages/codegen/src/index.ts', import.meta.url).pathname,
+    },
+  },
+});

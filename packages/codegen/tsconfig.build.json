@@ -1,0 +1,16 @@
+{
+  // Config de EMISSAO. Exclui testes; e o alvo das project references.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    "noEmit": false,
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "tsBuildInfoFile": "./dist/.tsbuildinfo"
+  },
+  "exclude": ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  "references": [
+    { "path": "../config-schema/tsconfig.build.json" },
+    { "path": "../component-registry/tsconfig.build.json" }
+  ]
+}

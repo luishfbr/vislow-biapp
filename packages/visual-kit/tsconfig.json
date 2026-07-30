@@ -1,0 +1,6 @@
+{
+  // Config de EDITOR e LINT: inclui os testes, nao emite.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": { "noEmit": true, "jsx": "react-jsx" },
+  "include": ["src/**/*"]
+}

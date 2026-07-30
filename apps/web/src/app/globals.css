@@ -1,0 +1,14 @@
+/* Tailwind do EDITOR — sem prefixo. */
+@import 'tailwindcss';
+
+/* CSS do Runtime Core — prefixado `pbi:`. Pre-compilado pelo visual-kit e
+   importado aqui para que o preview renderize IDENTICO ao visual dentro do
+   Power BI (ADR-04). Os dois Tailwind convivem sem colidir justamente porque um
+   deles usa prefixo. */
+@import '@vislow/visual-kit/styles.css';
+
+html,
+body,
+#__next {
+  height: 100%;
+}

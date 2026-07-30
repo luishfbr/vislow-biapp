@@ -1,0 +1,32 @@
+packages:
+  - "packages/*"
+  - "apps/*"
+
+# O webpack do `pbiviz` usa `resolve.symlinks: false` (webpack.config.js:106 do
+# powerbi-visuals-tools). Com isso ele NAO resolve symlink para realpath, e
+# `packages/runtime/node_modules/react` e
+# `packages/runtime/node_modules/@vislow/visual-kit/node_modules/react` — dois
+# symlinks para o MESMO pacote — entram no bundle como dois modulos distintos.
+#
+# Duas copias do React fazem o `react-dom` instalar o dispatcher de hooks numa
+# delas e o `visual-kit` chamar `useMemo` na outra, cujo dispatcher e `null`.
+# Elementos JSX atravessam copias sem problema (o `$$typeof` e um Symbol global),
+# entao a falha atinge SOMENTE componentes com hook — o KPI Card renderizava e o
+# grafico de barras nao.
+#
+# Sem a instalacao automatica de peers, o pnpm nao cria
+# `packages/visual-kit/node_modules/react`, a busca do webpack sobe e encontra o
+# `react` do runtime: uma copia so. Em troca, todo consumidor do visual-kit passa
+# a declarar o React explicitamente — que e o que ja queremos num monorepo.
+autoInstallPeers: false
+allowBuilds:
+  # Watcher nativo do CLI do Tailwind. Nao roda script de instalacao: mantem o
+  # install deterministico e sem compilacao nativa no CI (RNF-13). O Tailwind
+  # cai para o watcher em JS, suficiente para o nosso uso.
+  '@parcel/watcher': false
+  # Otimizador de imagens do Next.js. Com `output: 'export'` a otimizacao em
+  # servidor nao existe, entao o binario nativo nao e usado.
+  sharp: false
+  # O postinstall do NestJS so imprime um pedido de patrocinio. Nao roda para
+  # manter o install deterministico e silencioso no CI (RNF-13).
+  '@nestjs/core': false
