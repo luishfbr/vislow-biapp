@@ -1225,6 +1225,46 @@ de fronteira do produto ([1.5](#15-premissa-de-fronteira-do-produto)), não como
 O editor busca o pacote base em `/templates/base-runtime.pbiviz`, copiado de `packages/runtime/dist/` por
 `scripts/stage-template.mjs` no fim do `build:runtime`. É artefato de build e não é versionado.
 
+### Gate do backend — ✅ **APROVADO em 2026-07-30**
+
+Executado em `spike/recharts-budget/`, um projeto `pbiviz` **standalone com `npm`** — de propósito, porque é
+exatamente o que o worker de build fará. Os dois riscos que poderiam inviabilizar o pivô foram medidos antes de
+escrever qualquer linha do backend.
+
+**R-A · Orçamento de bundle — passa com folga.**
+
+| Tipos de gráfico | Pacote (limite 2048 KB) | `content.js` (limite 1024 KB) |
+|---|---|---|
+| 1 (`BarChart`) | 170,2 KB | 575,3 KB |
+| 5 (barras, linha, área, pizza, dispersão) | 187,1 KB | 645,5 KB |
+
+Custo base de React + Recharts: ~575 KB. Custo marginal por tipo adicional: ~17 KB. Com 378 KB de folga no pior
+caso medido, o catálogo comporta cerca de **20 tipos a mais** antes de encostar no limite. O tree-shaking por
+imports nomeados funciona, e é o padrão que o codegen deve emitir. **Recharts está aprovado** — o plano B das
+primitivas SVG próprias fica arquivado.
+
+**R-B · Compilação headless — passa.**
+
+`npm ci` + `pbiviz package` num `node:22-slim`, sem display e sem certificado:
+
+| Etapa | Tempo |
+|---|---|
+| `npm ci` (544 pacotes) | 5,2 s |
+| `pbiviz package` | 11,5 s |
+| Build de container completo, a frio | 38 s |
+
+Bem abaixo dos 30–60 s que a [§8.3](#83-algoritmo-de-export) estimava para um build por export. O artefato
+extraído do container foi verificado com `inspectPbiviz`: identidade coerente, recurso e referência batendo,
+GUID declarado como `var` no bundle, dentro dos dois orçamentos.
+
+**Dois achados operacionais:**
+
+- O `npm install` limpo **dispensa todos os contornos do pnpm**. O [achado 24](#a5-achados-da-fase-1--runtime-core-2026-07-29)
+  — declarar `ts-loader`, `scheduler`, os `powerbi-visuals-utils-*` e as internas do Ajv explicitamente — não se
+  aplica ao worker. E o [achado 39](#a7-achados-da-fase-3--export-2026-07-30) (React duplicado por
+  `resolve.symlinks: false`) **desaparece por construção**: sem symlinks, não há como duplicar.
+- `pbiviz package` imprime `error` de certificado e conclui com sucesso ([achado 41](#a7-achados-da-fase-3--export-2026-07-30)).
+
 ### Fase 4 — KPI Card, Acessibilidade e Robustez (~1 semana)
 
 - [ ] KPI Card (RF-16) com a role `target`.
@@ -1358,4 +1398,5 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 37 | `Uint8Array` do TypeScript 5.9 é genérico sobre `ArrayBufferLike`, e `BlobPart` só aceita views sobre `ArrayBuffer`. A tipagem do JSZip devolve o genérico aberto. | `new Blob([bytes])` não compila. | `PbivizPackage.bytes` declara `Uint8Array<ArrayBuffer>`; a asserção fica num único ponto, na saída do `generateAsync`. |
 | 38 | Os testes de empacotamento precisam do `.pbiviz` real, que leva ~1 min de `pbiviz package` — mas `pnpm test` roda antes de qualquer build. | Ou o `pnpm verify` local fica lento, ou os testes mais importantes do projeto ficam sem rodar no CI. | Divisão em dois: template sintético (`template.fixture.ts`) cobre lógica e casos de borda em ~300 ms e roda sempre; `buildPbiviz.real.test.ts` cobre o que só o bundle minificado prova. No CI, `VISLOW_REQUIRE_TEMPLATE=1` transforma a ausência do artefato em falha — não há como o CI passar sem verificar o pacote real. |
 | 39 | **O webpack do `pbiviz` usa `resolve.symlinks: false`** (`webpack.config.js:106`), então não resolve symlink para realpath. `packages/runtime/node_modules/react` e `packages/runtime/node_modules/@vislow/visual-kit/node_modules/react` — dois symlinks para o **mesmo** pacote — entraram no bundle como **dois módulos distintos**. O `react-dom` instala o dispatcher de hooks na cópia dele; o `visual-kit` chamava `useMemo` na outra, cujo dispatcher é `null`. | **Alto e enganoso.** Elementos JSX atravessam cópias sem problema (o `$$typeof` é um `Symbol.for`, global), então o KPI Card renderizava normalmente e só o gráfico de barras — o único componente com hook — caía no `ErrorBoundary` com `Cannot read properties of null (reading 'useMemo')`. Nenhum teste de fonte pegaria: o bug só existe no artefato empacotado. Mesma família do achado 24. | `autoInstallPeers: false` no `pnpm-workspace.yaml` e remoção do `react` das `devDependencies` do `visual-kit`. Sem `packages/visual-kit/node_modules/react`, a busca do webpack sobe e encontra o `react` do runtime — uma cópia só. Guarda permanente: `packages/runtime/test/renderRealBundle.test.ts` executa o bundle minificado num jsdom e verifica o DOM. **Confirmado que o teste falha com o bug presente e passa sem ele**, e **validado no Power BI Desktop em 2026-07-30**: os dois candidatos do sprint de diagnóstico (`fe260c08`, só a deduplicação; `1f9da5e2`, deduplicação + `visual-kit` sem hooks) importaram e renderizaram barras com dados reais. A deduplicação basta; a remoção dos hooks fica como defesa em profundidade. |
+| 41 | **`pbiviz package` imprime `error` de certificado e conclui com sucesso.** Num container sem `openssl`: `warn Certificate verification error` seguido de `error Create certificate error: openssl: not found` e, depois, `done Build completed successfully`. O certificado é exigido pelo `pbiviz start` (servidor de dev), não pelo `package`. | O worker de build do backend que tratasse `error` na saída como falha rejeitaria **todo** build bem-sucedido. É o inverso do padrão de falha silenciosa desta toolchain: aqui é um erro *falso*. | O worker decide por **código de saída** e pela verificação do artefato com `inspectPbiviz`, nunca por varredura de texto na saída. |
 | 40 | **Um pacote que não identifica a si mesmo torna o diagnóstico impossível.** Depois da correção do achado 39, um relato de "continua falhando" ficou indistinguível de "importou o arquivo antigo" — e era o arquivo antigo. Uma sessão inteira gasta nisso. | Diagnóstico remoto de artefato binário sem identidade é adivinhação. | `stamp-build-id.mjs` sela o prefixo do sha256 do `content.js` depois do `pbiviz package`, determinístico por fonte. `BuildStamp` exibe o id no canto do visual, **fora** do `ErrorBoundary` e também no caminho de sucesso — senão "renderizou" não diz *qual* pacote renderizou. Regra em `CLAUDE.md`: pedir o id antes de diagnosticar qualquer coisa no Desktop. |
