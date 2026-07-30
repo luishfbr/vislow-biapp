@@ -73,6 +73,15 @@ importers:
         specifier: 4.3.3
         version: 4.3.3
 
+  packages/component-registry:
+    dependencies:
+      '@vislow/config-schema':
+        specifier: workspace:*
+        version: link:../config-schema
+      ajv:
+        specifier: 8.20.0
+        version: 8.20.0
+
   packages/config-schema:
     dependencies:
       ajv:

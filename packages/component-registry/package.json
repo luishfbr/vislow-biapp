@@ -1,0 +1,22 @@
+{
+  "name": "@vislow/component-registry",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Catalogo de componentes e schema da arvore. Fonte unica da paleta do editor, da validacao e do codegen do backend",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "@vislow/config-schema": "workspace:*",
+    "ajv": "8.20.0"
+  }
+}

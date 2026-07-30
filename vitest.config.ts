@@ -29,6 +29,10 @@ export default defineConfig({
       '@vislow/config-schema': new URL('./packages/config-schema/src/index.ts', import.meta.url)
         .pathname,
       '@vislow/visual-kit': new URL('./packages/visual-kit/src/index.ts', import.meta.url).pathname,
+      '@vislow/component-registry': new URL(
+        './packages/component-registry/src/index.ts',
+        import.meta.url,
+      ).pathname,
     },
   },
 });
