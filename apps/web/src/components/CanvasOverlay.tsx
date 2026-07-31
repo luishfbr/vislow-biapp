@@ -332,10 +332,17 @@ function Readout({ rect, resizing }: { rect: NodeRect; resizing: boolean }) {
   const text = resizing
     ? `${String(rect.w)} × ${String(rect.h)}`
     : `${String(rect.x)}, ${String(rect.y)}`;
+
+  // Acima da caixa, exceto quando ela esta colada no topo: la a moldura do
+  // preview corta o balao, e o numero some justamente enquanto se arrasta.
+  const inside = rect.y < 8;
+
   return (
     <span
       aria-hidden="true"
-      className="absolute -top-5 left-0 rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white shadow-sm dark:bg-white dark:text-slate-900"
+      className={`absolute left-0 rounded bg-slate-900 px-1.5 py-0.5 text-[10px] font-medium tabular-nums text-white shadow-sm dark:bg-white dark:text-slate-900 ${
+        inside ? 'top-0.5' : '-top-5'
+      }`}
       style={{ pointerEvents: 'none' }}
     >
       {text}
