@@ -1,6 +1,7 @@
 export * from './tokens.js';
 export * from './types.js';
 export * from './theme.js';
+export * from './highContrast.js';
 export * from './Frame.js';
 export * from './BarChart.js';
 export * from './KpiCard.js';

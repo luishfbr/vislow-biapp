@@ -77,6 +77,54 @@ describe('emissao do visual.tsx', () => {
 });
 
 /**
+ * Sprint 6. O que o codegen emite para as seis capacidades e pouco de proposito:
+ * ele LIGA a `Interaction`, que e estatica e vem do template. Um visual gerado
+ * que trouxesse a implementacao da selecao no proprio fonte espalharia codigo
+ * identico por todo pacote compilado — e a fronteira template/codegen existe
+ * para o contrario disso.
+ */
+describe('paridade de interatividade no fonte gerado', () => {
+  const source = generateVisualSource(assertValidSpec(specWithEveryKind()), BUILD_ID);
+
+  it('a leitura do quadro passa pela Interaction, e nao mais direto', () => {
+    expect(source).toContain("import { Interaction } from './interaction'");
+    expect(source).toContain('this.interaction.readFrame(options, ROLES)');
+    expect(source).not.toContain('readDataFrame');
+  });
+
+  /**
+   * Selecao feita em OUTRO visual chega por callback, fora de um `update`. Sem
+   * um `render` separado do `update`, o esmaecimento so responderia a cliques
+   * no proprio visual — cross-filter num sentido so.
+   */
+  it('renderiza fora do update, para a selecao vinda de outro visual', () => {
+    expect(source).toContain('private render(): void');
+    expect(source).toMatch(/new Interaction\(options, \(\) => \{\s*this\.render\(\);/);
+  });
+
+  it('emite o aviso de truncamento (RF-25)', () => {
+    expect(source).toContain('TruncationNotice');
+    expect(source).toContain('frame.truncated &&');
+  });
+
+  /**
+   * Uma arvore so de texto nao le dados, mas ainda precisa de menu de contexto
+   * e alto contraste — os dois vem da `Interaction`, que so existe se o quadro
+   * for lido. Por isso `EMPTY_FRAME` entra mesmo sem papel nenhum.
+   */
+  it('liga a interacao mesmo numa arvore que nao le dados', () => {
+    const textOnly = createNode('container');
+    textOnly.children = [createNode('text')];
+    const semDados = generateVisualSource(assertValidSpec(specWith(textOnly)), BUILD_ID);
+
+    expect(semDados).toContain('EMPTY_FRAME');
+    expect(semDados).toContain('this.interaction.readFrame(options, ROLES)');
+    // ...e continua sem passar o quadro para uma arvore que nao o consome.
+    expect(semDados).not.toContain('frame={frame}');
+  });
+});
+
+/**
  * RN-11 do lado do servidor. O texto do usuario e DADO: ele sai como literal de
  * string dentro de um container de expressao JSX e nunca como codigo.
  */

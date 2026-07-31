@@ -23,7 +23,9 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 
 - **Classe Tailwind construída por interpolação some sem erro** dentro do Power BI. O runtime é compilado antes
   de o usuário escolher qualquer coisa. Use sempre strings literais completas em `visual-kit/src/tokens.ts`.
-- **Tailwind v4 usa prefixo de variante:** `pbi:flex`, não `pbi-flex`.
+- **Tailwind v4 usa prefixo de variante:** `pbi:flex`, não `pbi-flex`. **E o prefixo vem ANTES da variante:**
+  `pbi:focus:ring-2`, nunca `focus:pbi:ring-2` — escrito ao contrário, o CLI não reconhece a classe, não gera
+  regra nenhuma e não reclama (achado 54). Classe com variante se confere no `dist/styles.css`, não no olho.
 - **Ajv:** importe `ajv/dist/2020.js`. O entrypoint padrão é draft-07 e falha só em runtime.
 - **O campo `style` do `pbiviz.json` é ignorado.** O CSS entra pelo `import` no `visual.ts` — e o build reporta
   sucesso mesmo sem ele.
@@ -107,11 +109,38 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 - **`react` no vitest vem por alias para a cópia do editor.** O `visual-kit` não pode declarar react (achado
   39), então sem o alias nenhum teste importa os componentes do fonte.
 
+### Armadilhas da paridade de interatividade (Sprint 6)
+
+- **Os serviços do host viajam dentro do `DataFrame`** (ADR-16), num `FrameHost`. Nunca leia `frame.host`
+  direto — use `hostOf(frame)`, que devolve o `INERT_HOST` no preview. Um `?.` por chamada é uma chance por
+  chamada de esquecer, e o esquecimento só quebra o editor.
+- **Alto contraste: HTML usa variável CSS, SVG lê o quadro.** `var()` **não é substituído em atributo de
+  apresentação** de SVG — `<rect fill="var(--x, red)">` não pinta (achado 55). Nos nós de HTML use `hcInk`,
+  `hcSurface`, `hcAccent`, `hcLine`; nos gráficos resolva por `hostOf(frame).highContrast`.
+- **O `FrameHost` tem discriminante `kind: 'host' | 'inert'`**, e é ele que decide o tooltip: no visual
+  compilado o balão é o do host (RF-19); no preview fica o do Recharts, senão passar o mouse no editor não
+  mostraria nada.
+- **A navegação por teclado é uma sobreposição `absolute` de `<button>` `sr-only`**, não `tabIndex` no SVG.
+  Absoluta porque um elemento a mais na cadeia de flex quebra a medida do `ResponsiveContainer` (ADR-14); o
+  grupo é `pointer-events-none` para não roubar clique do gráfico. As setas movem o **foco do DOM**, não um
+  índice em estado — é o que dá navegação por setas sem hook.
+- **Mouse e teclado divergem por tipo de gráfico, de propósito.** Barra e pizza têm marca por ponto e usam
+  `onClick` do `<Bar>`/`<Pie>`; linha e área usam o handler do gráfico e o `activeTooltipIndex`. Restrição do
+  Recharts, não escolha.
+- **Toda a conversa com o host é estática, em `visual-template/template/src/interaction.ts`.** O codegen só
+  instancia e chama `readFrame`. Não mova implementação de seleção para o fonte gerado.
+- **Um teste que MONTA componentes do `visual-kit` vive em `apps/web`, não no `visual-kit`** (achado 56): sem
+  `react-dom` resolvível ali, o ESLint com tipos reprova o arquivo inteiro — e a "solução" óbvia é justamente a
+  dependência proibida pelo achado 39.
+
 ## Estado
 
 **O pivô da ADR-08 está fechado.** Desde 2026-07-30 o ciclo completo funciona no Power BI Desktop: o usuário
 compõe do zero no editor, a API compila um `.pbiviz` de verdade e o pacote importa e renderiza. O produto
 prometido — o usuário **cria** o visual, não escolhe entre prontos — existe de ponta a ponta.
+
+Desde 2026-07-31 o visual compilado também **filtra o relatório, mostra tooltip nativo, respeita alto contraste,
+é navegável por teclado e abre o menu de contexto** — a paridade que o pivô tinha deixado para trás.
 
 Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (editor web) **concluídas**.
 O runtime foi validado no Power BI Desktop com dados reais: barras e KPI Card com cross-filter, tooltip nativo,
@@ -135,19 +164,23 @@ profundidade.
   Novos: `component-registry/tree.ts`, `visual-kit/nodes/mockFrame.ts` e `@vislow/build-contract`.
   Aposentados: `exportPbiviz.ts`, `AppearancePanel` e `CONTROL_GROUPS`. **Validado no Desktop em 2026-07-30**:
   o ciclo completo fecha — compor no editor, exportar pela API e importar no Power BI.
-- **Próximo: Sprint 6 (paridade de interatividade)** — o visual compilado renderiza dados corretamente, mas
-  **não filtra, não mostra tooltip nativo, ignora alto contraste e não é navegável por teclado**. São seis
-  capacidades que a Fase 1 já tinha aprovado no Desktop e que o pivô deixou para trás (achado 53). Vem antes do
-  resto da Fase 4: a matriz MT-01…MT-14 tem cenários de cross-filter que hoje reprovariam.
+- **Sprint 6 (paridade de interatividade)** — concluído no código em 2026-07-31. O achado 53 está **fechado**:
+  as seis capacidades voltaram ao caminho novo pelo desenho da ADR-16 — serviços do host dentro do `DataFrame`,
+  alto contraste por variável CSS, teclado por sobreposição de botões. Novos:
+  `visual-kit/src/highContrast.ts`, `visual-template/template/src/interaction.ts` e
+  `apps/web/src/components/kitInteraction.test.tsx`. O gate de aceite passou a verificar o que o visual **pede
+  ao host**, não só o que ele desenha. Pacote **221,1 KB**, `content.js` **751,3 KB**.
+  ⏳ **Falta aprovar no Desktop** — jsdom não tem motor de layout nem o host de verdade.
+
+- **Próximo: Fase 4** — KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E
+  Playwright do editor.
 
 **Ainda por aposentar:** `buildPbiviz`/`CONFIG_PLACEHOLDER` em `config-schema/packaging` e os testes T-03…T-08
 não têm mais chamador desde o Sprint 5 — o editor não empacota no browser. `inspectPbiviz` **sobrevive**, é o
-portão da ADR-11.
-
-⚠️ **`packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` NÃO podem ser apagados ainda**
-(achado 53). Também estão sem chamador, mas são a única implementação de seis capacidades que o caminho novo
-não tem — cross-filter, tooltip nativo, alto contraste, navegação por teclado, menu de contexto e aviso de
-truncamento. Apagá-los destrói a referência antes de a portabilidade existir. Ver o Sprint 6 no doc de MVP.
+portão da ADR-11. Com o achado 53 fechado, `packages/runtime` e os componentes `BarChart`/`KpiCard` do
+`visual-kit` **entram nessa lista**: a portabilidade existe, e eles deixaram de ser a única implementação das
+seis capacidades. Apague-os só depois da aprovação no Desktop — até lá continuam sendo a referência com que
+comparar um comportamento divergente.
 
 ```bash
 # Numa árvore limpa, nesta ordem:

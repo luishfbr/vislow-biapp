@@ -1,5 +1,6 @@
 import type { Align, FontSize, FontWeight } from '@vislow/config-schema';
 import { ALIGN_CLASS, FONT_SIZE_CLASS, FONT_WEIGHT_CLASS, cx } from '../tokens.js';
+import { hcInk } from '../highContrast.js';
 
 /**
  * Titulo, rotulo ou nota. Nao le dados do modelo.
@@ -29,7 +30,8 @@ export function TextNode({
         FONT_WEIGHT_CLASS[fontWeight],
         ALIGN_CLASS[align],
       )}
-      style={{ color }}
+      // RF-21: alto contraste vence a cor do usuario. Ver `highContrast.ts`.
+      style={{ color: hcInk(color) }}
       title={content}
     >
       {content}

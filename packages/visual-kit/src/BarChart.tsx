@@ -68,7 +68,11 @@ export function BarChart({
                   'pbi:justify-end',
                   'pbi:cursor-pointer',
                   'pbi:outline-none',
-                  'focus-visible:pbi:ring-2',
+                  // O prefixo do Tailwind v4 vem ANTES da variante. Escrito ao
+                  // contrario (`focus-visible:pbi:ring-2`), o CLI nao reconhece
+                  // a classe, nao gera regra nenhuma e nao reclama — o anel de
+                  // foco sumia sem deixar rastro (achado 54).
+                  'pbi:focus-visible:ring-2',
                 )}
                 style={{ opacity: dimmed ? DIMMED_OPACITY : 1 }}
                 onClick={(e) => context.onSelect?.(index, e.ctrlKey || e.metaKey)}
