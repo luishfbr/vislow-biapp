@@ -8,12 +8,30 @@ const INPUT =
   'outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 ' +
   'dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:focus:ring-sky-900';
 
-function Row({ label, hint, children }: { label: string; hint?: string | undefined; children: React.ReactNode }) {
+function Row({
+  label,
+  hint,
+  error,
+  children,
+}: {
+  label: string;
+  hint?: string | undefined;
+  error?: string | undefined;
+  children: React.ReactNode;
+}) {
   return (
     <div className="grid grid-cols-[1fr_9rem] items-center gap-2 py-1">
       <div>
         <div className={LABEL}>{label}</div>
         {hint !== undefined && <div className="text-[10px] text-slate-400">{hint}</div>}
+        {/* O erro fica JUNTO do campo, nao numa lista no rodape: o painel e
+            gerado e pode ter vinte linhas, e um erro longe do controle obriga o
+            usuario a adivinhar qual deles esta errado. */}
+        {error !== undefined && (
+          <div role="alert" className="text-[10px] font-medium text-amber-600 dark:text-amber-400">
+            {error}
+          </div>
+        )}
       </div>
       {children}
     </div>
@@ -23,26 +41,32 @@ function Row({ label, hint, children }: { label: string; hint?: string | undefin
 export function SelectField({
   label,
   hint,
+  error,
   value,
   options,
+  placeholder,
   onChange,
 }: {
   label: string;
   hint?: string | undefined;
+  error?: string | undefined;
   value: string;
   options: { value: string; label: string }[];
+  /** Opcao vazia inicial. Usada quando "nao escolhido" e um estado legitimo. */
+  placeholder?: string | undefined;
   onChange: (v: string) => void;
 }) {
   return (
-    <Row label={label} hint={hint}>
+    <Row label={label} hint={hint} error={error}>
       <select
-        className={INPUT}
+        className={error === undefined ? INPUT : `${INPUT} border-amber-400`}
         value={value}
         onChange={(e) => {
           onChange(e.target.value);
         }}
         aria-label={label}
       >
+        {placeholder !== undefined && <option value="">{placeholder}</option>}
         {options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}
@@ -53,20 +77,62 @@ export function SelectField({
   );
 }
 
+export function NumberField({
+  label,
+  hint,
+  error,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  hint?: string | undefined;
+  error?: string | undefined;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <Row label={label} hint={hint} error={error}>
+      <div className="flex items-center gap-2">
+        <input
+          type="range"
+          className="min-w-0 flex-1 accent-sky-600"
+          value={value}
+          min={min}
+          max={max}
+          onChange={(e) => {
+            onChange(Number(e.target.value));
+          }}
+          aria-label={label}
+        />
+        {/* O numero ao lado do slider nao e decorativo: o registro tem campos em
+            que o valor exato importa (espessura, opacidade) e um slider sozinho
+            nao permite reproduzir um valor. */}
+        <span className="w-8 shrink-0 text-right text-xs tabular-nums text-slate-500">{value}</span>
+      </div>
+    </Row>
+  );
+}
+
 export function ColorField({
   label,
   hint,
+  error,
   value,
   onChange,
 }: {
   label: string;
   hint?: string | undefined;
+  error?: string | undefined;
   value: string;
   onChange: (v: string) => void;
 }) {
   const id = useId();
   return (
-    <Row label={label} hint={hint}>
+    <Row label={label} hint={hint} error={error}>
       <div className="flex items-center gap-1.5">
         <input
           id={id}
@@ -98,16 +164,18 @@ export function ColorField({
 export function ToggleField({
   label,
   hint,
+  error,
   value,
   onChange,
 }: {
   label: string;
   hint?: string | undefined;
+  error?: string | undefined;
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <Row label={label} hint={hint}>
+    <Row label={label} hint={hint} error={error}>
       <button
         type="button"
         role="switch"
@@ -133,20 +201,25 @@ export function ToggleField({
 export function TextField({
   label,
   hint,
+  error,
   value,
+  maxLength,
   onChange,
 }: {
   label: string;
   hint?: string | undefined;
+  error?: string | undefined;
   value: string;
+  maxLength?: number | undefined;
   onChange: (v: string) => void;
 }) {
   return (
-    <Row label={label} hint={hint}>
+    <Row label={label} hint={hint} error={error}>
       <input
         type="text"
-        className={INPUT}
+        className={error === undefined ? INPUT : `${INPUT} border-amber-400`}
         value={value}
+        maxLength={maxLength}
         onChange={(e) => {
           onChange(e.target.value);
         }}

@@ -1,5 +1,6 @@
 import {
   NODE_DESCRIPTORS,
+  consumesData,
   type SpecNode,
   type VisualSpec,
 } from '@vislow/component-registry';
@@ -24,9 +25,14 @@ import { usedRoles } from './roles.js';
  * como literais (ver `literal.ts`).
  */
 
-/** Nos cujo descritor tem ao menos um campo de papel precisam do quadro. */
+/**
+ * Nos cujo descritor tem campo de papel precisam do quadro.
+ *
+ * A regra vem do REGISTRO, nao daqui: o preview do editor decide a mesma coisa,
+ * e duas copias divergiriam sem nada quebrar em tempo de compilacao.
+ */
 function needsFrame(node: SpecNode): boolean {
-  return NODE_DESCRIPTORS[node.kind].fields.some((field) => field.kind === 'role');
+  return consumesData(node.kind);
 }
 
 function emitNode(node: SpecNode): string {

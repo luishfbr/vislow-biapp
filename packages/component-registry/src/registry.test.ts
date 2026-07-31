@@ -110,6 +110,59 @@ describe('schema gerado a partir do registro', () => {
   });
 });
 
+describe('os problemas apontam o campo certo', () => {
+  /** Um `barChart` sem papel ligado — o estado pendente que o editor mostra. */
+  function pendingBar() {
+    const spec = createEmptySpec('Pendente');
+    spec.root.children = [createNode('barChart')];
+    return validateSpec(spec);
+  }
+
+  it('so fala dos campos do TIPO declarado, nunca dos das outras variantes', () => {
+    // Com `oneOf`, um barChart sem medida acusava tambem "falta direction" e
+    // "falta gap" — campos de container. Erro de outro tipo de no manda o
+    // usuario procurar um controle que a tela dele nem tem.
+    const result = pendingBar();
+    expect(result.kind).toBe('invalid');
+    if (result.kind !== 'invalid') return;
+
+    const alheios = result.issues.filter((issue) =>
+      ['direction', 'gap', 'content', 'innerRadius'].some((campo) => issue.path.endsWith(campo)),
+    );
+    expect(alheios).toEqual([]);
+  });
+
+  it('o caminho aponta o CAMPO, no formato do walk', () => {
+    // `required` do Ajv aponta o objeto; sem anexar a propriedade, o editor
+    // saberia que "algo em props falta" e nao qual controle acender.
+    const result = pendingBar();
+    if (result.kind !== 'invalid') throw new Error('esperava invalido');
+
+    expect(result.issues.map((issue) => issue.path)).toContain(
+      'root.children[0].props.measureRole',
+    );
+  });
+
+  it('o formato do caminho e o MESMO nas duas validacoes', () => {
+    // Schema e regras semanticas alimentam a mesma lista. Formatos diferentes
+    // impediriam qualquer consumidor de ligar um problema a um no.
+    const spec = createEmptySpec('Papel fantasma');
+    spec.root.children = [
+      createNode('barChart', { categoryRole: 'categoria', measureRole: 'inexistente' }),
+    ];
+    const semantico = validateSpec(spec);
+    if (semantico.kind !== 'invalid') throw new Error('esperava invalido');
+
+    expect(semantico.issues[0]?.path).toBe('root.children[0].props.measureRole');
+  });
+
+  it('nao devolve invalido com lista de problemas vazia', () => {
+    const result = pendingBar();
+    if (result.kind !== 'invalid') throw new Error('esperava invalido');
+    expect(result.issues.length).toBeGreaterThan(0);
+  });
+});
+
 describe('validacao semantica de papeis', () => {
   it('rejeita no que referencia papel nao declarado', () => {
     const spec = createEmptySpec('Papel fantasma');

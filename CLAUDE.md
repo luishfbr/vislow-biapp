@@ -81,7 +81,37 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
   codegen, no template ou nos nós do kit, é ele que pega o estrago. Ele exige o template preparado
   (`pnpm build && pnpm stage:vendor`).
 
+### Armadilhas do editor de composição (Sprint 5)
+
+- **Nada de lista de tipos ou de propriedades escrita à mão no editor.** Paleta, painel de propriedades, schema
+  e codegen saem todos de `NODE_DESCRIPTORS`. Uma lista paralela é a quinta cópia do catálogo e a primeira a
+  divergir.
+- **A regra do `frame` é `consumesData()` no registro**, consultada pelo codegen e pelo preview. Não
+  reimplemente `fields.some(f => f.kind === 'role')` num dos dois lados.
+- **`lib/nodeComponents.ts` é o gêmeo por referência do que o codegen faz por texto.** `nodeComponents.test.ts`
+  compara o nome da função com `descriptor.component` — é a única coisa ligando os dois caminhos.
+- **Seletor de zustand nunca constrói valor.** O v5 compara com `Object.is`, então devolver um `Map` ou objeto
+  novo re-renderiza em loop e trava a aba. Derivação que cria objeto vive em `lib/issues.ts`, memoizada no
+  componente.
+- **O preview não tem seleção por clique** (ADR-14). Um wrapper clicável entra na cadeia de flex que o
+  `ResponsiveContainer` usa para medir altura e o preview deixa de valer como referência.
+- **Nome de papel é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createRole` e amarra
+  as referências da árvore e o `capabilities.json`.
+- **A união de nós no schema usa `if`/`then`, não `oneOf`.** Com `oneOf` o Ajv reporta o erro das sete
+  variantes e o painel acusa campo de container num gráfico de barras.
+- **`react-is` é peer do Recharts** e o repo usa `autoInstallPeers: false` — por isso `apps/web` o declara
+  explicitamente. O `npm ci` do template instala peers sozinho, então o visual compilado esconde esse problema.
+- **Testes `.tsx` do editor precisam do `oxc.jsx` no `vitest.config.ts`**: o `apps/web/tsconfig.json` usa
+  `jsx: "preserve"` (exigência do Next) e o vitest lê o mesmo arquivo. Definir `esbuild.jsx` é ignorado em
+  silêncio no Vite 8.
+- **`react` no vitest vem por alias para a cópia do editor.** O `visual-kit` não pode declarar react (achado
+  39), então sem o alias nenhum teste importa os componentes do fonte.
+
 ## Estado
+
+**O pivô da ADR-08 está fechado.** Desde 2026-07-30 o ciclo completo funciona no Power BI Desktop: o usuário
+compõe do zero no editor, a API compila um `.pbiviz` de verdade e o pacote importa e renderiza. O produto
+prometido — o usuário **cria** o visual, não escolhe entre prontos — existe de ponta a ponta.
 
 Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (editor web) **concluídas**.
 O runtime foi validado no Power BI Desktop com dados reais: barras e KPI Card com cross-filter, tooltip nativo,
@@ -96,26 +126,44 @@ profundidade.
 
 - **Sprint 2 (gate)** — aprovado: Recharts cabe com folga e `pbiviz package` roda headless.
 - **Sprint 3 (registro)** — `@vislow/component-registry`: catálogo de componentes e schema da árvore derivado.
-- **Sprint 4 (API de build)** — concluído no código em 2026-07-30. `@vislow/visual-kit/nodes`,
-  `@vislow/codegen`, `@vislow/visual-template` e `@vislow/api`. Ciclo completo medido por HTTP com os sete
-  tipos de nó: **pacote 224,1 KB, `content.js` 762,6 KB, build em 11,8 s**. **Falta a validação manual no
-  Desktop.**
-- **Próximo: Sprint 5 (editor de composição)** — paleta, árvore navegável, painel de propriedades gerado do
-  registro, canvas de preview e mapeamento de papéis. O export passa a chamar a API.
+- **Sprint 4 (API de build)** — `@vislow/visual-kit/nodes`, `@vislow/codegen`, `@vislow/visual-template` e
+  `@vislow/api`. Ciclo completo medido por HTTP com os sete tipos de nó: **pacote 224,1 KB, `content.js`
+  762,6 KB, build em 11,8 s**. **Validado no Desktop em 2026-07-30** — o `.pbiviz` gerado pela API renderiza.
+- **Sprint 5 (editor de composição)** — concluído no código em 2026-07-30. O editor deixou de escolher entre
+  dois tipos prontos e passou a compor: paleta, árvore navegável, painel de propriedades e preview, todos
+  derivados do registro; papéis de dados declarados pelo usuário; export chamando a API com progresso.
+  Novos: `component-registry/tree.ts`, `visual-kit/nodes/mockFrame.ts` e `@vislow/build-contract`.
+  Aposentados: `exportPbiviz.ts`, `AppearancePanel` e `CONTROL_GROUPS`. **Validado no Desktop em 2026-07-30**:
+  o ciclo completo fecha — compor no editor, exportar pela API e importar no Power BI.
+- **Próximo: Sprint 6 (paridade de interatividade)** — o visual compilado renderiza dados corretamente, mas
+  **não filtra, não mostra tooltip nativo, ignora alto contraste e não é navegável por teclado**. São seis
+  capacidades que a Fase 1 já tinha aprovado no Desktop e que o pivô deixou para trás (achado 53). Vem antes do
+  resto da Fase 4: a matriz MT-01…MT-14 tem cenários de cross-filter que hoje reprovariam.
+
+**Ainda por aposentar:** `buildPbiviz`/`CONFIG_PLACEHOLDER` em `config-schema/packaging` e os testes T-03…T-08
+não têm mais chamador desde o Sprint 5 — o editor não empacota no browser. `inspectPbiviz` **sobrevive**, é o
+portão da ADR-11.
+
+⚠️ **`packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` NÃO podem ser apagados ainda**
+(achado 53). Também estão sem chamador, mas são a única implementação de seis capacidades que o caminho novo
+não tem — cross-filter, tooltip nativo, alto contraste, navegação por teclado, menu de contexto e aviso de
+truncamento. Apagá-los destrói a referência antes de a portabilidade existir. Ver o Sprint 6 no doc de MVP.
 
 ```bash
-pnpm dev                                        # editor em http://localhost:3000
-pnpm verify                                     # typecheck + lint + testes
-pnpm --filter @vislow/runtime build:runtime     # empacota + 11 guardas + copia o template para o editor
-pnpm stage:template                             # só a copia, se o dist já existe
+# Numa árvore limpa, nesta ordem:
+pnpm build && pnpm stage:vendor  # compila os pacotes, o CSS e prepara o template do worker
+pnpm dev:api                     # API de build em http://localhost:3001
+pnpm dev                         # editor em http://localhost:3000
+
+pnpm verify                      # typecheck + lint + testes
+pnpm test:build                  # gate de aceite: spec -> .pbiviz compilado -> render em jsdom
+
+# Caminho antigo (Fase 3), sem chamador desde o Sprint 5 — ver "ainda por aposentar"
+pnpm --filter @vislow/runtime build:runtime     # empacota + 11 guardas
 pnpm test:packaging                             # T-03…T-08 isolados
 node packages/runtime/scripts/make-samples.mjs  # amostras para teste manual no Power BI
-
-# API de build (Sprint 4)
-pnpm build && pnpm stage:vendor                 # prepara o template — obrigatorio antes do primeiro build
-pnpm dev:api                                    # API em http://localhost:3001
-pnpm test:build                                 # gate de aceite: spec -> .pbiviz compilado -> render em jsdom
 ```
 
-**O editor precisa do pacote base para exportar.** Ele busca `/templates/base-runtime.pbiviz`; rode
-`pnpm --filter @vislow/runtime build:runtime` antes do `pnpm dev` numa árvore limpa.
+**O editor precisa da API para exportar.** O empacotamento no browser acabou: `pnpm dev:api` tem de estar no
+ar, com o template preparado (`pnpm build && pnpm stage:vendor`). A URL da API sai de
+`NEXT_PUBLIC_VISLOW_API_URL`, com `http://localhost:3001` como padrão.

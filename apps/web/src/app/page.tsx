@@ -1,10 +1,10 @@
 'use client';
 
 import { useEffect } from 'react';
-import { AppearancePanel } from '@/components/AppearancePanel';
 import { Header } from '@/components/Header';
 import { PreviewCanvas } from '@/components/PreviewCanvas';
 import { ProjectPanel } from '@/components/ProjectPanel';
+import { PropertiesPanel } from '@/components/PropertiesPanel';
 import { useEditorStore } from '@/store/useEditorStore';
 
 export default function EditorPage() {
@@ -20,17 +20,20 @@ export default function EditorPage() {
   return (
     <div className="flex h-full flex-col">
       <Header />
-      <div className="flex min-h-0 flex-1">
-        <ProjectPanel />
-        {hydrated ? (
+      {hydrated ? (
+        <div className="flex min-h-0 flex-1">
+          <ProjectPanel />
           <PreviewCanvas />
-        ) : (
-          <main className="flex flex-1 items-center justify-center text-sm text-slate-400">
-            Carregando projeto...
-          </main>
-        )}
-        <AppearancePanel />
-      </div>
+          <PropertiesPanel />
+        </div>
+      ) : (
+        // Os paineis esperam a hidratacao junto com o canvas: montar a paleta e
+        // a arvore sobre a spec inicial e troca-las logo depois faria a selecao
+        // saltar sozinha na primeira interacao.
+        <main className="flex flex-1 items-center justify-center text-sm text-slate-400">
+          Carregando projeto...
+        </main>
+      )}
     </div>
   );
 }

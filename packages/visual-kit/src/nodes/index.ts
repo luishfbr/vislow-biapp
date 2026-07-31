@@ -7,6 +7,7 @@
  * contra o orcamento de 1 MB. Quem quer os nos pede o subcaminho.
  */
 export * from './frame.js';
+export * from './mockFrame.js';
 export * from './Container.js';
 export * from './TextNode.js';
 export * from './KpiNode.js';

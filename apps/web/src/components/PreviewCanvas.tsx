@@ -1,17 +1,24 @@
 'use client';
 
-import { useState } from 'react';
-import { BarChart, ErrorBoundary, KpiCard, MOCK_BARS, MOCK_KPI } from '@vislow/visual-kit';
+import { useMemo, useState } from 'react';
+import { issuesByNode } from '@/lib/issues';
 import { useEditorStore } from '@/store/useEditorStore';
+import { SpecPreview } from './SpecPreview';
 
 /**
- * Preview (RF-05).
+ * Area de preview (RF-05).
  *
- * Renderiza com os MESMOS componentes do Runtime Core — nao com uma reimplementacao.
- * E o que faz o ADR-04 se pagar: nao existe "preview aproximado", existe o
- * proprio visual, alimentado por dados mock em vez do DataView.
+ * O canvas cuida do ENQUADRAMENTO — proporcao, moldura, fundo. Quem desenha a
+ * arvore e o `SpecPreview`, que e o gemeo do codegen. Separar os dois e o que
+ * permite mexer na aparencia do editor sem risco de mexer no que o Power BI vai
+ * mostrar.
  *
- * RN-02: nenhum dado do modelo do Power BI passa por aqui. O app nem tem acesso
+ * O preview NAO tem selecao por clique de proposito: qualquer wrapper com
+ * `onClick` em volta de um no mudaria a arvore de flex que os graficos usam para
+ * medir altura, e o preview deixaria de valer como referencia (ADR-04). A
+ * selecao vive no painel de arvore, onde nao custa nada.
+ *
+ * RN-02: nenhum dado do modelo do Power BI passa por aqui — o app nem tem acesso
  * a ele.
  */
 
@@ -22,25 +29,22 @@ const RATIOS = [
 ] as const;
 
 export function PreviewCanvas() {
-  const config = useEditorStore((s) => s.config);
+  const spec = useEditorStore((s) => s.spec);
+  const issues = useEditorStore((s) => s.issues);
   const [ratio, setRatio] = useState<number>(16 / 9);
 
+  // Memoizado porque `issuesByNode` constroi Maps novos: sem isso o
+  // `SpecPreview` re-renderiza a cada render do canvas, inclusive ao trocar a
+  // proporcao, e os graficos remontam sem motivo.
+  const byNode = useMemo(() => issuesByNode(spec, issues), [spec, issues]);
+
   return (
-    <main className="flex h-full flex-1 flex-col items-center justify-center gap-4 bg-slate-100 p-8 dark:bg-slate-950">
+    <main className="flex h-full flex-1 flex-col items-center justify-center gap-4 overflow-auto bg-slate-100 p-8 dark:bg-slate-950">
       <div
-        className="w-full max-w-3xl overflow-hidden rounded-lg shadow-lg ring-1 ring-slate-200 dark:ring-slate-700"
+        className="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-slate-200 dark:ring-slate-700"
         style={{ aspectRatio: String(ratio) }}
       >
-        {/* O ErrorBoundary tambem no preview: um config em edicao pode passar por
-            estados transitorios que o componente nao suporta, e travar o editor
-            seria pior que mostrar o card de erro. */}
-        <ErrorBoundary>
-          {config.chartType === 'bar' ? (
-            <BarChart config={config} data={MOCK_BARS} />
-          ) : (
-            <KpiCard config={config} datum={MOCK_KPI} />
-          )}
-        </ErrorBoundary>
+        <SpecPreview spec={spec} issues={byNode} />
       </div>
 
       <div className="flex items-center gap-2">

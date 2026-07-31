@@ -239,6 +239,9 @@ Todo o desenho decorre destas restrições, verificadas na documentação da Mic
 | **ADR-07** | Config transportada em **base64** dentro do literal de string. | Elimina qualquer problema de escaping de aspas, quebras de linha e barras invertidas ao injetar em JS minificado. | JSON cru no literal — quebra com aspas no título do usuário. |
 | **ADR-11** | **A inspeção do artefato é um portão do pipeline, não um teste.** O worker abre o `.pbiviz` com `inspectPbiviz` e recusa a entrega se qualquer invariante falhar. | `pbiviz package` já reportou sucesso produzindo pacote quebrado três vezes neste projeto (achados 20, 34, 41). Confiar no código de saída entrega ao usuário um arquivo que o Power BI recusa com mensagem genérica — e o suporte não tem por onde começar. Verificando no servidor, a falha vira `ARTIFACT_REJECTED` com o número que estourou, antes de o usuário baixar qualquer coisa. | Confiar no código de saída do `pbiviz` (já provado insuficiente); verificar só no CI (não protege build de produção). |
 | **ADR-12** | O `capabilities.json` declara **apenas os papéis que a árvore consome**, não todos os que o projeto declarou. | Um papel declarado e não ligado a nenhum nó viraria um campo no painel do Power BI que o visual nunca lê: o usuário arrasta a coluna e nada acontece. Derivando da árvore, "campo pedido" e "campo usado" são a mesma coisa por construção. | Declarar todos os papéis do projeto (pede coluna que ninguém lê); exigir que todo papel declarado seja usado (transforma um rascunho em erro de validação). |
+| **ADR-13** | O **nome técnico de um papel é estável**: nasce do rótulo na criação e nunca muda. O usuário edita apenas o `displayName`. | O `name` vai para o `capabilities.json` e amarra toda referência da árvore. Se ele mudasse a cada renomeio, cada edição de rótulo teria de reescrever N nós em cascata — e uma reescrita que falhasse pela metade produziria um visual pedindo uma coluna que nenhum nó lê. Mesma lógica do `project.id` (RN-01): identidade se cria uma vez. | Renomear em cascata (falha parcial silenciosa); expor o `name` como campo editável (o usuário quebra o próprio visual sem entender por quê). |
+| **ADR-14** | O **preview não tem seleção por clique**. A seleção vive no painel de árvore. | Envolver cada nó do preview num elemento clicável insere um `div` na cadeia de flex que os gráficos usam para medir altura — o `ResponsiveContainer` passaria a medir outra coisa e o preview deixaria de valer como referência do resultado final, que é justamente o ADR-04. Na árvore a seleção não custa nada. | Wrapper clicável (quebra o WYSIWYG por dentro, sem sintoma visível); `refs` + overlay posicionado (complexidade alta para ganho pequeno). |
+| **ADR-15** | A união de nós no schema é despachada com **`if`/`then` por `kind`**, não com `oneOf`. | Com `oneOf` o Ajv avalia as sete variantes e reporta o erro de todas: um `barChart` sem medida ligada acusava também "falta `direction`" e "falta `gap`", que são campos de container. Erro de outro tipo de nó é pior que erro nenhum — manda o usuário procurar um controle que a tela dele nem tem. Com `if`/`then`, o `if` que não casa não produz erro. | `oneOf` (ruído inutilizável no painel); `discriminator` do Ajv (extensão fora do dialeto 2020-12 padrão). |
 
 ---
 
@@ -940,46 +943,82 @@ Mudanças em relação ao exemplo da v1.0, todas com consequência real:
 
 ## 10. Especificação do Aplicativo Web
 
+> Reescrita no **Sprint 5**. A versão anterior — dois tipos prontos e um painel de aparência fixo — descrevia o
+> editor da Fase 2, anterior ao pivô da [ADR-08](#35-decisões-de-arquitetura-adr).
+
 ### 10.1 Layout
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │  [Vislow]   Nome do visual: [__________]   v1.0.0.0   [ Baixar .pbiviz ]      │
 ├──────────────────┬────────────────────────────────────┬───────────────────────┤
-│  TIPO DE VISUAL  │        PREVIEW (visual-kit)        │      APARÊNCIA        │
+│  COMPONENTES     │        PREVIEW (visual-kit)        │    PROPRIEDADES       │
+│   Container      │                                    │                       │
+│   Texto  KPI     │   ┌──────────────────────────┐     │   Barras              │
+│   Barras Linha   │   │                          │     │   Compara valores     │
+│   Área   Pizza   │   │   render ao vivo com     │     │   entre categorias.   │
+│                  │   │   dados de exemplo       │     │                       │
+│  COMPOSIÇÃO ↑↓✕  │   │                          │     │   Categoria  [▾]      │
+│   Container (3)  │   └──────────────────────────┘     │   Valor      [▾]      │
+│    ├ Texto — Ven │        [ 16:9 ] [ 4:3 ] [ 1:1 ]    │   Cor        [■]      │
+│    ├ Container   │                                    │   Orientação [▾]      │
+│    │  └ KPI ●    │                                    │   Grade      [ ]      │
+│    └ Barras      │                                    │   ...                 │
 │                  │                                    │                       │
-│  ▸ Barras        │   ┌──────────────────────────┐     │  Cores                │
-│  ▸ KPI Card      │   │                          │     │   destaque, superfície│
-│                  │   │   render ao vivo com     │     │   texto, grade        │
-│  PROJETO         │   │   dados de exemplo       │     │  Layout               │
-│   salvar/abrir   │   │                          │     │   espaçamento, raio,  │
-│   exportar json  │   └──────────────────────────┘     │   sombra, borda       │
-│   importar json  │        [ 16:9 ] [ 4:3 ] [ 1:1 ]    │  Título               │
-│                  │                                    │  Rótulos              │
+│  CAMPOS DO VISUAL│                                    │                       │
+│   Categoria      │                                    │                       │
+│   Valor          │                                    │                       │
+│   [+ Categoria]  │                                    │                       │
+│   [+ Medida]     │                                    │                       │
+│  PROJETO         │                                    │                       │
 └──────────────────┴────────────────────────────────────┴───────────────────────┘
 ```
 
-O painel direito é gerado a partir do **catálogo de tokens** ([7.2](#72-catálogo-de-tokens)), não escrito à mão
-por propriedade. Adicionar um token ao schema faz o controle aparecer.
+**Nada nesta tela é escrito à mão por tipo ou por propriedade.** Paleta, painel de propriedades e preview saem
+todos de `NODE_DESCRIPTORS` ([ADR-09](#35-decisões-de-arquitetura-adr)) — a mesma fonte do schema de validação
+e do codegen. Um tipo de nó novo aparece nos três lugares no commit em que passa a existir.
+
+O `●` marca nó com campo pendente, **e todos os seus ancestrais**: com a árvore recolhida, marcar só o nó
+defeituoso deixaria o export bloqueado sem indício visível de onde.
+
+Onde o componente novo entra: **dentro** da seleção quando ela aceita filhos, senão logo **depois** dela, como
+irmão. A seleção passa a ser o nó novo.
 
 ### 10.2 Estado
 
-Store Zustand única contendo `config: VisualConfig`, `validation: ValidationResult` e `exportState`. Toda escrita
-passa por um setter que revalida contra o schema. O `localStorage` é atualizado com *debounce* ([RF-08](#43-projeto)).
+Store Zustand única com `spec: VisualSpec`, `issues: ValidationIssue[]` e `selectedId`. Toda escrita passa por
+`commit`, que revalida com o **mesmo `validateSpec` que o `BuildsController` aplica** e persiste com *debounce*
+([RF-08](#43-projeto)). Não existe caminho que altere a árvore sem revalidar — é o que garante que o botão de
+export só fica ativo com uma spec que a API aceitaria ([RN-03](#6-regras-de-negócio)).
+
+Um projeto v1 no `localStorage` é **migrado** na hidratação (`migrateV1ToV2`), preservando o `project.id` — a
+parte insubstituível, sem a qual reexportar duplicaria o visual em vez de atualizá-lo.
+
+Seletores devolvem **referência vinda do estado**, nunca valor construído: no zustand v5 um seletor que cria um
+`Map` a cada chamada re-renderiza em loop. As derivações que criam objeto vivem em `lib/issues.ts` e são
+memoizadas no componente ([achado 52](#a9--achados-do-sprint-5-editor-de-composição-2026-07-30)).
 
 ### 10.3 Fluxo de Export
 
 ```
 clique
-  → valida (RF-12) — inválido: aponta os campos e para
-  → fetch('/templates/base-runtime.pbiviz')  [cacheado]
-  → buildPbiviz(template, config)            [§8.3]
-  → saveAs(blob, `${slug}.${versao}.pbiviz`)
-  → exibe as instruções de importação (RF-13)
+  → valida (RF-12) — inválido: aponta os campos na árvore e no painel, e para
+  → POST /builds { spec }              → 202 { buildId }
+  → GET  /builds/:id  [polling 1 s]    → "na fila..." / "compilando..."
+  → GET  /builds/:id/artifact          → blob
+  → saveAs(blob, `${nome}.pbiviz`)
+  → bump da versão (RF-10) + instruções de importação (RF-13)
 ```
 
-Estados de erro tratados explicitamente: template indisponível (rede), placeholder ausente no template (build
-corrompido), falha do JSZip. Cada um com mensagem própria e código ([RNF-11](#5-requisitos-não-funcionais)).
+As fases são nomeadas porque a espera passou a existir: ~12 s medidos, e "Gerando..." parado por doze segundos
+é indistinguível de travado. O download só acontece após um estado **terminal** — pedir o artefato antes traz um
+`409`, não um pacote.
+
+Cada `BuildErrorCode` vira uma frase que diz o que fazer, num `switch` exaustivo por compilador sobre o tipo de
+`@vislow/build-contract`: um código novo no servidor quebra o build do editor em vez de virar "erro
+desconhecido" na tela. `ARTIFACT_REJECTED` é redigido de propósito como *reprovado na inspeção*, não como
+*falhou* — o primeiro sugere reportar, o segundo sugere tentar de novo, e [ADR-11](#35-decisões-de-arquitetura-adr)
+significa que tentar de novo não vai ajudar.
 
 ---
 
@@ -1302,20 +1341,99 @@ bundle minificado num jsdom — herdeiro direto do `renderRealBundle.test.ts`, o
 tela), sem dados renderiza o estado vazio com instrução. No CI, `VISLOW_REQUIRE_BUILD=1` impede que a ausência
 do template passe como "teste ignorado".
 
-**DoD:** ✅ código, testes e CI. ⏳ **Falta a validação manual no Power BI Desktop** — importar o `.pbiviz`
-gerado pela API, arrastar campos e confirmar que os quatro gráficos e o KPI renderizam com dados reais.
-
-**Próximo: Sprint 5 — editor de composição.** Paleta, árvore navegável, painel de propriedades gerado do
-registro, canvas de preview e mapeamento de papéis. O botão de export passa a chamar esta API.
+**DoD:** ✅ código, testes, CI **e validação manual no Power BI Desktop em 2026-07-30** — o `.pbiviz` gerado
+pela API importa e renderiza com dados reais.
 
 ---
 
-### Fase 4 — KPI Card, Acessibilidade e Robustez (~1 semana)
+### Sprint 5 — Editor de composição — ✅ **CONCLUÍDO em 2026-07-30**
 
-- [ ] KPI Card (RF-16) com a role `target`.
-- [ ] Alto contraste, navegação por teclado, menu de contexto, aviso de truncamento.
+A última peça do pivô: o usuário deixa de escolher entre dois tipos prontos e passa a **compor**. Os painéis
+fixos da Fase 2 (`AppearancePanel`, `CONTROL_GROUPS`, tipo de visual) saíram; no lugar entrou uma superfície
+inteiramente **derivada do registro**.
+
+**O que passou a existir:**
+
+| Peça | Papel |
+|---|---|
+| `component-registry/tree.ts` | Edição da árvore — inserir, remover, reordenar, reparentar — como funções puras. Mora no registro porque é lá que vive a regra do que é válido (folha não aceita filho, raiz não some, nó não entra em si mesmo). |
+| `visual-kit/nodes/mockFrame.ts` | `DataFrame` de exemplo **derivado dos papéis declarados**. Não existe mais dataset mock fixo: os papéis são do usuário, então o dado de exemplo nasce deles. |
+| `@vislow/build-contract` | Tipos de fio da API, com dois donos: servidor e editor. Um código de erro novo no servidor quebra o `switch` do editor em tempo de compilação em vez de virar "erro desconhecido" na tela. |
+| `apps/web` — `Palette`, `TreePanel`, `PropertiesPanel`, `RolesPanel`, `SpecPreview` | Paleta, árvore navegável, painel de propriedades e mapeamento de papéis. **Nenhuma lista de tipos ou de propriedades escrita à mão** — tudo sai de `NODE_DESCRIPTORS`. |
+| `apps/web/lib/buildApi.ts` | Substitui `exportPbiviz.ts`. Sobe a spec, acompanha a build e baixa o artefato, com as fases nomeadas — "Gerando..." parado por doze segundos é indistinguível de travado. |
+
+**A garantia do [ADR-04](#35-decisões-de-arquitetura-adr) depois do pivô.** Preview e visual compilado chegam ao
+componente por caminhos diferentes: o codegen por texto (`descriptor.component` vira import nomeado), o preview
+por referência (`lib/nodeComponents.ts`). Nada no compilador liga os dois — `nodeComponents.test.ts` liga,
+comparando o nome da função com o descritor. A regra do `frame` deixou de ser duplicada: virou `consumesData()`
+no registro, consultada pelos dois.
+
+**Gate de aceite:** `SpecPreview.test.tsx` monta a árvore num jsdom equipado (mesmo harness do
+[achado 46](#a8--achados-do-sprint-4-api-de-build-2026-07-30)) e verifica que sai **dado**, não card de erro:
+barras desenhadas, KPI com número, os quatro tipos de gráfico montando. `useEditorStore.test.ts` fecha a
+invariante que importa: toda sequência de ações que a interface permite produz uma spec que passa no **mesmo
+`validateSpec` que o `BuildsController` aplica** — ou fica explicitamente pendente, com o export bloqueado.
+
+**DoD:** ✅ código, testes (226), `pnpm verify` limpo **e validação manual no Power BI Desktop em 2026-07-30**.
+O ciclo completo fecha: compor no editor a partir da tela em branco, exportar pela API e importar no Power BI.
+É o primeiro momento em que a proposta do produto — o usuário **cria** o visual, não escolhe entre prontos —
+existe de ponta a ponta.
+
+Pendente de verificação nesta etapa: MT-03 (dois visuais coexistindo) e MT-04 (reexportar atualiza, não
+duplica). Ambos dependem apenas da identidade do projeto, coberta por teste
+([`useEditorStore.test.ts`](apps/web/src/store/useEditorStore.test.ts)) e já aprovada no Desktop na Fase 3 —
+mas não reconfirmadas no caminho compilado.
+
+---
+
+### Sprint 6 — Paridade de interatividade — ⏳ **PRÓXIMO**
+
+Existe porque o pivô deixou seis capacidades para trás
+([achado 53](#a9--achados-do-sprint-5-editor-de-composição-2026-07-30)). Não é escopo novo: as seis foram
+entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual que a API compila hoje desenha
+corretamente, mas **clicar numa barra não filtra o relatório**.
+
+| Capacidade | Referência a portar | Requisito |
+|---|---|---|
+| Cross-filter (`selectionManager`, `createSelectionId`) | `runtime/src/visual.tsx`, `viewModel.ts` | [RF-18](#45-runtime-core) |
+| Tooltip nativo (`tooltipService`) | `runtime/src/visual.tsx` | [RF-19](#45-runtime-core) |
+| Alto contraste | `visual-kit/theme.ts` (a lógica existe; falta o caminho até os nós) | [RF-21](#45-runtime-core) |
+| Navegação por teclado | `visual-kit/BarChart.tsx` (`tabIndex`, `aria-label`) | [RF-23](#45-runtime-core) |
+| Menu de contexto | `runtime/src/visual.tsx:47` | [RF-24](#45-runtime-core) |
+| Aviso de truncamento | `TruncationNotice` + `runtime/src/visual.tsx:195` | [RF-25](#45-runtime-core) |
+
+Os nós novos ([`visual-kit/src/nodes/`](packages/visual-kit/src/nodes/)) não têm **um único** `tabIndex`,
+`aria-label` ou `onKeyDown` — o que a Fase 1 tinha vive em `BarChart.tsx`/`KpiCard.tsx`, que o caminho novo não
+usa. Um visual acessível é requisito de publicação no AppSource, não enfeite.
+
+**O que torna isto diferente de um port simples:** o contrato dos nós mudou. Os componentes da Fase 1 recebiam
+`DataPoint[]` já resolvido e um `RenderContext` com tema; os nós novos recebem `DataFrame` e props literais
+([`nodes/frame.ts`](packages/visual-kit/src/nodes/frame.ts)). Selection id e serviço de tooltip são objetos do
+host — precisam chegar aos nós sem virar prop de cada descritor e **sem introduzir hook no `visual-kit`**
+(regra do achado 39, verificada por ESLint).
+
+**Restrição que decide o desenho:** os gráficos agora são Recharts, não SVG nosso. Cross-filter e tooltip
+passam a depender dos handlers do Recharts (`onClick` na série, `content` customizado no `Tooltip`), não de
+elementos que controlamos diretamente.
+
+⚠️ **`packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` não podem ser apagados antes
+deste sprint.** Estão sem chamador desde o Sprint 5, mas são a única implementação das seis capacidades.
+
+**DoD:** as seis funcionando num `.pbiviz` compilado pela API e aprovadas no Desktop; gate de aceite estendido
+para cobrir cross-filter (o `compiledVisual.e2e.test.ts` hoje verifica que renderiza dados e a
+[RN-04](#6-regras-de-negócio), não que a seleção propaga).
+
+---
+
+### Fase 4 — KPI Card, Robustez e Matriz Completa
+
+Depois do Sprint 6, porque a matriz manual tem cenários de cross-filter que hoje reprovariam.
+
+- [ ] KPI Card com comparação ([RF-16](#45-runtime-core)). **Mudou com o pivô:** não é mais a role fixa
+      `target` do `capabilities.json` — vira um campo de papel opcional no descritor do `KpiNode`, que o
+      usuário liga como qualquer outro.
 - [ ] Matriz manual completa (MT-01 a MT-14), incluindo o Service.
-- [ ] E2E Playwright.
+- [ ] E2E Playwright do editor de composição.
 
 **DoD:** matriz completa aprovada; zero ocorrências de tela branca; métricas M-01 a M-05 mensuráveis no piloto.
 
@@ -1455,3 +1573,15 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 44 | **A resolução `node` (node10) ignora o campo `exports`.** O `visual-kit` publica os componentes de nó pelo subcaminho `@vislow/visual-kit/nodes`; o webpack do `pbiviz` honra `exports`, o TypeScript com `moduleResolution: node` não. | Falha só do lado dos tipos, com `Cannot find module`, num projeto que compila por webpack — a assimetria entre as duas resoluções não é óbvia. | `moduleResolution: "bundler"` no `tsconfig.json` do template. |
 | 45 | **`npm ci` apaga `node_modules` inteiro antes de instalar.** Os pacotes `@vislow/*` são privados: não estão em registro nenhum e não podem entrar no `package.json` do template. | Vendorizar antes do `npm ci` é trabalho jogado fora, e o erro só apareceria depois, na resolução do webpack, sem explicar a causa. | `stage-vendor.mjs` prepara `vendor/@vislow/`, e o pipeline copia para `node_modules/` **depois** do `npm ci`. Cópia de diretório, não symlink nem `file:`: symlink reintroduziria a condição exata do [achado 39](#a7-achados-da-fase-3--export-2026-07-30), e `file:` faria o `npm ci` recusar o lockfile a cada byte alterado no kit. |
 | 46 | **O jsdom não tem motor de layout nem `ResizeObserver`**, e o `ResponsiveContainer` do Recharts depende dos dois. | O gate de aceite passaria enganado: o visual monta, o container do gráfico aparece no DOM, e **nenhum SVG é desenhado** — exatamente o sintoma do achado 39, o bug que este teste existe para pegar. | O harness instala um `ResizeObserver` que reporta medida fixa e sobrescreve `offsetWidth`/`clientWidth`/`getBoundingClientRect`. Equipar o harness, não afrouxar a asserção: o que se prova é que o gráfico desenha **quando tem espaço**, que é a condição real dentro do Power BI. |
+
+### A9 — Achados do Sprint 5: editor de composição (2026-07-30)
+
+| # | Achado | Impacto | Correção |
+|---|---|---|---|
+| 47 | **`oneOf` sobre as sete variantes de nó faz o Ajv reportar o erro de TODAS.** Um `barChart` com papel não ligado produzia ~40 problemas, entre eles "falta `direction`" e "falta `gap`" — campos de container. | Alto para a usabilidade, invisível para os testes: as suítes existentes só verificavam `kind === 'invalid'`, então o ruído passou pelo Sprint 3 e pelo Sprint 4 sem sintoma. O painel de propriedades foi o primeiro consumidor a precisar de atribuição por campo, e a mensagem que ele mostraria mandava o usuário procurar um controle que a tela dele não tem. | Despacho por `if`/`then` sobre o `kind` ([ADR-15](#35-decisões-de-arquitetura-adr)) — o `if` que não casa não gera erro. Os rollups `must match "then" schema` são filtrados por `keyword`, com salvaguarda para não devolver "inválido" com lista vazia. De ~40 problemas para 2. |
+| 48 | **Os caminhos de problema tinham DOIS formatos na mesma lista.** O Ajv devolve JSON Pointer (`/root/children/0/props`) e as regras semânticas usavam o formato do `walk` (`root.children[0].props.measureRole`). | Nenhum consumidor conseguia ligar um problema a um nó sem saber de qual dos dois validadores ele veio — e a informação de origem não está no `ValidationIssue`. Ficou latente enquanto ninguém consumia o caminho. | `toIssue` normaliza para o formato do `walk` e **anexa `params.missingProperty`** nos erros de `required`, que apontavam para o objeto e não para o campo. Sem isso o editor saberia que "algo em `props` falta", não qual controle acender. |
+| 49 | **`react-is` é `peerDependency` do Recharts e o repositório usa `autoInstallPeers: false`** (imposto pelo achado 39). | O `npm ci` do template instala peers sozinho, então o visual compilado sempre funcionou — mas o editor, sob pnpm estrito, quebra ao importar Recharts, com `Cannot find module 'react-is'` vindo de dentro do próprio pacote. A assimetria entre os dois ambientes esconde o problema até alguém renderizar um gráfico no editor. | `react-is` declarado explicitamente em `apps/web`, pelo mesmo motivo que `packages/runtime` declara os loaders do webpack. |
+| 50 | **O `visual-kit` não declara `react` nem em `devDependencies`** (achado 39), então nenhum teste conseguia importar seus componentes a partir do fonte. | Bloqueava qualquer teste de render do preview — justamente a classe de teste que pegou o achado 39. | Alias de `react`/`react-dom` no `vitest.config.ts`, apontando para a cópia do editor. Resolve só no vitest, **sem tocar no layout de `node_modules`**, que é o que não pode mudar. |
+| 51 | **O `apps/web/tsconfig.json` usa `jsx: "preserve"`** porque quem transforma o JSX é o Next — e o vitest lê esse mesmo tsconfig. | Todo teste `.tsx` do editor falhava no parse com `Unexpected JSX expression`, erro que aponta para o código e não para a configuração. O Vite 8 usa `oxc`: definir `esbuild.jsx` é aceito e **silenciosamente ignorado**, com um aviso fácil de não ler. | `oxc: { jsx: { runtime: 'automatic' } }` no `vitest.config.ts`. |
+| 52 | **Um seletor de zustand que constrói o valor a cada chamada re-renderiza em loop.** `selectIssuesByNode` devolvia um `Map` novo; o zustand v5 compara com `Object.is`. | Trava o editor, e o sintoma (aba congelada) não aponta para o seletor. | As derivações que criam objeto saíram do store para `lib/issues.ts` e são memoizadas no componente. O que fica como seletor devolve **referência vinda do estado**, nunca valor construído — com o motivo comentado no arquivo. |
+| 53 | **O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) deixou seis capacidades para trás.** O caminho novo — `codegen` + `visual-template` + `visual-kit/nodes` — não tem **cross-filter**, **tooltip nativo**, **alto contraste**, **navegação por teclado**, **menu de contexto** nem **aviso de truncamento** (RF-18, 19, 21, 23, 24, 25). Vivem em `packages/runtime/src/visual.tsx` e nos componentes `BarChart`/`KpiCard` do `visual-kit` — nenhum dos dois usado pelo caminho novo. Os nós de `visual-kit/src/nodes/` não têm um único `tabIndex` ou `aria-label`. | Regressão, não escopo futuro: as seis foram entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual compilado hoje desenha certo, então nenhum teste acusa — `compiledVisual.e2e.test.ts` verifica que renderiza dados e a RN-04, não que clicar numa barra filtra o relatório. Descoberto ao planejar a Fase 4, não por falha. | Sprint 6 dedicado à paridade, **antes** do resto da Fase 4: a matriz MT-01…MT-14 tem cenários de cross-filter que hoje reprovariam, e acessibilidade é requisito de publicação no AppSource. Enquanto isso, `packages/runtime` e os componentes antigos do `visual-kit` **não podem ser apagados** — estão sem chamador desde o Sprint 5, mas são a única implementação de referência das seis. Anotado no `CLAUDE.md` junto da lista de aposentadoria, que sem o aviso convidava exatamente a esse apagamento. |

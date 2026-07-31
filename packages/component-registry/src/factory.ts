@@ -1,7 +1,7 @@
 import { createProjectId, INITIAL_PACKAGE_VERSION } from '@vislow/config-schema';
 import { defaultPropsFor, roleFieldsOf } from './registry.js';
 import { SPEC_VERSION, type DataRole, type SpecNode, type VisualSpec } from './spec.js';
-import type { NodeKind } from './types.js';
+import type { NodeKind, RoleKind } from './types.js';
 
 let counter = 0;
 
@@ -32,6 +32,78 @@ export function createNode(
   const node: SpecNode = { id: nextNodeId(kind), kind, props };
   if (kind === 'container') node.children = [];
   return node;
+}
+
+/**
+ * Papeis que um no novo deve ligar: o primeiro declarado de cada tipo exigido.
+ *
+ * Existe para o editor. `createNode` sozinho deixa o campo em branco de
+ * proposito, e isso e certo como default do dominio — mas na tela significaria
+ * que todo grafico nasce no estado vazio, com o usuario tendo de ligar dois
+ * campos antes de ver qualquer coisa. Ligar no palpite obvio e reversivel; a
+ * tela vazia so parece defeito.
+ *
+ * Sem papel do tipo certo declarado, o campo continua pendente — que ai e a
+ * informacao correta.
+ */
+export function suggestRoleBindings(
+  kind: NodeKind,
+  roles: readonly DataRole[],
+): Record<string, string> {
+  const bindings: Record<string, string> = {};
+  for (const field of roleFieldsOf(kind)) {
+    const match = roles.find((role) => role.kind === field.roleKind);
+    if (match) bindings[field.key] = match.name;
+  }
+  return bindings;
+}
+
+/**
+ * Nome tecnico de um papel, derivado do rotulo.
+ *
+ * Precisa casar `ROLE_NAME_PATTERN` porque vira o `name` do `capabilities.json`.
+ * Sem acento, sem separador: o Power BI le esse campo como identificador.
+ */
+function slugifyRoleName(label: string): string {
+  const words = label
+    .normalize('NFD')
+    .replace(/\p{Diacritic}/gu, '')
+    .split(/[^A-Za-z0-9]+/)
+    .filter((word) => word.length > 0);
+
+  const camel = words
+    .map((word, index) =>
+      index === 0
+        ? word.toLowerCase()
+        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase(),
+    )
+    .join('');
+
+  // O padrao exige comecar com letra minuscula e ter ao menos 2 caracteres: um
+  // rotulo so de digitos ou de emoji cairia fora sem este piso.
+  const safe = /^[a-z]/.test(camel) ? camel : `campo${camel}`;
+  return safe.slice(0, 30).padEnd(2, 'x');
+}
+
+/**
+ * Cria um papel com nome unico e ESTAVEL.
+ *
+ * O `name` nasce do rotulo e nunca mais muda — mesma logica do `project.id`.
+ * Deixar o usuario reescrever o `name` obrigaria a reescrever toda referencia na
+ * arvore junto, e uma reescrita que falhasse pela metade produziria um visual
+ * pedindo uma coluna que nenhum no le. O que o usuario edita e o `displayName`,
+ * que e o que ele ve no Power BI.
+ */
+export function createRole(label: string, kind: RoleKind, existing: readonly DataRole[]): DataRole {
+  const base = slugifyRoleName(label);
+  const taken = new Set(existing.map((role) => role.name));
+
+  let name = base;
+  for (let suffix = 2; taken.has(name); suffix += 1) {
+    name = `${base.slice(0, 28)}${String(suffix)}`;
+  }
+
+  return { name, displayName: label, kind };
 }
 
 /** Papeis iniciais de um projeto novo — o par minimo de um visual categorico. */

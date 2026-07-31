@@ -73,18 +73,15 @@ jobs:
           VISLOW_REQUIRE_BUILD: '1'
         run: pnpm test:build
 
-      # Depois do empacotamento, porque o export estatico precisa levar o pacote
-      # base em public/templates/ — o editor faz `fetch` dele para gerar o
-      # .pbiviz no browser. Sem esta etapa, quebrar a resolucao do subcaminho
-      # `@vislow/config-schema/packaging` so apareceria em producao.
+      # O editor NAO empacota mais no browser (ADR-08): ele monta a arvore e
+      # pede a compilacao a API. Some com isso a verificacao do pacote base no
+      # export estatico, que existia para provar que o `fetch` teria o que
+      # buscar. O que este build ainda protege e a resolucao dos pacotes do
+      # workspace pelo Next — em especial o subcaminho
+      # `@vislow/visual-kit/nodes`, que so o campo `exports` resolve e que o
+      # `pnpm typecheck` nao exercita da mesma forma.
       - name: Build do editor
         run: pnpm --filter @vislow/web build:app
-
-      - name: Verificar que o export estatico levou o pacote base
-        run: |
-          TPL=apps/web/out/templates/base-runtime.pbiviz
-          test -s "$TPL" || { echo "::error::pacote base ausente no export estatico"; exit 1; }
-          echo "pacote base publicado: $(wc -c < "$TPL") bytes"
 
       # Guarda do ADR-02: o CSS gerado precisa conter as classes do mapa de
       # tokens. Se o mapa quebrar a regra de strings literais, o Tailwind nao

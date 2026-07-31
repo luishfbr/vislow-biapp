@@ -4,6 +4,7 @@
   "files": [],
   "references": [
     { "path": "./packages/config-schema/tsconfig.build.json" },
+    { "path": "./packages/build-contract/tsconfig.build.json" },
     { "path": "./packages/visual-kit/tsconfig.build.json" },
     { "path": "./packages/component-registry/tsconfig.build.json" },
     { "path": "./packages/codegen/tsconfig.build.json" },
