@@ -18,12 +18,13 @@
 2. [Stack e versões](#2-stack-e-versões)
 3. [Estrutura do monorepo](#3-estrutura-do-monorepo)
 4. [Convenções de código](#4-convenções-de-código)
-5. [Invariantes do domínio](#5-invariantes-do-domínio)
-6. [Testes](#6-testes)
-7. [Fluxo de trabalho de uma feature](#7-fluxo-de-trabalho-de-uma-feature)
-8. [Git, commits e PRs](#8-git-commits-e-prs)
-9. [Definition of Done](#9-definition-of-done)
-10. [Como decidir e registrar](#10-como-decidir-e-registrar)
+5. [Design de frontend](#5-design-de-frontend)
+6. [Invariantes do domínio](#6-invariantes-do-domínio)
+7. [Testes](#7-testes)
+8. [Fluxo de trabalho de uma feature](#8-fluxo-de-trabalho-de-uma-feature)
+9. [Git, commits e PRs](#9-git-commits-e-prs)
+10. [Definition of Done](#10-definition-of-done)
+11. [Como decidir e registrar](#11-como-decidir-e-registrar)
 
 ---
 
@@ -156,11 +157,86 @@ proibido.** A única asserção legítima é a que o próprio validador faz, dep
 
 ---
 
-## 5. Invariantes do domínio
+## 5. Design de frontend
+
+**Regra: toda feature que cria ou reformula UI passa pelas duas skills instaladas em `.claude/skills/`.** Vale
+para `apps/web` (o editor) e para `packages/visual-kit` (os componentes que o preview e o visual compilado
+renderizam) — as duas superfícies que o usuário enxerga. Não é sugestão nem etapa opcional de polimento: tem o
+mesmo peso das convenções da [seção 4](#4-convenções-de-código).
+
+O motivo é o mesmo princípio 4 desta casa — **o preview é o produto**. Um editor que parece um formulário
+genérico não convence ninguém a compor um visual nele, e um visual compilado que destoa do relatório em volta é
+devolvido pelo usuário antes de qualquer bug.
+
+### 5.1 As duas skills
+
+| Skill | Origem | Quando | O que entrega |
+|---|---|---|---|
+| **`frontend-design`** | `anthropics/skills` | **Antes** da primeira linha de JSX ou CSS | Direção visual deliberada: paleta nomeada (4–6 hex), tipografia por papel, conceito de layout, elemento-assinatura — e um passo de autocrítica que rejeita o que sair templated |
+| **`web-design-guidelines`** | `vercel-labs/agent-skills` | **Depois**, sobre os arquivos tocados | Auditoria contra as Web Interface Guidelines (foco visível, semântica, estados, formulários, movimento, contraste), com achados em `arquivo:linha` |
+
+Instaladas por cópia, versionadas no repo, com origem e hash em [`skills-lock.json`](../skills-lock.json).
+Atualização é PR deliberado, como qualquer dependência ([seção 2](#2-stack-e-versões)):
+
+```bash
+npx skills update            # atualiza as duas e reescreve o lock
+npx skills list              # confere o que está instalado
+```
+
+`.claude/skills/` é lido pelo Claude Code; `.agents/skills/` é a cópia neutra que outros agentes leem. As duas
+são a mesma coisa e se atualizam pelo mesmo comando — **nunca edite uma sem a outra**.
+
+> **O `web-design-guidelines` busca as regras pela rede** (`raw.githubusercontent.com/vercel-labs/web-interface-guidelines`)
+> a cada execução, de propósito: as guidelines evoluem fora daqui. Sem rede ele não roda — e isso é uma falha de
+> execução a resolver, não uma dispensa da auditoria.
+
+### 5.2 A ordem não é negociável
+
+1. **Plano de design** com o `frontend-design`, antes de escrever código. O plano nomeia paleta, tipografia,
+   layout e o elemento-assinatura, e passa pela crítica que a própria skill descreve.
+2. **Implementar seguindo o plano** — cor e tipo saem dele, não da memória muscular.
+3. **Auditar com o `web-design-guidelines`** os arquivos tocados pelo diff.
+4. **Resolver cada achado**, ou justificar por escrito no PR por que ele não se aplica. Achado silenciado sem
+   justificativa é o mesmo que regra contornada no código.
+
+Design depois do código é retrabalho: a estrutura do JSX já congelou as decisões de layout que a etapa 1
+existia para tomar.
+
+### 5.3 Precedência: as invariantes deste repo vencem a skill
+
+O `frontend-design` foi escrito para páginas livres e recomenda escolhas autorais. Este repo tem restrições que
+não são estéticas — são o preço já pago por falhas silenciosas dentro do Power BI. **Quando as duas coisas
+colidirem, a invariante vence e a skill se adapta.** Em concreto:
+
+| A skill sugere | Aqui vira |
+|---|---|
+| Cor livre no CSS | Hex validado, aplicado por `style` inline — cor **nunca** vira classe ([6.3](#63-cores-nunca-viram-classe)) |
+| Classe utilitária escrita na hora | String literal completa no mapa de `visual-kit/src/tokens.ts` ([6.1](#61-classes-tailwind-são-strings-literais-completas)); variante com prefixo antes (`pbi:focus:ring-2`) |
+| Família tipográfica característica | Só no editor. O `visual-kit` **não tem token de família** — a face vem do host do Power BI. Precisar de uma é feature de `config-schema` primeiro, nunca webfont externa: o visual roda offline e contra orçamento de 1 MB |
+| Micro-interação com estado | No `visual-kit`, sem hooks (achado 39) — classe, ou cálculo no render |
+| Wrapper clicável para seleção | No preview, não: quebra a medida do `ResponsiveContainer` (ADR-14) |
+
+A saída, quando a regra atrapalhar de verdade, é a mesma do cabeçalho deste documento: **mudar a regra aqui, com
+justificativa** — não contorná-la no componente.
+
+### 5.4 O que a auditoria não dispensa
+
+O `web-design-guidelines` cobre a UI genérica da web. Ele **não sabe** o que o Power BI exige, e passar por ele
+não substitui:
+
+- **Alto contraste**: HTML usa as variáveis de `visual-kit/src/highContrast.ts`; SVG resolve por
+  `hostOf(frame).highContrast`, porque `var()` não é substituído em atributo de apresentação (achado 55).
+- **Teclado nos gráficos**: sobreposição `absolute` de `<button>` `sr-only`, não `tabIndex` no SVG (ADR-16).
+- **O estado vazio e o de erro**: o visual nunca renderiza em branco (princípio 1). Um design que só previu o
+  caminho feliz está incompleto, por mais bonito que esteja.
+
+---
+
+## 6. Invariantes do domínio
 
 Estas são as regras que, se quebradas, causam falha silenciosa em produção. Cada uma tem um teste.
 
-### 5.1 Classes Tailwind são strings literais completas
+### 6.1 Classes Tailwind são strings literais completas
 
 ```ts
 // ✅ correto — o Tailwind lê a classe no fonte e gera o CSS
@@ -174,28 +250,28 @@ O runtime é compilado **antes** de o usuário escolher qualquer coisa. Uma clas
 existe no CSS compilado e **some sem erro** dentro do Power BI. Coberto pelo teste de cobertura de tokens
 ([T-02](doc-mvp-lowcode-pbi.md)), que também rejeita classes contendo `$`, `{`, `}` ou crase.
 
-### 5.2 Todo token do catálogo tem classe mapeada
+### 6.2 Todo token do catálogo tem classe mapeada
 
 Adicionar um valor em `config-schema/src/tokens.ts` **obriga** a adicionar a classe em
 `visual-kit/src/tokens.ts`. O teste falha de propósito quando isso não acontece — nos dois sentidos: token sem
 classe, e classe órfã sem token.
 
-### 5.3 Cores nunca viram classe
+### 6.3 Cores nunca viram classe
 
 Cores são hex livre validado por `pattern` e aplicadas por `style` inline. É a exceção deliberada à
 [RN-05](doc-mvp-lowcode-pbi.md) que permite qualquer cor de marca sem quebrar a garantia de purge.
 
-### 5.4 O GUID é um identificador JavaScript
+### 6.4 O GUID é um identificador JavaScript
 
 Não é UUID. Vira nome de variável dentro do bundle (`var VendasporRegiao...;(()=>{`). Precisa casar com
 `^[A-Za-z][A-Za-z0-9]*$`. Ver [8.4](doc-mvp-lowcode-pbi.md).
 
-### 5.5 O schema evolui só de forma aditiva
+### 6.5 O schema evolui só de forma aditiva
 
 Dentro de uma major: só adicionar campos opcionais com default. Remover ou renomear exige bump de major **e**
 função de migração. `additionalProperties: false` em todo objeto é a fronteira que faz isso valer.
 
-### 5.6 Discriminante de união é string, nunca booleano
+### 6.6 Discriminante de união é string, nunca booleano
 
 ```ts
 // ✅ estreita sob qualquer configuração de compilador
@@ -209,7 +285,7 @@ O Runtime Core é compilado pela toolchain do `pbiviz`, que **não suporta `stri
 gerado por ela não passa). Sem essa flag, `if (r.valid)` deixa de dar acesso a `r.config` e o build quebra.
 Vale para todo tipo que atravessa a fronteira da toolchain — na prática, tudo em `config-schema` e `visual-kit`.
 
-### 5.7 O visual nunca fica em branco — e `try/catch` não basta
+### 6.7 O visual nunca fica em branco — e `try/catch` não basta
 
 `try/catch` em volta de `root.render()` **não** captura falhas de render do React: no modo concorrente a fase de
 render é assíncrona e a exceção ocorre fora do bloco. Só um **error boundary** captura. Os dois caminhos são
@@ -220,7 +296,7 @@ necessários e cobrem coisas diferentes:
 | `try/catch` no `rerender()` | Falha ao **montar** a árvore: mapeamento de `DataView`, leitura de config |
 | `<ErrorBoundary>` | Falha **dentro** do render de um componente |
 
-### 5.8 Validação nos dois lados
+### 6.8 Validação nos dois lados
 
 O editor valida a spec antes de exportar; a API revalida antes de compilar e o portão (`inspectPbiviz`) confere
 o artefato depois. Não é redundância: o editor é código do cliente e a API não pode confiar nele. Defesa em
@@ -228,7 +304,7 @@ profundidade.
 
 ---
 
-## 6. Testes
+## 7. Testes
 
 ### Pirâmide
 
@@ -260,17 +336,20 @@ carregamento em vez de avisar e passar verde. A tarefa também é `cache: false`
 
 ---
 
-## 7. Fluxo de trabalho de uma feature
+## 8. Fluxo de trabalho de uma feature
 
 1. **Localize a regra.** Toda feature deve mapear para um `RF-xx` do doc de MVP. Se não mapeia, ou o doc está
    incompleto — atualize-o primeiro — ou a feature está fora de escopo.
-2. **Comece pelo `config-schema`** se a feature adiciona configuração: token, tipo, schema, default, teste.
-3. **Depois o `visual-kit`**: classe mapeada e componente. Nunca o inverso — o schema é a fonte da verdade.
-4. **Depois os hosts**: editor, codegen e template consomem, não redefinem.
-5. **Teste em cada camada** antes de avançar para a próxima.
-6. **Rode `pnpm verify`** (build + typecheck + lint + suíte rápida) antes de abrir PR. Se tocou no codegen, no
+2. **Se a feature tem UI, faça o plano de design antes do código** — skill `frontend-design`,
+   [seção 5](#5-design-de-frontend). Vale para `apps/web` e para o `visual-kit`.
+3. **Comece pelo `config-schema`** se a feature adiciona configuração: token, tipo, schema, default, teste.
+4. **Depois o `visual-kit`**: classe mapeada e componente. Nunca o inverso — o schema é a fonte da verdade.
+5. **Depois os hosts**: editor, codegen e template consomem, não redefinem.
+6. **Teste em cada camada** antes de avançar para a próxima.
+7. **Se a feature tem UI, audite o diff** com a skill `web-design-guidelines` e resolva os achados.
+8. **Rode `pnpm verify`** (build + typecheck + lint + suíte rápida) antes de abrir PR. Se tocou no codegen, no
    template ou nos nós do kit, rode `pnpm check` — é o `verify` mais o gate de aceite.
-7. **Se a feature toca o pacote `.pbiviz`, teste no Power BI Desktop de verdade.** O CI não substitui isso.
+9. **Se a feature toca o pacote `.pbiviz`, teste no Power BI Desktop de verdade.** O CI não substitui isso.
 
 ### Quando fizer um spike
 
@@ -283,7 +362,7 @@ Faça sempre que a decisão depender do comportamento real de uma ferramenta ext
 
 ---
 
-## 8. Git, commits e PRs
+## 9. Git, commits e PRs
 
 - **Branch:** `feat/`, `fix/`, `docs/`, `chore/`, `spike/` + descrição curta em kebab-case.
 - **Commits:** [Conventional Commits](https://www.conventionalcommits.org/). Escopo é o pacote:
@@ -292,16 +371,22 @@ Faça sempre que a decisão depender do comportamento real de uma ferramenta ext
 - **PR referencia os IDs** de requisito, regra ou risco que endereça.
 - **PR que muda comportamento do pacote `.pbiviz` descreve o teste manual feito** no Power BI Desktop, com o
   resultado.
+- **PR que mexe em UI resume o plano de design** (paleta, tipografia, assinatura) e lista o que a auditoria do
+  `web-design-guidelines` apontou — corrigido ou justificado. Sem isso o revisor não tem como saber se a
+  [seção 5](#5-design-de-frontend) foi cumprida ou pulada.
 
 ---
 
-## 9. Definition of Done
+## 10. Definition of Done
 
 Uma feature só está pronta quando **todos** os itens valem:
 
 - [ ] `pnpm verify` passa (build, typecheck, lint, suíte rápida).
 - [ ] Testes cobrem o caminho feliz **e** os modos de falha relevantes.
-- [ ] Nenhuma invariante da [seção 5](#5-invariantes-do-domínio) foi contornada.
+- [ ] Nenhuma invariante da [seção 6](#6-invariantes-do-domínio) foi contornada.
+- [ ] **Se cria ou reformula UI** (`apps/web` ou `visual-kit`): plano de design feito com o `frontend-design`
+      antes do código, diff auditado com o `web-design-guidelines`, e cada achado resolvido ou justificado no
+      PR. Estado vazio e estado de erro desenhados, não só o caminho feliz. ([seção 5](#5-design-de-frontend))
 - [ ] Se toca configuração: schema, tipos, defaults e mapa de classes atualizados **juntos**.
 - [ ] Se toca o pacote: testado no Power BI Desktop, com o resultado descrito no PR.
 - [ ] Documentação atualizada quando a feature muda uma decisão registrada — incluindo ADRs e o Anexo A.
@@ -309,7 +394,7 @@ Uma feature só está pronta quando **todos** os itens valem:
 
 ---
 
-## 10. Como decidir e registrar
+## 11. Como decidir e registrar
 
 - **Decisão de arquitetura** vira um **ADR** na seção 3.5 do doc de MVP: decisão, motivo, alternativa
   descartada. ADR não se apaga — se for revertido, registra-se a reversão e a razão. Foi o que aconteceu com o

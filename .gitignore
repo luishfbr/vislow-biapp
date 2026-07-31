@@ -18,6 +18,10 @@ webpack.statistics.prod.html
 .next/
 out/
 
+# Permissoes e overrides locais do agente. As skills em .claude/skills/ e
+# .agents/skills/ SAO versionadas — sao regra de projeto (secao 5 dos padroes).
+.claude/settings.local.json
+
 .DS_Store
 *.log
 .env
