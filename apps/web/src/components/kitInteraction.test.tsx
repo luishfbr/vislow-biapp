@@ -17,9 +17,7 @@
  * dentro so compilaria as custas de reintroduzir a dependencia proibida.
  *
  * O editor e o outro consumidor dos mesmos componentes e ja tem o React — e o
- * lugar honesto. Mesmo raciocinio de "testes do runtime vivem em
- * `packages/runtime/test/`, nunca em `src/`": a restricao do pacote manda no
- * endereco do teste.
+ * lugar honesto. A restricao do pacote manda no endereco do teste.
  */
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';

@@ -85,19 +85,25 @@ Descobertas no spike e não negociáveis:
 ## 3. Estrutura do monorepo
 
 ```
-packages/config-schema/   Fonte da verdade do VisualConfig: schema, tipos, validação,
-                          defaults, identidade, migrações e (Fase 3) buildPbiviz()
-packages/visual-kit/      Componentes React + mapa token→classe + fonte Tailwind
-packages/runtime/         Projeto pbiviz  →  dist/base-runtime.pbiviz        (Fase 1)
-apps/web/                 Editor Next.js →  public/templates/                (Fase 2)
-spike/                    Código descartável do gate. Fora do lint e dos testes.
+packages/config-schema/     Fonte da verdade do VisualConfig: schema, tipos, validação,
+                            defaults, identidade, migrações; e `packaging/inspectPbiviz`
+packages/build-contract/    Contrato HTTP entre o editor e a API de build
+packages/component-registry/ Catálogo de componentes; schema da árvore derivado dele
+packages/visual-kit/        Componentes React + mapa token→classe + fonte Tailwind
+packages/codegen/           Spec  →  fontes de um projeto pbiviz (visual.tsx, capabilities…)
+packages/visual-template/   Projeto pbiviz base + vendorização dos @vislow/* para o worker
+apps/api/                   API de build: spec entra, .pbiviz compilado sai
+apps/web/                   Editor Next.js: compõe a árvore e chama a API
+spike/                      Código descartável do gate. Fora do lint e dos testes.
 ```
 
 **Regra: o grafo de dependências é acíclico e só aponta para baixo.**
-`config-schema` ← `visual-kit` ← {`runtime`, `web`}. `config-schema` não importa nada do monorepo.
+`config-schema` ← {`build-contract`, `component-registry`, `visual-kit`} ← `codegen` ← {`api`, `web`}.
+`config-schema` não importa nada do monorepo.
 
 **Regra: `config-schema` e `visual-kit` são isomórficos** — rodam em Node e no browser. Nada de `fs`, `path`
-ou API só de browser sem verificação. `buildPbiviz` precisa disso para ser testado em Node e rodar no editor.
+ou API só de browser sem verificação: os dois são compilados para dentro do bundle do visual do Power BI, e
+`inspectPbiviz` precisa rodar tanto no worker quanto num teste.
 
 ### Configuração de TypeScript
 
@@ -210,8 +216,9 @@ necessários e cobrem coisas diferentes:
 
 ### 5.8 Validação nos dois lados
 
-O editor valida antes de exportar; o runtime revalida ao ler. Não é redundância: o `.pbiviz` pode ser editado à
-mão entre os dois pontos. Defesa em profundidade.
+O editor valida a spec antes de exportar; a API revalida antes de compilar e o portão (`inspectPbiviz`) confere
+o artefato depois. Não é redundância: o editor é código do cliente e a API não pode confiar nele. Defesa em
+profundidade.
 
 ---
 
@@ -223,12 +230,13 @@ mão entre os dois pontos. Defesa em profundidade.
 |---|---|---|
 | Unitário | Vitest | Tokens, validação, defaults, identidade, migrações, formatadores |
 | Contrato | Vitest | Fixtures *golden* de config validadas e renderizadas em snapshot |
-| **Empacotamento** | Vitest + JSZip | Executa `buildPbiviz` em Node sobre o `.pbiviz` recém-construído |
+| **Aceite** | Vitest + JSZip + jsdom | `compiledVisual.e2e.test.ts`: spec → `.pbiviz` compilado de verdade → `inspectPbiviz` → executa o bundle minificado num jsdom |
 | E2E | Playwright | Editar → preview → exportar → validar o zip baixado |
 | Manual | Power BI Desktop + Service | [Matriz MT-01…MT-14](doc-mvp-lowcode-pbi.md) |
 
-**Os testes de empacotamento são os mais importantes do projeto.** São eles que provam que o artefato entregue
-ao usuário é válido. Nunca devem ser pulados nem marcados como `skip`.
+**O teste de aceite é o mais importante do projeto.** É ele que prova que o artefato entregue ao usuário é
+válido — e ele é o único que enxerga o que o webpack fez com o bundle. Nunca deve ser pulado nem marcado como
+`skip`; no CI, `VISLOW_REQUIRE_BUILD=1` transforma a ausência do template preparado em falha.
 
 ### Regras
 
@@ -247,7 +255,7 @@ ao usuário é válido. Nunca devem ser pulados nem marcados como `skip`.
    incompleto — atualize-o primeiro — ou a feature está fora de escopo.
 2. **Comece pelo `config-schema`** se a feature adiciona configuração: token, tipo, schema, default, teste.
 3. **Depois o `visual-kit`**: classe mapeada e componente. Nunca o inverso — o schema é a fonte da verdade.
-4. **Depois os hosts**: runtime e editor consomem, não redefinem.
+4. **Depois os hosts**: editor, codegen e template consomem, não redefinem.
 5. **Teste em cada camada** antes de avançar para a próxima.
 6. **Rode `pnpm verify`** (lint + typecheck + testes) antes de abrir PR.
 7. **Se a feature toca o pacote `.pbiviz`, teste no Power BI Desktop de verdade.** O CI não substitui isso.

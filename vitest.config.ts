@@ -10,9 +10,10 @@ export default defineConfig({
     include: [
       'packages/*/src/**/*.test.{ts,tsx}',
       'apps/*/src/**/*.test.{ts,tsx}',
-      // `packages/runtime` nao pode ter teste em `src/`: a toolchain do pbiviz
-      // compila aquele diretorio e o `tsconfig.json` dele lista os arquivos um a
-      // um. Os testes do runtime vivem fora, em `test/`.
+      // Escape para pacote cujo `src/` e compilado por uma toolchain de fora,
+      // que nao tolera arquivo de teste ali dentro. Nenhum pacote precisa disso
+      // hoje — o `visual-template` guarda o projeto do pbiviz em `template/`,
+      // nao em `src/`. Fica porque a saida tem de existir antes da necessidade.
       'packages/*/test/**/*.test.{ts,tsx}',
     ],
     exclude: ['**/node_modules/**', '**/dist/**', 'spike/**'],

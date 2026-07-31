@@ -1,7 +1,7 @@
 // `./packaging` NAO entra aqui. Ele depende de JSZip e este barril e importado
-// pelo Runtime Core — reexportar arrastaria o JSZip para dentro do bundle do
-// visual, em silencio, contra o orcamento do RNF-04. Consumidores do
-// empacotamento usam `@vislow/config-schema/packaging`.
+// (via `visual-kit`) por codigo que termina dentro do bundle do visual —
+// reexportar arrastaria o JSZip para la, em silencio, contra o orcamento do
+// RNF-04. Quem inspeciona pacote usa `@vislow/config-schema/packaging`.
 export * from './tokens.js';
 export * from './types.js';
 export * from './schema.js';

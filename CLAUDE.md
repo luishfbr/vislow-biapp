@@ -21,8 +21,9 @@ pnpm build       # tsc -b + CSS do Tailwind
 
 Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 
-- **Classe Tailwind construída por interpolação some sem erro** dentro do Power BI. O runtime é compilado antes
-  de o usuário escolher qualquer coisa. Use sempre strings literais completas em `visual-kit/src/tokens.ts`.
+- **Classe Tailwind construída por interpolação some sem erro** dentro do Power BI. O CSS é pré-compilado pelo
+  CLI do Tailwind, que só enxerga o fonte do `visual-kit` — nunca a spec do usuário. Use sempre strings literais
+  completas em `visual-kit/src/tokens.ts`.
 - **Tailwind v4 usa prefixo de variante:** `pbi:flex`, não `pbi-flex`. **E o prefixo vem ANTES da variante:**
   `pbi:focus:ring-2`, nunca `focus:pbi:ring-2` — escrito ao contrário, o CLI não reconhece a classe, não gera
   regra nenhuma e não reclama (achado 54). Classe com variante se confere no `dist/styles.css`, não no olho.
@@ -36,33 +37,27 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 - **Discriminante de união é string (`kind`), nunca booleano.** A toolchain do `pbiviz` compila sem
   `strictNullChecks`, e sem ela o TypeScript não estreita união por discriminante booleano.
 - **O `pnpm` estrito esconde dependências do webpack do `pbiviz`.** Ele resolve loaders e transitivas a partir do
-  diretório do projeto — por isso `packages/runtime` declara `ts-loader`, `scheduler`, os utils do Power BI e as
-  dependências internas do Ajv explicitamente.
+  diretório do projeto — por isso o `package.json` do template declara `ts-loader`, `scheduler`, os utils do
+  Power BI e as dependências internas do Ajv explicitamente.
 - **Coordenadas do `tooltipService` são relativas ao elemento do visual**, não à viewport.
 - **Props opcionais de React declaram `prop?: T | undefined`** — `exactOptionalPropertyTypes` está ligado e
   proíbe repassar `undefined` explícito para `prop?: T`.
-- **A reescrita de identidade no `.pbiviz` é UMA passada, com alternação de regex.** Duas passadas sequenciais
-  (GUID, depois nome) duplicam o sufixo hex dentro dos GUIDs novos quando o slug do projeto coincide com o nome
-  do pacote base — e `slugify("vislow Runtime")` produz exatamente esse slug.
-- **Identidade primeiro, payload base64 depois.** Injetar antes é o que expõe o payload à reescrita.
-- **`buildPbiviz` vive em `@vislow/config-schema/packaging`, fora do `index.ts`.** O Runtime Core importa o
-  barril; reexportar levaria o JSZip para dentro do bundle do visual, contra o orçamento de 1 MB.
-- **`Uint8Array` do TS 5.9 é genérico sobre `ArrayBufferLike`** e `BlobPart` só aceita `Uint8Array<ArrayBuffer>`.
+- **`inspectPbiviz` vive em `@vislow/config-schema/packaging`, fora do `index.ts`.** O barril é importado por
+  código que termina dentro do bundle do visual; reexportar levaria o JSZip junto, contra o orçamento de 1 MB.
 - **O webpack do `pbiviz` usa `resolve.symlinks: false`, então dois symlinks para o mesmo pacote viram dois
   módulos.** Foi assim que o React entrou duas vezes no bundle e o dispatcher de hooks ficou `null` — só
-  componentes com hook falhavam, o resto renderizava. Por isso `autoInstallPeers: false` e nenhum `react` nas
-  `devDependencies` do `visual-kit`. **Não reintroduza**, e não adicione dependência duplicada entre pacotes que
-  o runtime empacota.
-- **Testes do runtime vivem em `packages/runtime/test/`, nunca em `src/`** — `src/` é compilado pela toolchain do
-  `pbiviz`, cujo `tsconfig.json` lista os arquivos um a um.
-- **`renderRealBundle.test.ts` é o único teste que executa o artefato.** Se você mexer no bundle, na resolução de
-  módulos ou nas dependências do runtime, é ele que pega o estrago.
+  componentes com hook falhavam, o resto renderizava. Por isso `autoInstallPeers: false`, nenhum `react` nas
+  `devDependencies` do `visual-kit` e vendorização por **cópia de diretório, nunca symlink**. **Não reintroduza**,
+  e não adicione dependência duplicada entre pacotes que o template empacota.
+- **`compiledVisual.e2e.test.ts` é o único teste que executa o artefato.** Se você mexer no bundle, na resolução
+  de módulos ou nas dependências do template, é ele que pega o estrago.
 - **O `visual-kit` não usa hooks** — regra de ESLint, não convenção. Hook é o único ponto sensível à duplicação
   do React no bundle (achado 39): elementos JSX atravessam cópias, hooks não. Use classe (ver `ErrorBoundary`) ou
   calcule no render.
-- **Todo pacote carrega uma impressão digital de build** (`stamp-build-id.mjs`, exibida no canto do visual e no
-  card de erro). Ao diagnosticar qualquer coisa no Desktop, **peça o id primeiro** — sem ele, "importou o arquivo
-  antigo" é indistinguível de "a correção não funciona", e isso já custou uma sessão inteira.
+- **Todo pacote carrega uma impressão digital de build** (o `buildId` que a API passa ao codegen, exibido no
+  canto do visual e no card de erro). Ao diagnosticar qualquer coisa no Desktop, **peça o id primeiro** — sem
+  ele, "importou o arquivo antigo" é indistinguível de "a correção não funciona", e isso já custou uma sessão
+  inteira.
 
 ### Armadilhas da API de build (Sprint 4)
 
@@ -75,11 +70,11 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
   `@vislow/visual-kit/nodes`.
 - **Os `@vislow/*` entram em `node_modules` DEPOIS do `npm ci`**, que apaga o diretório inteiro antes de
   instalar. Cópia de diretório, nunca symlink — symlink reintroduz o achado 39.
-- **`@vislow/visual-kit/nodes` fica fora do barril** pelo mesmo motivo do `config-schema/packaging`: o Runtime
-  Core importa o barril, e reexportar levaria o Recharts (~575 KB) para dentro do bundle dele.
+- **`@vislow/visual-kit/nodes` fica fora do barril** pelo mesmo motivo do `config-schema/packaging`: quem
+  importa só o barril não deve pagar pelo Recharts (~575 KB) contra o orçamento de 1 MB.
 - **A inspeção do artefato é portão, não teste** (ADR-11). O `pbiviz` já reportou sucesso produzindo pacote
   quebrado três vezes. Nada sai do worker sem passar por `inspectPbiviz`.
-- **`compiledVisual.e2e.test.ts` é o gate de aceite** — herdeiro do `renderRealBundle`. Se você mexer no
+- **`compiledVisual.e2e.test.ts` é o gate de aceite** — e o único teste que executa o artefato. Se você mexer no
   codegen, no template ou nos nós do kit, é ele que pega o estrago. Ele exige o template preparado
   (`pnpm build && pnpm stage:vendor`).
 
@@ -142,14 +137,9 @@ prometido — o usuário **cria** o visual, não escolhe entre prontos — exist
 Desde 2026-07-31 o visual compilado também **filtra o relatório, mostra tooltip nativo, respeita alto contraste,
 é navegável por teclado e abre o menu de contexto** — a paridade que o pivô tinha deixado para trás.
 
-Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (editor web) **concluídas**.
-O runtime foi validado no Power BI Desktop com dados reais: barras e KPI Card com cross-filter, tooltip nativo,
-formatação por locale, alto contraste e estados vazio/erro. Pacote 131 KB.
-
-**Fase 3 (export)** concluída no código e o ciclo completo **validado no Desktop em 2026-07-30**: pacote gerado
-pelo editor importa, lê o modelo e renderiza barras com dados reais (MT-01 e MT-02 aprovados). O achado 39
-(React duplicado) está fechado — a deduplicação basta, e o `visual-kit` ficou sem hooks como defesa em
-profundidade.
+Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (editor web) **concluídas** — e
+depois **substituídas** pelo pivô. O achado 39 (React duplicado) está fechado desde a Fase 3: a deduplicação
+basta, e o `visual-kit` ficou sem hooks como defesa em profundidade.
 
 **Pivô para compilação real por usuário** (ADR-08, reverte a ADR-01 e a ADR-05). Plano em `~/.claude/plans/`.
 
@@ -172,14 +162,21 @@ profundidade.
   ao host**, não só o que ele desenha. Pacote **221,1 KB**, `content.js` **751,3 KB**.
   **Validado no Desktop em 2026-07-31**: as seis funcionam num `.pbiviz` compilado pela API.
 
+- **Faxina (2026-07-31)** — o caminho antigo foi aposentado, agora que o novo está aprovado no Desktop.
+  Saíram: `packages/runtime` inteiro, `buildPbiviz`/`CONFIG_PLACEHOLDER`/`base64.ts` e os testes T-03…T-08
+  originais, `BarChart`/`KpiCard`/`Frame`/`mock.ts` do `visual-kit` com `resolveColors`, `DataPoint`, `KpiDatum`
+  e `RenderContext`, `apps/web/public/templates/` e os scripts `test:packaging`/`stage:template`.
+  **`inspectPbiviz` sobrevive** — é o portão da ADR-11 — mais enxuto: sem extração de payload e sem "pacote
+  base"; `PbivizBuildError` virou `PbivizInspectionError`. Nenhum comportamento do produto mudou; o gate de
+  aceite ficou verde com as mesmas 16 assertivas e o pacote em **221,2 KB** / `content.js` **751,6 KB**.
+
 - **Próximo: Fase 4** — KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E
   Playwright do editor.
 
-**Ainda por aposentar:** `buildPbiviz`/`CONFIG_PLACEHOLDER` em `config-schema/packaging` e os testes T-03…T-08
-não têm mais chamador desde o Sprint 5 — o editor não empacota no browser. `inspectPbiviz` **sobrevive**, é o
-portão da ADR-11. Com o achado 53 fechado, `packages/runtime` e os componentes `BarChart`/`KpiCard` do
-`visual-kit` **entram nessa lista**: a portabilidade existe, e eles deixaram de ser a única implementação das
-seis capacidades, e a paridade foi aprovada no Desktop em 2026-07-31.
+**Há um só caminho.** Não existe mais pacote base pré-compilado, patch no browser nem reescrita de identidade:
+a spec vira código, o `pbiviz` compila e o portão inspeciona. Se você encontrar referência a `buildPbiviz`,
+`CONFIG_PLACEHOLDER` ou "Runtime Core" fora das seções marcadas como histórico no doc de MVP (3.1–3.3, 8.2, 8.3
+e 9), é resíduo.
 
 ```bash
 # Numa árvore limpa, nesta ordem:
@@ -189,11 +186,6 @@ pnpm dev                         # editor em http://localhost:3000
 
 pnpm verify                      # typecheck + lint + testes
 pnpm test:build                  # gate de aceite: spec -> .pbiviz compilado -> render em jsdom
-
-# Caminho antigo (Fase 3), sem chamador desde o Sprint 5 — ver "ainda por aposentar"
-pnpm --filter @vislow/runtime build:runtime     # empacota + 11 guardas
-pnpm test:packaging                             # T-03…T-08 isolados
-node packages/runtime/scripts/make-samples.mjs  # amostras para teste manual no Power BI
 ```
 
 **O editor precisa da API para exportar.** O empacotamento no browser acabou: `pnpm dev:api` tem de estar no

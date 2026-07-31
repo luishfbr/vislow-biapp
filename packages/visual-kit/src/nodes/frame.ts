@@ -3,8 +3,8 @@
  *
  * Depois do pivo para compilacao por usuario (ADR-08) os papeis de dado deixam
  * de ser fixos: cada visual declara os seus no `capabilities.json` gerado. O
- * componente, portanto, nao pode mais receber `DataPoint[]` pronto — ele recebe
- * o quadro inteiro e diz de quais papeis precisa, pelo nome que o USUARIO deu.
+ * componente, portanto, nao pode receber uma serie pronta — ele recebe o quadro
+ * inteiro e diz de quais papeis precisa, pelo nome que o USUARIO deu.
  *
  * Este e o mesmo contrato dos dois lados do ADR-04: o visual compilado monta o
  * `DataFrame` a partir do `DataView` do Power BI, o preview do editor monta a

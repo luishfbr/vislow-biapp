@@ -1,10 +1,10 @@
 /**
  * Subcaminho `@vislow/visual-kit/nodes` — os componentes do construtor.
  *
- * FORA do barril de propósito, pelo mesmo motivo que `buildPbiviz` vive em
- * `@vislow/config-schema/packaging`: o Runtime Core importa o barril, e
- * reexportar daqui levaria Recharts (~575 KB) para dentro do bundle dele,
- * contra o orcamento de 1 MB. Quem quer os nos pede o subcaminho.
+ * FORA do barril de propósito, pelo mesmo motivo que `inspectPbiviz` vive em
+ * `@vislow/config-schema/packaging`: quem importa so o barril nao deve pagar
+ * pelo Recharts (~575 KB), contra o orcamento de 1 MB do RNF-04. Quem quer os
+ * nos pede o subcaminho.
  */
 export * from './frame.js';
 export * from './mockFrame.js';

@@ -131,6 +131,15 @@ M-01 e M-02 são as métricas de decisão. M-03 é critério de qualidade não n
 
 ## 3. Arquitetura
 
+> ⚠️ **3.1 a 3.3 descrevem a arquitetura ANTERIOR ao pivô.** A
+> [ADR-08](#35-decisões-de-arquitetura-adr) reverteu a ADR-01 e a ADR-05: não há mais Runtime Core nem patch no
+> browser. Hoje o editor **compõe uma árvore livre**, a API compila um projeto `pbiviz` por usuário e o
+> `.pbiviz` sai da CLI oficial a cada export. O limite que 3.1 chamava de "preço honesto" — o usuário escolher
+> entre tipos prontos — **deixou de existir**, e era a razão do pivô. O código que estas seções descrevem foi
+> removido na [faxina de 2026-07-31](#faxina--aposentadoria-do-caminho-antigo--concluída-em-2026-07-31); o fluxo
+> atual está nos [Sprints 4 a 6](#sprint-4--api-de-build--concluído-no-código-em-2026-07-30). Ficam como
+> registro de uma decisão que foi tomada, validada e depois revertida por um motivo melhor.
+
 ### 3.1 O que "build" significa neste projeto
 
 Este é o ponto mais importante do documento e a origem da maior confusão possível sobre o produto.
@@ -590,6 +599,15 @@ Um `.pbiviz` é um ZIP com **apenas três entradas**:
 
 ### 8.2 Contrato de Placeholder
 
+> ⛔ **HISTÓRICO — código removido em 2026-07-31.** Placeholder e reescrita de identidade existiam porque o
+> export do browser tinha de transformar UM pacote pré-compilado no visual de cada usuário. A
+> [ADR-08](#35-decisões-de-arquitetura-adr) trocou isso por compilação real: a identidade nasce certa e a
+> escolha do usuário vira **código**, não payload. `buildPbiviz`, `CONFIG_PLACEHOLDER` e `packages/runtime/`
+> foram aposentados na [faxina](#faxina--aposentadoria-do-caminho-antigo--concluída-em-2026-07-31). O que
+> sobreviveu é `inspectPbiviz`, o portão da [ADR-11](#35-decisões-de-arquitetura-adr). **8.2 e 8.3 ficam como
+> registro do que já foi pago** — os achados 33 a 40 nasceram aqui e explicam armadilhas do formato que
+> continuam valendo.
+
 ✅ **Verificado no spike:** o token sobreviveu à minificação com **exatamente 1 ocorrência**, e o minificador
 preservou a checagem sem dobrar a constante.
 
@@ -748,6 +766,15 @@ funcionar: reexportar reusa o `id` e apenas incrementa `packageVersion`.
 ---
 
 ## 9. Especificação do Runtime Core
+
+> ⛔ **HISTÓRICO — `packages/runtime/` removido em 2026-07-31.** O Runtime Core era um visual pré-compilado com
+> papéis de dado FIXOS (`category`, `measure`, `target`) que interpretava um `VisualConfig` embutido. A
+> [ADR-08](#35-decisões-de-arquitetura-adr) o substituiu: hoje o `capabilities.json` é **gerado** a partir dos
+> papéis que o próprio usuário declarou (`packages/codegen`), e o visual é compilado por usuário. As seis
+> capacidades de host descritas aqui (RF-18 a RF-25) foram reimplantadas no caminho novo pelo
+> [Sprint 6](#sprint-6--paridade-de-interatividade--concluído-em-2026-07-31); os requisitos continuam valendo, a
+> implementação descrita nesta seção não. **Fica como registro** — 9.2 (ciclo de vida) e 9.3 (isolamento de CSS)
+> descrevem o comportamento do host, que não mudou.
 
 ### 9.1 `capabilities.json`
 
@@ -1031,24 +1058,31 @@ Monorepo com pnpm workspaces:
 vislow-biapp/
 ├── packages/
 │   ├── config-schema/        JSON Schema, tipos TS, validador Ajv, defaults,
-│   │                         migrações e buildPbiviz()  (isomórfico)
-│   ├── visual-kit/           componentes React, mapa token→classe, preset Tailwind
-│   └── runtime/              projeto pbiviz  →  dist/base-runtime.pbiviz
+│   │                         migrações; e `packaging/inspectPbiviz` (isomórfico)
+│   ├── build-contract/       contrato HTTP entre o editor e a API de build
+│   ├── component-registry/   catálogo de componentes; schema da árvore derivado dele
+│   ├── visual-kit/           componentes React, mapa token→classe, fonte Tailwind
+│   │                         (`/nodes` = os nós do construtor, fora do barril)
+│   ├── codegen/              spec → fontes de um projeto pbiviz
+│   └── visual-template/      projeto pbiviz base + vendorização dos @vislow/*
 ├── apps/
-│   └── web/                  editor Next.js  →  public/templates/base-runtime.pbiviz
+│   ├── api/                  API de build: spec entra, .pbiviz compilado sai
+│   └── web/                  editor Next.js: compõe a árvore e chama a API
 └── docs/
     └── doc-mvp-lowcode-pbi.md
 ```
 
-Dependências: `runtime` → `visual-kit` → `config-schema`; `web` → todos os três.
+Dependências: `config-schema` ← {`build-contract`, `component-registry`, `visual-kit`} ← `codegen` ←
+{`api`, `web`}. O `config-schema` não importa nada do monorepo.
 
 O `visual-kit` é o coração da garantia de WYSIWYG ([ADR-04](#35-decisões-de-arquitetura-adr)): preview e visual
 final não são "parecidos", são **o mesmo componente**. E como o mapa token → classe usa strings literais
 completas, o Tailwind as encontra em build time — o problema de purge desaparece por construção, não por
 disciplina.
 
-O `base-runtime.pbiviz` é um artefato de build do CI, copiado para `apps/web/public/templates/`. Nunca é
-versionado no Git.
+> **`packages/runtime/` não existe mais.** Era o pacote base pré-compilado que o export do browser reescrevia.
+> A [ADR-08](#35-decisões-de-arquitetura-adr) o substituiu por compilação real por usuário; ele foi aposentado na
+> [faxina de 2026-07-31](#faxina--aposentadoria-do-caminho-antigo--concluída-em-2026-07-31).
 
 ---
 
@@ -1068,36 +1102,37 @@ T-02 é o guardião de [RN-05](#6-regras-de-negócio): um token no schema sem cl
 Fixtures *golden* de `VisualConfig` (mínimo, completo, limites, caracteres especiais) validadas contra o schema
 e renderizadas em snapshot. Um config que renderiza no editor tem de renderizar no runtime.
 
-### 12.3 Testes de Empacotamento
+### 12.3 Teste de Aceite do Artefato
 
-Executam `buildPbiviz` em Node sobre o `base-runtime.pbiviz` recém-construído. São os testes mais importantes do
-projeto — cobrem exatamente o que o usuário quer garantir.
+`apps/api/src/builds/compiledVisual.e2e.test.ts`. É o teste mais importante do projeto — cobre exatamente o que
+o usuário quer garantir: que o `.pbiviz` entregue funciona.
 
-Divididos em duas camadas, porque o pacote real leva ~1 min de `pbiviz package` e `pnpm test` roda antes de
-qualquer build (achado 38):
+Ele faz o ciclo inteiro numa passada: monta uma spec com **todos** os tipos de nó, chama `runBuildPipeline`
+(codegen → `npm ci` → `pbiviz package`), abre o pacote com `inspectPbiviz` e **executa o `content.js`
+minificado dentro de um jsdom**, com o `powerbi` global e um `DataView` falso, exatamente como o Power BI faz.
 
-- **`buildPbiviz.test.ts`** — template sintético (`template.fixture.ts`) que reproduz a estrutura do pacote base.
-  Cobre T-03, T-05, T-07, os caminhos de erro e os casos de borda de identidade. ~300 ms; roda sempre.
-- **`buildPbiviz.real.test.ts`** — o pacote de verdade. Cobre o que só o bundle minificado prova: T-04 (o
-  minificador não duplicou o placeholder), T-06 (nenhum rastro do GUID base) e T-08 (orçamentos de tamanho).
-  Sem o artefato, é ignorado com aviso; no CI, `VISLOW_REQUIRE_TEMPLATE=1` transforma a ausência em falha.
-- **`packages/runtime/test/renderRealBundle.test.ts`** — executa o `content.js` minificado dentro de um jsdom,
-  com o `powerbi` global e um `DataView` falso, exatamente como o Power BI faz. É o **único** teste que verifica
-  o artefato de ponta a ponta e a única verificação executável da [RN-04](#6-regras-de-negócio). Nasceu do
-  achado 39: um bug que só existe no pacote empacotado e que nenhum teste de fonte alcança. Mesmo gate de
-  `VISLOW_REQUIRE_TEMPLATE`.
+Custa ~15 s e exige o template preparado (`pnpm build && pnpm stage:vendor`). Sem isso, avisa e se ignora; no
+CI, `VISLOW_REQUIRE_BUILD=1` transforma a ausência em falha, para que nunca passe como "teste ignorado".
 
-> Os testes do runtime vivem em `packages/runtime/test/`, não em `src/`: aquele diretório é compilado pela
-> toolchain do `pbiviz`, cujo `tsconfig.json` lista os arquivos um a um.
+Executar o bundle é o ponto: é a única verificação que enxerga o que o webpack fez. Nasceu daí — herdou do
+`renderRealBundle.test.ts`, o único teste que pegou o achado 39, um bug que só existe no pacote empacotado e que
+nenhum teste de fonte alcança.
 
 | ID | Assertiva | Protege |
 |---|---|---|
-| T-03 | Zip reabre; `resources/{novoGuid}.pbiviz.json` existe; o antigo não; `package.json.resources` aponta para o novo | [8.3](#83-algoritmo-de-export) passo 7 |
-| T-04 | O placeholder aparece **exatamente uma vez** no template e **zero vezes** no pacote gerado | [R-01](#14-riscos-e-mitigações) |
-| T-05 | A config decodificada do pacote gerado é *deep-equal* à config de entrada, incluindo aspas, acentos e emoji | [RF-03](#41-editor), [ADR-07](#35-decisões-de-arquitetura-adr) |
-| T-06 | GUID antigo ausente em `content.js`, no recurso e no `package.json` | [ADR-03](#35-decisões-de-arquitetura-adr), [R-02](#14-riscos-e-mitigações) |
-| T-07 | Dois exports de projetos distintos produzem GUIDs distintos; dois exports do mesmo projeto, o mesmo GUID | [RN-01](#6-regras-de-negócio) |
+| T-03 | Identidade do `package.json` e do recurso coincidem; o recurso declarado é o presente no zip | [ADR-11](#35-decisões-de-arquitetura-adr) |
+| T-04 | O GUID aparece como **variável** no bundle (`var {guid}`), senão o visual não carrega | [RN-06](#6-regras-de-negócio), achado 13 |
+| T-05 | O GUID do pacote é o do projeto, sem reescrita, e o nome exibido é o que o usuário deu — com aspas, acentos e emoji | [RN-01](#6-regras-de-negócio), [ADR-08](#35-decisões-de-arquitetura-adr) |
+| T-06 | O bundle contém as classes `pbi:` — sem elas o visual renderiza sem estilo e o `pbiviz` reporta sucesso igual | [ADR-02](#35-decisões-de-arquitetura-adr) |
+| T-07 | Dois projetos novos nunca compartilham GUID; o mesmo projeto reexportado mantém o seu | [RN-01](#6-regras-de-negócio) |
 | T-08 | Pacote < 2 MB e `content.js` < 1 MB | [RNF-04](#5-requisitos-não-funcionais), [RNF-05](#5-requisitos-não-funcionais) |
+| T-09 | Renderiza dados, estado vazio ou card de erro — nunca tela branca | [RN-04](#6-regras-de-negócio) |
+| T-10 | O que o visual **pede ao host**: seleção com a identidade da linha, tooltip nativo, menu de contexto, alto contraste resolvido e teclado | [RF-18…RF-25](#45-runtime-core) |
+
+> Os IDs T-03…T-08 foram **reaproveitados**, não preservados. Até a faxina de 2026-07-31 eles descreviam a
+> reescrita de identidade dentro de um pacote pré-compilado — um algoritmo que a [ADR-08](#35-decisões-de-arquitetura-adr)
+> tornou desnecessário, porque a identidade agora nasce certa. O que cada ID protege mudou; o que ele garante ao
+> usuário, não.
 
 ### 12.4 Matriz de Teste Manual no Power BI
 
@@ -1442,6 +1477,45 @@ contexto; em alto contraste as variáveis CSS aparecem no elemento raiz e o SVG 
 jsdom não tem motor de layout nem o host de verdade — o gesto de mouse sobre uma barra, o posicionamento do balão
 nativo e o alto contraste do sistema só fechavam no Desktop, e fecharam. O ciclo completo agora entrega um visual
 que o usuário compõe do zero **e que se comporta como visual nativo dentro do relatório**.
+
+---
+
+### Faxina — aposentadoria do caminho antigo — ✅ **CONCLUÍDA em 2026-07-31**
+
+O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) trocou a arquitetura sem apagar a anterior, de propósito: até
+que o caminho novo estivesse **aprovado no Desktop**, o antigo era a evidência de que o produto já tinha
+funcionado. Com o Sprint 6 aprovado, essa razão acabou — e o que sobra é um segundo caminho que ninguém executa,
+que aparece em toda busca e que o CI mantém verde de graça.
+
+| Removido | Por que perdeu o chamador |
+|---|---|
+| `packages/runtime/` inteiro (fonte, projeto pbiviz, 5 scripts, `renderRealBundle.test.ts`) | O visual não é mais pré-compilado: `@vislow/codegen` + `@vislow/visual-template` geram um projeto por usuário |
+| `buildPbiviz`, `toPbivizBlob`, `CONFIG_PLACEHOLDER`, `PbivizBuildError`, `template.fixture.ts` e os testes T-03…T-08 originais | Desde o Sprint 5 o editor não empacota no browser — quem empacota é a API, chamando o `pbiviz` de verdade |
+| `packaging/base64.ts` (`toBase64Utf8`/`fromBase64Utf8`, [ADR-07](#35-decisões-de-arquitetura-adr)) | Existia para transportar a config como payload no bundle. Não há mais payload: a spec vira código |
+| `visual-kit`: `BarChart`, `KpiCard`, `Frame`, `mock.ts`, `resolveColors`/`ResolvedColors`, `DataPoint`, `KpiDatum`, `KpiComparison`, `RenderContext` | Eram os componentes de papéis fixos e o contrato que os alimentava. Os nós de `visual-kit/nodes` os substituíram, com `DataFrame` e `FrameHost` |
+| `apps/web/public/templates/` | Era onde o `base-runtime.pbiviz` era servido ao browser para reescrita |
+| Scripts `test:packaging` e `stage:template`; bloco do runtime no `eslint.config.mjs`; `tsconfig.check.json` do `typecheck` | Apontavam para o que saiu |
+
+**O que ficou de pé, e por quê:**
+
+- **`inspectPbiviz`** — é o portão da [ADR-11](#35-decisões-de-arquitetura-adr), não um teste. Ficou mais
+  simples: perdeu a extração do payload base64 e o conceito de "pacote base", que só existiam para o caminho
+  antigo. `PbivizBuildError` virou `PbivizInspectionError`, sem código de erro — a única coisa que ele reporta
+  hoje é pacote com estrutura inválida.
+- **A regra de ESLint que proíbe hook no `visual-kit`** ([achado 39](#a7-achados-da-fase-3--export-2026-07-30)).
+  A causa raiz — `resolve.symlinks: false` no webpack do `pbiviz` — é do formato, não do runtime antigo. Hoje a
+  duplicação é evitada pela vendorização por cópia de diretório; a regra é a defesa em profundidade.
+- **`autoInstallPeers: false`** no `pnpm-workspace.yaml`, pelo mesmo motivo.
+- **Seções 8.2, 8.3 e 9** deste documento, marcadas como histórico. Os achados 33 a 40 nasceram ali e descrevem
+  armadilhas do formato `.pbiviz` que continuam valendo para quem gera pacote hoje.
+
+**Verificação:** `pnpm verify` verde (230 testes, 16 arquivos) e o gate de aceite verde com as mesmas 16
+assertivas. Pacote **221,2 KB**, `content.js` **751,6 KB** — inalterados dentro da variação de build, o que
+confirma o que já se esperava: o caminho antigo não entrava no bundle, apenas no repositório. O `pnpm install`
+removeu **274 pacotes** de `node_modules` (a toolchain do `pbiviz` e o webpack que só o runtime usava).
+
+> **Nenhum comportamento do produto mudou nesta faxina.** É remoção de código sem chamador, e é por isso que o
+> gate de aceite — que executa o `.pbiviz` compilado — é a evidência que importa aqui.
 
 ---
 

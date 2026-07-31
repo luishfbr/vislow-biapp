@@ -56,9 +56,10 @@ export default defineConfig([
   // O `visual-kit` e compilado para DENTRO do bundle do visual do Power BI, onde
   // o webpack do `pbiviz` usa `resolve.symlinks: false` e pode duplicar o React
   // (achado 39). Elementos JSX atravessam copias sem problema, mas hooks nao: o
-  // dispatcher fica `null` e o componente cai no ErrorBoundary. Enquanto a
-  // arquitetura de compilacao por usuario nao dissolver essa causa, o kit fica
-  // sem hooks — e essa regra e o que impede alguem de reintroduzir um sem saber.
+  // dispatcher fica `null` e o componente cai no ErrorBoundary. A duplicacao e
+  // evitada hoje pela vendorizacao do template (copia de diretorio, nunca
+  // symlink) — esta regra e a defesa em profundidade, e e o que impede alguem
+  // de reintroduzir um hook sem saber.
   {
     files: ['packages/visual-kit/src/**/*.{ts,tsx}'],
     rules: {
@@ -98,20 +99,6 @@ export default defineConfig([
   {
     files: ['apps/api/src/**/*.module.ts'],
     rules: { '@typescript-eslint/no-extraneous-class': 'off' },
-  },
-
-  // O runtime tem DOIS tsconfig: o `tsconfig.json` e lax e existe para a
-  // toolchain do pbiviz (cujo visualPlugin.ts gerado nao passa em
-  // strictNullChecks). O lint precisa apontar para o config estrito.
-  {
-    files: ['packages/runtime/src/**/*.{ts,tsx}', 'packages/runtime/test/**/*.{ts,tsx}'],
-    languageOptions: {
-      parserOptions: {
-        project: ['./packages/runtime/tsconfig.check.json'],
-        projectService: false,
-        tsconfigRootDir: import.meta.dirname,
-      },
-    },
   },
 
   // Testes: as mesmas regras, com folgas pontuais.
