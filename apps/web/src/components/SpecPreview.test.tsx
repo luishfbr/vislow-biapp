@@ -4,6 +4,7 @@ import {
   createNode,
   insertChild,
   setNodeProps,
+  setNodeRect,
   validateSpec,
   type SpecNode,
   type VisualSpec,
@@ -177,6 +178,52 @@ describe('preview da arvore', () => {
     const dom = render(createEmptySpec('Vazio'));
     expect(dom.textContent).not.toContain(NAO_RENDERIZOU);
     expect(dom.querySelector('div')).not.toBeNull();
+  });
+
+  it('filho de canvas sai numa caixa absoluta com a geometria da spec', () => {
+    const spec = compose('Posicionado', createNode('kpi', { measureRole: 'valor' }));
+    const posicionado = setNodeRect(spec.root, spec.root.children![0]!.id, {
+      x: 25,
+      y: 10,
+      w: 50,
+      h: 40,
+    })!;
+
+    const dom = render({ ...spec, root: posicionado });
+    const slot = dom.querySelector<HTMLElement>('[style*="left"]');
+
+    expect(slot).not.toBeNull();
+    expect(slot?.style.left).toBe('25%');
+    expect(slot?.style.top).toBe('10%');
+    expect(slot?.style.width).toBe('50%');
+    expect(slot?.style.height).toBe('40%');
+  });
+
+  it('grafico dentro de uma caixa posicionada continua medindo', () => {
+    // A ADR-14 dizia que um elemento a mais em volta do no quebra a medida do
+    // ResponsiveContainer. Com a caixa ABSOLUTA a preocupacao se inverte: ela
+    // nao entra na cadeia de flex e ja tem tamanho quando o grafico mede. Se
+    // isso fosse falso, o grafico sairia sem barra nenhuma — e em silencio.
+    const spec = compose(
+      'Grafico posicionado',
+      createNode('barChart', { categoryRole: 'categoria', measureRole: 'valor' }),
+    );
+
+    const dom = render(spec);
+
+    expect(dom.textContent).not.toContain(NAO_RENDERIZOU);
+    expect(dom.querySelectorAll('.recharts-bar-rectangle').length).toBeGreaterThan(0);
+  });
+
+  it('num container que empilha nao ha caixa nenhuma', () => {
+    const spec = createEmptySpec('Empilhado');
+    const empilhado = setNodeProps(spec.root, spec.root.id, { placement: 'stack' })!;
+    const comFilho = insertChild(empilhado, spec.root.id, createNode('kpi', { measureRole: 'valor' }))!;
+
+    const dom = render({ ...spec, root: comFilho });
+
+    expect(dom.querySelector('[style*="left"]')).toBeNull();
+    expect(dom.textContent).not.toContain(NAO_RENDERIZOU);
   });
 
   it('container aninhado propaga o quadro para os filhos', () => {

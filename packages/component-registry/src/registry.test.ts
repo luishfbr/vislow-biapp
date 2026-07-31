@@ -4,15 +4,32 @@ import { createEmptySpec, createNode, DEFAULT_ROLES, nextNodeId } from './factor
 import { isV1Config, migrateV1ToV2 } from './migrate.js';
 import { defaultPropsFor, NODE_DESCRIPTORS, NODE_KINDS, roleFieldsOf } from './registry.js';
 import { assertValidSpec, validateSpec, walk } from './schema.js';
-import { NODE_ID_PATTERN, ROLE_NAME_PATTERN, type VisualSpec } from './spec.js';
+import { NODE_ID_PATTERN, ROLE_NAME_PATTERN, type SpecNode, type VisualSpec } from './spec.js';
+import { insertChild } from './tree.js';
 
-/** Arvore valida com um no de cada tipo, para exercitar o schema inteiro. */
+/**
+ * Arvore valida com um no de cada tipo, para exercitar o schema inteiro.
+ *
+ * Monta por `insertChild`, e nao por atribuicao: a raiz de um projeto novo
+ * posiciona livremente, e e a operacao de arvore que da caixa a cada filho.
+ * Atribuir direto produziria a arvore que so o editor nunca cria.
+ */
 function specWithEveryNode(): VisualSpec {
   const spec = createEmptySpec('Todos os nos');
-  spec.root.children = NODE_KINDS.filter((kind) => kind !== 'container').map((kind) =>
-    createNode(kind, { categoryRole: 'categoria', measureRole: 'valor' }),
-  );
-  return spec;
+  let root = spec.root;
+  for (const kind of NODE_KINDS.filter((kind) => kind !== 'container')) {
+    root = insertChild(root, root.id, createNode(kind, {
+      categoryRole: 'categoria',
+      measureRole: 'valor',
+    }))!;
+  }
+  return { ...spec, root };
+}
+
+/** Um unico filho na raiz de um projeto novo, ja posicionado. */
+function specWithChild(child: SpecNode, name = 'Um filho'): VisualSpec {
+  const spec = createEmptySpec(name);
+  return { ...spec, root: insertChild(spec.root, spec.root.id, child)! };
 }
 
 describe('registro de componentes', () => {
@@ -117,11 +134,9 @@ describe('schema gerado a partir do registro', () => {
   });
 
   it('aceita aninhamento de containers', () => {
-    const spec = createEmptySpec('Aninhado');
     const inner = createNode('container');
     inner.children = [createNode('text')];
-    spec.root.children = [inner];
-    expect(validateSpec(spec).kind).toBe('valid');
+    expect(validateSpec(specWithChild(inner, 'Aninhado')).kind).toBe('valid');
   });
 });
 
@@ -133,11 +148,28 @@ describe('geometria do no', () => {
     return spec;
   }
 
-  it('no sem rect continua valido — a geometria e opcional', () => {
+  it('num pai que empilha o rect e opcional', () => {
     const spec = createEmptySpec('Sem geometria');
+    spec.root.props.placement = 'stack';
     spec.root.children = [createNode('text')];
     expect(validateSpec(spec).kind).toBe('valid');
     expect(spec.root.children[0]?.rect).toBeUndefined();
+  });
+
+  it('num pai que posiciona, filho sem caixa e reprovado', () => {
+    // Sem caixa o filho sai com zero por zero: invisivel, e sem erro nenhum. As
+    // operacoes de arvore ja garantem a caixa — esta regra pega a spec que
+    // chegou por importacao, onde nenhuma operacao passou.
+    const spec = createEmptySpec('Canvas sem caixa');
+    spec.root.children = [createNode('text')];
+
+    const result = validateSpec(spec);
+    if (result.kind !== 'invalid') throw new Error('esperava invalido');
+    expect(result.issues.map((issue) => issue.path)).toEqual(['root.children[0].rect']);
+  });
+
+  it('inserir num canvas ja da a caixa — o caminho do editor nunca reprova', () => {
+    expect(validateSpec(specWithChild(createNode('text'))).kind).toBe('valid');
   });
 
   it('aceita uma caixa dentro dos limites do pai', () => {
@@ -181,9 +213,7 @@ describe('geometria do no', () => {
 describe('os problemas apontam o campo certo', () => {
   /** Um `barChart` sem papel ligado — o estado pendente que o editor mostra. */
   function pendingBar() {
-    const spec = createEmptySpec('Pendente');
-    spec.root.children = [createNode('barChart')];
-    return validateSpec(spec);
+    return validateSpec(specWithChild(createNode('barChart'), 'Pendente'));
   }
 
   it('so fala dos campos do TIPO declarado, nunca dos das outras variantes', () => {
@@ -214,10 +244,10 @@ describe('os problemas apontam o campo certo', () => {
   it('o formato do caminho e o MESMO nas duas validacoes', () => {
     // Schema e regras semanticas alimentam a mesma lista. Formatos diferentes
     // impediriam qualquer consumidor de ligar um problema a um no.
-    const spec = createEmptySpec('Papel fantasma');
-    spec.root.children = [
+    const spec = specWithChild(
       createNode('barChart', { categoryRole: 'categoria', measureRole: 'inexistente' }),
-    ];
+      'Papel fantasma',
+    );
     const semantico = validateSpec(spec);
     if (semantico.kind !== 'invalid') throw new Error('esperava invalido');
 
@@ -233,10 +263,10 @@ describe('os problemas apontam o campo certo', () => {
 
 describe('validacao semantica de papeis', () => {
   it('rejeita no que referencia papel nao declarado', () => {
-    const spec = createEmptySpec('Papel fantasma');
-    spec.root.children = [
+    const spec = specWithChild(
       createNode('barChart', { categoryRole: 'categoria', measureRole: 'inexistente' }),
-    ];
+      'Papel fantasma',
+    );
 
     const result = validateSpec(spec);
     expect(result.kind).toBe('invalid');

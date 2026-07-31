@@ -37,7 +37,12 @@ export function issuesByNode(
     // `measureRole`. Sem `.props.` o problema e do proprio no (id duplicado,
     // filho invalido) e nao pertence a campo nenhum.
     const match = /^(.*?)\.props\.([A-Za-z0-9]+)$/.exec(issue.path);
-    const nodePath = match?.[1] ?? issue.path;
+    // A geometria nao e campo do descritor, mas o caminho dela tambem termina
+    // num sufixo. Sem descontar o `.rect` o problema nao casaria com no nenhum e
+    // sumiria do mapa: o export ficaria bloqueado e a arvore, sem marcador —
+    // exatamente o que a RF-12 proibe.
+    const rect = /^(.*)\.rect$/.exec(issue.path);
+    const nodePath = match?.[1] ?? rect?.[1] ?? issue.path;
     const field = match?.[2];
 
     const entry: NodeIssues = byPath.get(nodePath) ?? { all: [], byField: new Map() };

@@ -3,11 +3,12 @@
 import {
   NODE_DESCRIPTORS,
   consumesData,
+  positionsChildren,
   type SpecNode,
   type VisualSpec,
 } from '@vislow/component-registry';
 import { ErrorBoundary } from '@vislow/visual-kit';
-import { mockFrame, type DataFrame } from '@vislow/visual-kit/nodes';
+import { CanvasSlot, mockFrame, type DataFrame } from '@vislow/visual-kit/nodes';
 import { createElement, type ReactNode } from 'react';
 import type { NodeIssues } from '@/lib/issues';
 import { NODE_COMPONENTS } from '@/lib/nodeComponents';
@@ -78,7 +79,21 @@ function renderNode(
     props[field.key] = node.props[field.key];
   }
 
-  const children = (node.children ?? []).map((child) => renderNode(child, frame, issues));
+  // O embrulho e decidido pelo PAI, com a regra que o codegen tambem consulta.
+  // Filho de canvas sem caixa nao acontece — as operacoes de arvore garantem, e
+  // o `validateSpec` reprova a spec importada que tentar.
+  const free = positionsChildren(node);
+  const children = (node.children ?? []).map((child) => {
+    const rendered = renderNode(child, frame, issues);
+    const rect = child.rect;
+    return free && rect ? (
+      <CanvasSlot key={child.id} x={rect.x} y={rect.y} w={rect.w} h={rect.h}>
+        {rendered}
+      </CanvasSlot>
+    ) : (
+      rendered
+    );
+  });
 
   // `createElement` e nao JSX: o componente vem de um mapa, e escrever
   // `<Component />` obrigaria a nomear a variavel em maiuscula sem ganho nenhum.

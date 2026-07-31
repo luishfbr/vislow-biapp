@@ -20,8 +20,28 @@ import { fileURLToPath } from 'node:url';
 
 const CSS = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'styles.css');
 
-/** Amostra do mapa de tokens: uma de cada familia que o `tokens.ts` produz. */
-const REQUIRED = ['pbi\\:p-4', 'pbi\\:rounded-xl', 'pbi\\:text-lg', 'pbi\\:shadow-sm'];
+/**
+ * ESTE ARQUIVO E ESCANEADO PELO TAILWIND. Nao escreva um nome de classe inteiro
+ * aqui.
+ *
+ * A deteccao automatica de conteudo do v4 varre o pacote, e nao apenas o
+ * `@source` declarado no CSS. Enquanto a lista abaixo continha as classes por
+ * extenso, o proprio arquivo servia de fonte: o Tailwind lia `pbi:p-4` DAQUI e
+ * gerava a regra, entao a guarda passava mesmo com o `tokens.ts` inteiro
+ * quebrado. Uma guarda que nao tem como falhar nao e guarda — descoberto
+ * tentando quebra-la de proposito, que ate hoje ninguem tinha feito.
+ *
+ * Por isso o prefixo e a utilidade viajam separados e so se juntam em runtime.
+ * `p-4` sozinho nao gera `pbi:p-4` (o prefixo e obrigatorio no candidato), e
+ * `pbi\:` sozinho nao e utilidade nenhuma.
+ *
+ * Escolha utilidades com UMA origem no fonte. `absolute`, por exemplo, nao serve
+ * para conferir o `CanvasSlot`: o carimbo de build e a sobreposicao de teclado
+ * dos graficos tambem a produzem, e a regra sobreviveria a perda dela no slot.
+ */
+const PREFIX = 'pbi\\:';
+const UTILITIES = ['p-4', 'rounded-xl', 'text-lg', 'shadow-sm', 'overflow-hidden'];
+const REQUIRED = UTILITIES.map((utility) => PREFIX + utility);
 
 /**
  * O preflight do Tailwind reseta `html`/`body` globais — dentro do Power BI isso
@@ -40,7 +60,8 @@ const missing = REQUIRED.filter((cls) => !css.includes(cls));
 if (missing.length > 0) {
   throw new Error(
     `classes ausentes no CSS: ${missing.join(', ')}. ` +
-      'Provavel classe construida por interpolacao em src/tokens.ts — use string literal completa.',
+      'Provavel classe construida por interpolacao, em src/tokens.ts ou num componente — ' +
+      'o Tailwind so gera o que consegue ler como string literal completa.',
   );
 }
 

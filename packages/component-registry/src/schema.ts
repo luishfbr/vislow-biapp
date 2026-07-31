@@ -26,6 +26,7 @@ import {
   type NodeRect,
   type VisualSpec,
 } from './spec.js';
+import { positionsChildren } from './tree.js';
 import type { FieldSpec } from './types.js';
 
 /** Schema de um campo, derivado do seu descritor. */
@@ -280,6 +281,20 @@ export function validateSpec(value: unknown): SpecValidationResult {
     seenIds.add(node.id);
 
     if (node.rect) issues.push(...rectIssues(node.rect, path));
+
+    // Num pai que posiciona, filho sem caixa nao tem tamanho nenhum — sai com
+    // zero por zero, invisivel e sem erro. As operacoes de arvore ja garantem a
+    // caixa (`withPlacedChildren`); esta regra pega a spec que veio de fora.
+    if (positionsChildren(node)) {
+      (node.children ?? []).forEach((child, index) => {
+        if (!child.rect) {
+          issues.push({
+            path: `${path}.children[${String(index)}].rect`,
+            message: 'falta a caixa: o pai posiciona os filhos livremente',
+          });
+        }
+      });
+    }
 
     for (const field of NODE_DESCRIPTORS[node.kind].fields) {
       if (field.kind !== 'role') continue;

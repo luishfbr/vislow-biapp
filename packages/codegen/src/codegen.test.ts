@@ -41,11 +41,51 @@ describe('emissao do visual.tsx', () => {
 
   it('emite todos os campos do descritor, na ordem do descritor', () => {
     const source = generateVisualSource(assertValidSpec(specWithKind('barChart')), BUILD_ID);
+    // Recortado no elemento: buscar no fonte inteiro faz a busca casar com o
+    // campo de OUTRO no que tenha a mesma chave, e o teste passa a medir a ordem
+    // de um elemento que nao e o testado.
+    const element = source.slice(source.indexOf('<BarChartNode'));
     const keys = NODE_DESCRIPTORS.barChart.fields.map((field) => field.key);
-    const positions = keys.map((key) => source.indexOf(`${key}=`));
+    const positions = keys.map((key) => element.indexOf(`${key}=`));
 
     expect(positions.every((position) => position >= 0)).toBe(true);
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
+  });
+
+  describe('filhos posicionados', () => {
+    /** Um KPI dentro de um container que posiciona, com caixa conhecida. */
+    function positioned() {
+      const container = createNode('container');
+      container.props.placement = 'canvas';
+      container.children = [
+        { ...nodeOf('kpi'), rect: { x: 25, y: 10, w: 50, h: 40 } },
+      ];
+      return generateVisualSource(assertValidSpec(specWith(container)), BUILD_ID);
+    }
+
+    it('embrulha o filho num CanvasSlot com a caixa da spec', () => {
+      const source = positioned();
+
+      expect(source).toContain('<CanvasSlot');
+      expect(source).toContain('x={25}');
+      expect(source).toContain('y={10}');
+      expect(source).toContain('w={50}');
+      expect(source).toContain('h={40}');
+      // O embrulho fica POR FORA do no, senao a caixa nao posiciona nada.
+      expect(source.indexOf('<CanvasSlot')).toBeLessThan(source.indexOf('<KpiNode'));
+    });
+
+    it('importa o CanvasSlot pelo nome, como qualquer outro no', () => {
+      // Import nomeado e o que sustenta o tree-shaking (ADR-10).
+      expect(positioned()).toMatch(
+        /import \{[^}]*\bCanvasSlot\b[^}]*\} from '@vislow\/visual-kit\/nodes'/,
+      );
+    });
+
+    it('quem so empilha nao paga pelo CanvasSlot no bundle', () => {
+      const source = generateVisualSource(assertValidSpec(specWithKind('kpi')), BUILD_ID);
+      expect(source).not.toContain('CanvasSlot');
+    });
   });
 
   it('so passa o quadro de dados a nos que declaram papel', () => {

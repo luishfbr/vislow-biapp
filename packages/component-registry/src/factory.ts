@@ -1,5 +1,5 @@
 import { createProjectId, INITIAL_PACKAGE_VERSION } from '@vislow/config-schema';
-import { defaultPropsFor, roleFieldsOf } from './registry.js';
+import { CONTAINER_CANVAS, defaultPropsFor, roleFieldsOf } from './registry.js';
 import { SPEC_VERSION, type DataRole, type SpecNode, type VisualSpec } from './spec.js';
 import type { NodeKind, RoleKind } from './types.js';
 
@@ -120,6 +120,14 @@ export const DEFAULT_ROLES: DataRole[] = [
  */
 export function createEmptySpec(name: string): VisualSpec {
   counter = 0;
+
+  // A raiz de um projeto NOVO posiciona livremente; o default do descritor
+  // continua sendo empilhar, para que projeto ja salvo nao mude sozinho. E aqui
+  // que a diferenca aparece: quem comeca hoje comeca com uma prancheta, quem
+  // comecou antes continua com a composicao que montou.
+  const root = createNode('container');
+  root.props.placement = CONTAINER_CANVAS;
+
   return {
     schemaVersion: SPEC_VERSION,
     project: {
@@ -128,6 +136,6 @@ export function createEmptySpec(name: string): VisualSpec {
       packageVersion: INITIAL_PACKAGE_VERSION,
     },
     dataRoles: DEFAULT_ROLES.map((role) => ({ ...role })),
-    root: createNode('container'),
+    root,
   };
 }

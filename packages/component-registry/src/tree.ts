@@ -1,4 +1,4 @@
-import { NODE_DESCRIPTORS } from './registry.js';
+import { CONTAINER_CANVAS, NODE_DESCRIPTORS } from './registry.js';
 import { RECT_MIN_SIZE, type NodeRect, type SpecNode } from './spec.js';
 
 /**
@@ -19,6 +19,78 @@ import { RECT_MIN_SIZE, type NodeRect, type SpecNode } from './spec.js';
 
 export function acceptsChildren(node: SpecNode): boolean {
   return NODE_DESCRIPTORS[node.kind].acceptsChildren;
+}
+
+/**
+ * O no da a cada filho a sua propria caixa, em vez de empilhar?
+ *
+ * Vive aqui, e nao em cada consumidor, pelo mesmo motivo do `consumesData`: quem
+ * precisa concordar sao o preview do editor e o codegen, que decidem se
+ * embrulham o filho num `CanvasSlot`. Cada um com a sua copia da regra e a
+ * divergencia mais barata de introduzir e mais cara de achar — o preview
+ * mostraria a composicao posicionada e o pacote entregue sairia empilhado.
+ */
+export function positionsChildren(node: SpecNode): boolean {
+  return acceptsChildren(node) && node.props.placement === CONTAINER_CANVAS;
+}
+
+/**
+ * Faixas iguais ao longo da direcao em que o container empilhava.
+ *
+ * E o que um container ganha ao virar canvas: a composicao que estava na tela
+ * continua na tela, e o usuario arrasta a partir dela. Converter para caixas
+ * arbitrarias faria o visual dele se desmontar no clique que deveria dar mais
+ * liberdade.
+ */
+export function bandRects(count: number, direction: unknown): NodeRect[] {
+  if (count <= 0) return [];
+  const size = 100 / count;
+  return Array.from({ length: count }, (_, index) =>
+    direction === 'row'
+      ? clampRect({ x: index * size, y: 0, w: size, h: 100 })
+      : clampRect({ x: 0, y: index * size, w: 100, h: size }),
+  );
+}
+
+/**
+ * Caixa de um no que acaba de cair num canvas.
+ *
+ * Em cascata, e nao sempre no mesmo lugar: dois nos exatamente sobrepostos
+ * parecem um no so, e o usuario arrasta o de cima varias vezes sem entender por
+ * que o de baixo nunca aparece.
+ */
+function droppedRect(index: number): NodeRect {
+  const offset = (index % 8) * 5;
+  return clampRect({ x: 5 + offset, y: 5 + offset, w: 40, h: 30 });
+}
+
+/**
+ * Garante que todo filho de um canvas tem caixa.
+ *
+ * A invariante vive nas OPERACOES de arvore, e nao no editor: assim nao ha
+ * caminho — inserir, mudar de pai, virar canvas — que produza um filho de canvas
+ * sem geometria. O `validateSpec` cobre o mesmo caso para a spec que chega de
+ * fora, onde nenhuma operacao passou.
+ */
+function withPlacedChildren(container: SpecNode): SpecNode {
+  if (!positionsChildren(container)) return container;
+
+  const children = container.children ?? [];
+  if (children.every((child) => child.rect)) return container;
+
+  // Ninguem posicionado ainda: e a conversao de empilhado para livre, e as
+  // faixas preservam o que estava na tela. Com parte posicionada, o que falta e
+  // no novo — esse cai em cascata, para nao sumir atras dos outros.
+  const converting = children.every((child) => !child.rect);
+  const bands = converting ? bandRects(children.length, container.props.direction) : [];
+
+  return {
+    ...container,
+    children: children.map((child, index) => ({
+      ...child,
+      rect: child.rect ?? bands[index] ?? droppedRect(index),
+    })),
+  };
 }
 
 export function findNode(root: SpecNode, id: string): SpecNode | null {
@@ -102,7 +174,7 @@ export function insertChild(
     const children = [...(target.children ?? [])];
     const at = index === undefined ? children.length : clamp(index, 0, children.length);
     children.splice(at, 0, node);
-    return { ...target, children };
+    return withPlacedChildren({ ...target, children });
   });
 }
 
@@ -191,13 +263,23 @@ export function unbindRole(root: SpecNode, roleName: string): SpecNode {
   return children ? { ...root, props, children } : { ...root, props };
 }
 
-/** Aplica valores de campo a um no. Nao valida: quem valida e `validateSpec`. */
+/**
+ * Aplica valores de campo a um no. Nao valida: quem valida e `validateSpec`.
+ *
+ * A excecao e a geometria dos filhos, que nao e validacao e sim invariante:
+ * trocar a disposicao para livre e o unico jeito de um container passar a
+ * posicionar, e os filhos que ja estavam la precisam de caixa no mesmo passo. O
+ * caminho contrario NAO apaga as caixas — ir e voltar preserva o arranjo, em vez
+ * de punir quem quis so dar uma olhada.
+ */
 export function setNodeProps(
   root: SpecNode,
   id: string,
   patch: Record<string, unknown>,
 ): SpecNode | null {
-  return replace(root, id, (target) => ({ ...target, props: { ...target.props, ...patch } }));
+  return replace(root, id, (target) =>
+    withPlacedChildren({ ...target, props: { ...target.props, ...patch } }),
+  );
 }
 
 /**
