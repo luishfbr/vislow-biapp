@@ -10,8 +10,14 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **Seletor de zustand nunca constrói valor.** O v5 compara com `Object.is`, então devolver um `Map` ou objeto
   novo re-renderiza em loop e trava a aba. Derivação que cria objeto vive em `lib/issues.ts`, memoizada no
   componente.
-- **O preview não tem seleção por clique** (ADR-14). Um wrapper clicável entra na cadeia de flex que o
-  `ResponsiveContainer` usa para medir altura, e o preview deixa de valer como referência.
+- **Seleção no preview depende de quem posiciona.** Container que empilha: nenhuma (ADR-14) — um wrapper
+  clicável entra na cadeia de flex que o `ResponsiveContainer` usa para medir. Container em `placement:
+  'canvas'`: tem seleção, arrasto e alças (ADR-18), porque a camada é filha `absolute`, está fora do fluxo e
+  desenha com os mesmos `%` da spec, sem medir para desenhar.
+- **A geometria (`rect`) é % do pai e mora fora de `props`** — `props` espelha o descritor, e o codegen despeja
+  cada chave como atributo JSX; geometria é relação com o pai.
+- **A matemática do canvas fica em `lib/canvasGeometry.ts`**, sem React, e é lá que ela se testa. No componente
+  sobra o gesto, que jsdom não exercita.
 - **Nome de papel é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createRole` e amarra
   as referências da árvore e o `capabilities.json`.
 - **`react-is` é declarado explicitamente** — é peer do Recharts e o repo usa `autoInstallPeers: false`. O

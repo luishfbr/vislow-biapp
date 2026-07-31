@@ -4,12 +4,14 @@ import {
   NODE_DESCRIPTORS,
   consumesData,
   positionsChildren,
+  type NodeRect,
   type SpecNode,
   type VisualSpec,
 } from '@vislow/component-registry';
 import { ErrorBoundary } from '@vislow/visual-kit';
 import { CanvasSlot, mockFrame, type DataFrame } from '@vislow/visual-kit/nodes';
 import { createElement, type ReactNode } from 'react';
+import { CanvasOverlay } from '@/components/CanvasOverlay';
 import type { NodeIssues } from '@/lib/issues';
 import { NODE_COMPONENTS } from '@/lib/nodeComponents';
 
@@ -50,10 +52,24 @@ function PendingNode({ label, problems }: { label: string; problems: string[] })
   );
 }
 
+/**
+ * Manipulacao direta, quando o preview esta no editor.
+ *
+ * Opcional porque o `SpecPreview` tambem e montado por teste e podera ser
+ * montado em contexto sem edicao. Sem ela, o preview volta a ser exatamente o
+ * que era: desenho, e nada mais.
+ */
+export interface PreviewEdit {
+  selectedId: string;
+  onSelect: (id: string) => void;
+  onChange: (id: string, rect: NodeRect) => void;
+}
+
 function renderNode(
   node: SpecNode,
   frame: DataFrame,
   issues: ReadonlyMap<string, NodeIssues>,
+  edit: PreviewEdit | undefined,
 ): ReactNode {
   const descriptor = NODE_DESCRIPTORS[node.kind];
   const problem = issues.get(node.id);
@@ -83,8 +99,8 @@ function renderNode(
   // Filho de canvas sem caixa nao acontece — as operacoes de arvore garantem, e
   // o `validateSpec` reprova a spec importada que tentar.
   const free = positionsChildren(node);
-  const children = (node.children ?? []).map((child) => {
-    const rendered = renderNode(child, frame, issues);
+  const children: ReactNode[] = (node.children ?? []).map((child) => {
+    const rendered = renderNode(child, frame, issues, edit);
     const rect = child.rect;
     return free && rect ? (
       <CanvasSlot key={child.id} x={rect.x} y={rect.y} w={rect.w} h={rect.h}>
@@ -94,6 +110,30 @@ function renderNode(
       rendered
     );
   });
+
+  // A camada de manipulacao entra como ultimo filho do proprio canvas, e nao
+  // por cima do preview: dentro dele ela herda o sistema de coordenadas e
+  // desenha com os mesmos percentuais da spec, sem medir nada (ADR-18). Sendo
+  // `absolute`, esta fora do fluxo e nao altera a medida de irmao nenhum — que
+  // era a objecao da ADR-14.
+  if (edit && free) {
+    const placed = (node.children ?? []).flatMap((child) =>
+      child.rect
+        ? [{ id: child.id, rect: child.rect, label: NODE_DESCRIPTORS[child.kind].label }]
+        : [],
+    );
+    if (placed.length > 0) {
+      children.push(
+        <CanvasOverlay
+          key={`overlay-${node.id}`}
+          items={placed}
+          selectedId={edit.selectedId}
+          onSelect={edit.onSelect}
+          onChange={edit.onChange}
+        />,
+      );
+    }
+  }
 
   // `createElement` e nao JSX: o componente vem de um mapa, e escrever
   // `<Component />` obrigaria a nomear a variavel em maiuscula sem ganho nenhum.
@@ -105,9 +145,11 @@ function renderNode(
 export function SpecPreview({
   spec,
   issues,
+  edit,
 }: {
   spec: VisualSpec;
   issues: ReadonlyMap<string, NodeIssues>;
+  edit?: PreviewEdit | undefined;
 }) {
   const frame = mockFrame(spec.dataRoles);
 
@@ -119,7 +161,7 @@ export function SpecPreview({
       {/* O ErrorBoundary tambem aqui: a arvore em edicao passa por estados que o
           componente pode nao suportar, e travar o editor seria pior que mostrar
           o card de erro — o mesmo raciocinio da RN-04, do lado do editor. */}
-      <ErrorBoundary>{renderNode(spec.root, frame, issues)}</ErrorBoundary>
+      <ErrorBoundary>{renderNode(spec.root, frame, issues, edit)}</ErrorBoundary>
     </div>
   );
 }

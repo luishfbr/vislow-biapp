@@ -36,7 +36,7 @@ adapta.**
 | Classe utilitária escrita na hora | String literal completa no mapa de `visual-kit/src/tokens.ts`; variante com o prefixo **antes** (`pbi:focus:ring-2`) |
 | Família tipográfica característica | Só no editor. O `visual-kit` **não tem token de família** — a face vem do host. Precisar de uma é feature de schema primeiro, nunca webfont externa: o visual roda offline e contra orçamento de 1 MB |
 | Micro-interação com estado | No `visual-kit`, sem hooks — classe, ou cálculo no render |
-| Wrapper clicável para seleção | No preview, não: quebra a medida do `ResponsiveContainer` (ADR-14) |
+| Wrapper clicável para seleção | Em container que empilha, não: quebra a medida do `ResponsiveContainer` (ADR-14). Em canvas, a camada é filha `absolute` e está fora do fluxo (ADR-18) |
 
 ### 1.2 O que a auditoria não dispensa
 
@@ -166,13 +166,38 @@ balão é o do host (RF-19); no preview fica o do Recharts, senão passar o mous
 `onClick` do `<Bar>`/`<Pie>`; linha e área usam o handler do gráfico e o `activeTooltipIndex`. Restrição do
 Recharts, não escolha.
 
-### 3.5 O preview não tem seleção por clique
+### 3.5 Seleção no preview: depende de quem posiciona
 
-ADR-14. Um wrapper clicável entra na cadeia de flex que o `ResponsiveContainer` usa para medir altura, e o
-preview deixa de valer como referência do resultado — que é justamente o ponto do ADR-04. A seleção vive no
-painel de árvore, onde não custa nada.
+**Container que empilha:** sem seleção por clique (ADR-14). Um wrapper clicável entra na cadeia de flex que o
+`ResponsiveContainer` usa para medir altura, e o preview deixa de valer como referência do resultado — que é
+justamente o ponto do ADR-04. A seleção vive no painel de árvore.
 
-### 3.6 Classes Tailwind e cores
+**Container que posiciona (`placement: 'canvas'`):** tem seleção, arrasto e redimensionamento (ADR-18). O motivo
+do ADR-14 era **medição**, e ele não se aplica: a camada de alças é filha `absolute` do container, está fora do
+fluxo e não pode alterar a medida de irmão nenhum. Por viver **dentro** do container, ela herda o sistema de
+coordenadas e desenha com os mesmos `%` da spec — sem `ref`, sem `ResizeObserver`, sem medir para desenhar.
+Pixel só entra no gesto, lido uma vez no `pointerdown`.
+
+O que a camada custa: ela cobre os gráficos, então o tooltip do Recharts **no preview** não aparece dentro de um
+canvas. O tooltip do host, no visual compilado, não é afetado — nada da camada vai para o pacote.
+
+### 3.6 Geometria
+
+`rect` é `{ x, y, w, h }` em **% do pai**, irmão de `props` e não dentro dele: `props` espelha os campos do
+descritor e o codegen despeja cada chave como atributo JSX, mas geometria é relação com o pai, não propriedade
+do componente.
+
+- **A invariante "filho de canvas tem caixa" vive nas operações de árvore** (`withPlacedChildren`), não no
+  editor: não há caminho — inserir, mudar de pai, virar canvas — que produza filho sem geometria. O
+  `validateSpec` cobre a spec que chega por importação, onde nenhuma operação passou.
+- **`clampRect` prende, `validateSpec` reprova.** O chamador do primeiro é um arrasto, e passar da borda quer
+  dizer "encosta na borda", nunca "cancela o gesto".
+- **A matemática mora em `lib/canvasGeometry.ts`**, sem React. Encaixe, arrasto, redimensionamento e teclado se
+  testam direto; no componente sobra o encanamento do gesto, que jsdom mal exercita.
+- **O passo do teclado é o mesmo da grade do arrasto.** Duas constantes fariam o teclado desalinhar o que o
+  mouse alinhou, com meia célula de erro invisível.
+
+### 3.7 Classes Tailwind e cores
 
 As regras que produzem falha silenciosa dentro do Power BI estão em [build-visual.md](build-visual.md) — leia
 antes de mexer em `tokens.ts`. Em resumo: **string literal completa, sempre**; **prefixo antes da variante**; e

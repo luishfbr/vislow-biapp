@@ -23,5 +23,12 @@ visual, e é isso que explica cada restrição. Detalhe em [docs/frontend.md](..
   cadeia de flex quebra a medida do `ResponsiveContainer`. As setas movem o foco do DOM, não um índice em estado.
 - **`/nodes` fica fora do barril** — quem importa só o barril não deve pagar pelo Recharts (~575 KB) contra o
   orçamento de 1 MB.
-- **A guarda de CSS (`scripts/check-css.mjs`) confere o CSS de saída**, e uma classe pode ter segunda origem no
-  fonte. Ao escolher classe para a lista dela, prefira as que só o `tokens.ts` produz.
+- **`CanvasSlot` não é um nó** — não está no registro e o usuário não o adiciona. É o embrulho que preview e
+  codegen colocam em volta de cada filho de um container em `placement: 'canvas'`, pela mesma função
+  (`positionsChildren`). O `%` vai por `style` inline, como a cor, e o `overflow-hidden` é a política de
+  transbordo: corta, nunca escorre sobre o vizinho.
+- **A guarda de CSS (`scripts/check-css.mjs`) NÃO pode conter nome de classe por extenso.** O Tailwind v4 varre
+  o pacote inteiro, incluindo o próprio script — com a classe escrita ali, ele a lia da lista de exigências e
+  gerava a regra, e a guarda passava com o `tokens.ts` quebrado. Prefixo e utilidade viajam separados e só se
+  juntam em runtime. Ao acrescentar item, escolha utilidade com **uma** origem no fonte: `absolute`, por
+  exemplo, não serve para conferir o `CanvasSlot`, porque o carimbo de build também a produz.
