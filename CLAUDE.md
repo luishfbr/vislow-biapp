@@ -164,13 +164,13 @@ profundidade.
   Novos: `component-registry/tree.ts`, `visual-kit/nodes/mockFrame.ts` e `@vislow/build-contract`.
   Aposentados: `exportPbiviz.ts`, `AppearancePanel` e `CONTROL_GROUPS`. **Validado no Desktop em 2026-07-30**:
   o ciclo completo fecha — compor no editor, exportar pela API e importar no Power BI.
-- **Sprint 6 (paridade de interatividade)** — concluído no código em 2026-07-31. O achado 53 está **fechado**:
+- **Sprint 6 (paridade de interatividade)** — concluído em 2026-07-31. O achado 53 está **fechado**:
   as seis capacidades voltaram ao caminho novo pelo desenho da ADR-16 — serviços do host dentro do `DataFrame`,
   alto contraste por variável CSS, teclado por sobreposição de botões. Novos:
   `visual-kit/src/highContrast.ts`, `visual-template/template/src/interaction.ts` e
   `apps/web/src/components/kitInteraction.test.tsx`. O gate de aceite passou a verificar o que o visual **pede
   ao host**, não só o que ele desenha. Pacote **221,1 KB**, `content.js` **751,3 KB**.
-  ⏳ **Falta aprovar no Desktop** — jsdom não tem motor de layout nem o host de verdade.
+  **Validado no Desktop em 2026-07-31**: as seis funcionam num `.pbiviz` compilado pela API.
 
 - **Próximo: Fase 4** — KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E
   Playwright do editor.
@@ -179,8 +179,7 @@ profundidade.
 não têm mais chamador desde o Sprint 5 — o editor não empacota no browser. `inspectPbiviz` **sobrevive**, é o
 portão da ADR-11. Com o achado 53 fechado, `packages/runtime` e os componentes `BarChart`/`KpiCard` do
 `visual-kit` **entram nessa lista**: a portabilidade existe, e eles deixaram de ser a única implementação das
-seis capacidades. Apague-os só depois da aprovação no Desktop — até lá continuam sendo a referência com que
-comparar um comportamento divergente.
+seis capacidades, e a paridade foi aprovada no Desktop em 2026-07-31.
 
 ```bash
 # Numa árvore limpa, nesta ordem:

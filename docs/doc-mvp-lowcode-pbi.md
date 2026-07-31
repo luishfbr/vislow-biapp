@@ -1387,7 +1387,7 @@ mas não reconfirmadas no caminho compilado.
 
 ---
 
-### Sprint 6 — Paridade de interatividade — ✅ **CONCLUÍDO no código em 2026-07-31**
+### Sprint 6 — Paridade de interatividade — ✅ **CONCLUÍDO em 2026-07-31**
 
 Existiu porque o pivô deixou seis capacidades para trás
 ([achado 53](#a9--achados-do-sprint-5-editor-de-composição-2026-07-30)). Não era escopo novo: as seis foram
@@ -1438,9 +1438,10 @@ daquela linha; o foco pede o tooltip nativo com os valores já formatados; o bot
 contexto; em alto contraste as variáveis CSS aparecem no elemento raiz e o SVG sai com a cor **resolvida**, sem
 `var(`. Dezesseis assertivas sobre o `.pbiviz` compilado de verdade.
 
-⏳ **Pendente: aprovação no Power BI Desktop.** As seis capacidades foram exercitadas contra o artefato real em
-jsdom, mas jsdom não tem motor de layout nem o host de verdade — o gesto de mouse sobre uma barra, o
-posicionamento do balão nativo e o alto contraste do sistema só fecham no Desktop. Entra na matriz MT-01…MT-14.
+✅ **Aprovado no Power BI Desktop em 2026-07-31.** O gate exercitou as seis contra o artefato real em jsdom, mas
+jsdom não tem motor de layout nem o host de verdade — o gesto de mouse sobre uma barra, o posicionamento do balão
+nativo e o alto contraste do sistema só fechavam no Desktop, e fecharam. O ciclo completo agora entrega um visual
+que o usuário compõe do zero **e que se comporta como visual nativo dentro do relatório**.
 
 ---
 
@@ -1603,7 +1604,7 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 50 | **O `visual-kit` não declara `react` nem em `devDependencies`** (achado 39), então nenhum teste conseguia importar seus componentes a partir do fonte. | Bloqueava qualquer teste de render do preview — justamente a classe de teste que pegou o achado 39. | Alias de `react`/`react-dom` no `vitest.config.ts`, apontando para a cópia do editor. Resolve só no vitest, **sem tocar no layout de `node_modules`**, que é o que não pode mudar. |
 | 51 | **O `apps/web/tsconfig.json` usa `jsx: "preserve"`** porque quem transforma o JSX é o Next — e o vitest lê esse mesmo tsconfig. | Todo teste `.tsx` do editor falhava no parse com `Unexpected JSX expression`, erro que aponta para o código e não para a configuração. O Vite 8 usa `oxc`: definir `esbuild.jsx` é aceito e **silenciosamente ignorado**, com um aviso fácil de não ler. | `oxc: { jsx: { runtime: 'automatic' } }` no `vitest.config.ts`. |
 | 52 | **Um seletor de zustand que constrói o valor a cada chamada re-renderiza em loop.** `selectIssuesByNode` devolvia um `Map` novo; o zustand v5 compara com `Object.is`. | Trava o editor, e o sintoma (aba congelada) não aponta para o seletor. | As derivações que criam objeto saíram do store para `lib/issues.ts` e são memoizadas no componente. O que fica como seletor devolve **referência vinda do estado**, nunca valor construído — com o motivo comentado no arquivo. |
-| 53 | **O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) deixou seis capacidades para trás.** O caminho novo — `codegen` + `visual-template` + `visual-kit/nodes` — não tem **cross-filter**, **tooltip nativo**, **alto contraste**, **navegação por teclado**, **menu de contexto** nem **aviso de truncamento** (RF-18, 19, 21, 23, 24, 25). Vivem em `packages/runtime/src/visual.tsx` e nos componentes `BarChart`/`KpiCard` do `visual-kit` — nenhum dos dois usado pelo caminho novo. Os nós de `visual-kit/src/nodes/` não têm um único `tabIndex` ou `aria-label`. | Regressão, não escopo futuro: as seis foram entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual compilado hoje desenha certo, então nenhum teste acusa — `compiledVisual.e2e.test.ts` verifica que renderiza dados e a RN-04, não que clicar numa barra filtra o relatório. Descoberto ao planejar a Fase 4, não por falha. | **FECHADO no Sprint 6 (2026-07-31).** As seis voltaram, com o desenho da [ADR-16](#35-decisões-de-arquitetura-adr): serviços do host dentro do `DataFrame`, alto contraste por variável CSS. O gate de aceite deixou de perguntar só se o visual desenha e passou a verificar o que ele **pede ao host** — foi essa a lacuna que deixou o achado passar. `packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` **já podem ser aposentados**: a portabilidade existe. Falta a aprovação no Desktop, que entra na matriz MT-01…MT-14. |
+| 53 | **O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) deixou seis capacidades para trás.** O caminho novo — `codegen` + `visual-template` + `visual-kit/nodes` — não tem **cross-filter**, **tooltip nativo**, **alto contraste**, **navegação por teclado**, **menu de contexto** nem **aviso de truncamento** (RF-18, 19, 21, 23, 24, 25). Vivem em `packages/runtime/src/visual.tsx` e nos componentes `BarChart`/`KpiCard` do `visual-kit` — nenhum dos dois usado pelo caminho novo. Os nós de `visual-kit/src/nodes/` não têm um único `tabIndex` ou `aria-label`. | Regressão, não escopo futuro: as seis foram entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual compilado hoje desenha certo, então nenhum teste acusa — `compiledVisual.e2e.test.ts` verifica que renderiza dados e a RN-04, não que clicar numa barra filtra o relatório. Descoberto ao planejar a Fase 4, não por falha. | **FECHADO no Sprint 6 (2026-07-31).** As seis voltaram, com o desenho da [ADR-16](#35-decisões-de-arquitetura-adr): serviços do host dentro do `DataFrame`, alto contraste por variável CSS. O gate de aceite deixou de perguntar só se o visual desenha e passou a verificar o que ele **pede ao host** — foi essa a lacuna que deixou o achado passar. `packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` **já podem ser aposentados**: a portabilidade existe e foi aprovada no Desktop em 2026-07-31. |
 
 ### A10 — Achados do Sprint 6: paridade de interatividade (2026-07-31)
 
