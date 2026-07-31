@@ -4,6 +4,9 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Cache do turbo: o `.turbo/` da raiz e os diretorios de log por pacote.
+.turbo/
+
 # Artefatos de build do Runtime Core — nunca versionados (secao 11 do doc de MVP)
 apps/web/public/templates/*.pbiviz
 packages/runtime/dist/

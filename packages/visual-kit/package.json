@@ -22,7 +22,11 @@
     "src"
   ],
   "scripts": {
-    "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify"
+    "// build": "Um passo so, de proposito: `tsc` e o Tailwind escrevem no MESMO `dist/`, e duas tarefas do turbo com outputs sobrepostos produzem cache parcial. Os inputs tambem sao os mesmos (`src/**`), entao separar nao granularia nada.",
+    "build": "tsc -p tsconfig.build.json && pnpm run build:css && node scripts/check-css.mjs",
+    "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
+    "typecheck": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
     "@vislow/config-schema": "workspace:*"

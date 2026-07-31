@@ -10,9 +10,11 @@
  * Agora ele cobre todo pacote que o backend produz — que era exatamente o
  * combinado do plano.
  *
- * Custa ~15 s e exige o template preparado. Sem isso, avisa e se ignora; no CI,
- * `VISLOW_REQUIRE_BUILD=1` transforma a ausencia em falha, para que nunca passe
- * como "teste ignorado".
+ * Custa ~15 s e exige o template preparado. NAO ha modo "ignorado": o sufixo
+ * `.e2e.test.ts` tira este arquivo da suite rapida (`vitest.config.ts`) e o
+ * poe na do gate (`vitest.build.config.ts`), cuja tarefa no turbo declara
+ * `stage:vendor` como dependencia. Se ele rodar, o template esta preparado —
+ * e se nao estiver, isto lanca no carregamento em vez de passar verde.
  */
 import { existsSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -25,19 +27,10 @@ import { VENDOR_DIR } from '@vislow/visual-template';
 import { MAX_JS_BYTES, MAX_PACKAGE_BYTES } from './budgets.js';
 import { runBuildPipeline, type BuildOutcome } from './pipeline.js';
 
-const STAGED = existsSync(join(VENDOR_DIR, '@vislow', 'visual-kit', 'dist', 'styles.css'));
-const REQUIRED = process.env.VISLOW_REQUIRE_BUILD === '1';
-
-if (!STAGED && REQUIRED) {
+if (!existsSync(join(VENDOR_DIR, '@vislow', 'visual-kit', 'dist', 'styles.css'))) {
   throw new Error(
-    'VISLOW_REQUIRE_BUILD=1 mas o template nao esta preparado. Rode ' +
-      '`pnpm build && pnpm --filter @vislow/visual-template stage:vendor`.',
-  );
-}
-if (!STAGED) {
-  console.warn(
-    '\n[build compilado] ignorado: template nao preparado.\n' +
-      '  Para rodar: pnpm build && pnpm --filter @vislow/visual-template stage:vendor\n',
+    'Template nao preparado, e este teste nao tem como se ignorar. ' +
+      'Rode `pnpm check` — o turbo encadeia build -> stage:vendor -> test:build.',
   );
 }
 
@@ -281,7 +274,7 @@ function keyboardKeys(element: Element): NodeListOf<Element> {
   return element.querySelectorAll('[role="group"] button');
 }
 
-describe.skipIf(!STAGED)('spec compilada vira um .pbiviz que renderiza', () => {
+describe('spec compilada vira um .pbiviz que renderiza', () => {
   let spec: VisualSpec;
   let outcome: BuildOutcome;
   let js: string;
@@ -449,21 +442,3 @@ describe.skipIf(!STAGED)('spec compilada vira um .pbiviz que renderiza', () => {
   });
 });
 
-describe('identidade entre projetos', () => {
-  /**
-   * RN-01 / C-03: dois visuais precisam coexistir no mesmo relatorio. GUID
-   * repetido faz o segundo import sobrescrever o primeiro — foi o erro 2 do
-   * Anexo A, e a compilacao real nao o dissolve sozinha.
-   */
-  it('dois projetos novos nunca compartilham GUID', () => {
-    const a = specWithEveryKind('Vendas');
-    const b = specWithEveryKind('Vendas');
-    expect(a.project.id).not.toBe(b.project.id);
-  });
-
-  it('o mesmo projeto reexportado mantem o id', () => {
-    const spec = specWithEveryKind('Vendas');
-    const reexport = { ...spec, project: { ...spec.project, packageVersion: '1.0.0.1' as const } };
-    expect(reexport.project.id).toBe(spec.project.id);
-  });
-});

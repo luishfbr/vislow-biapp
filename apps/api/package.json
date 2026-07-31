@@ -5,10 +5,13 @@
   "type": "module",
   "description": "API de build: recebe a arvore, gera o projeto pbiviz, compila e devolve o .pbiviz",
   "scripts": {
-    "// dev": "Compila e roda. Sem --experimental-strip-types: ele nao emite os metadados de decorator que a injecao do NestJS le em runtime.",
-    "dev": "tsc -p tsconfig.build.json && node dist/main.js",
-    "build:app": "tsc -p tsconfig.build.json",
-    "start": "node dist/main.js"
+    "// dev": "Compila e roda em watch. Sem --experimental-strip-types: ele nao emite os metadados de decorator que a injecao do NestJS le em runtime. O `-k` do concurrently e o que mata o `tsc` junto no Ctrl-C — sem ele sobra processo orfao fora de TTY.",
+    "dev": "concurrently -k -n tsc,api -c blue,green \"tsc -p tsconfig.build.json --watch --preserveWatchOutput\" \"node --watch dist/main.js\"",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test:build": "vitest run --config ../../vitest.build.config.ts",
+    "start": "node dist/main.js",
+    "clean": "rm -rf dist .turbo"
   },
   "dependencies": {
     "@nestjs/common": "11.1.6",
@@ -26,6 +29,7 @@
     "@nestjs/testing": "11.1.6",
     "@types/express": "5.0.5",
     "@types/supertest": "6.0.3",
+    "concurrently": "9.2.1",
     "supertest": "7.1.4"
   }
 }

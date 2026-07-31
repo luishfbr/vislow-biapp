@@ -114,7 +114,13 @@ Cada pacote tem **dois** tsconfig, e a distinção importa:
 | `tsconfig.json` | Editor e lint. Inclui os testes. `noEmit`. |
 | `tsconfig.build.json` | Emissão. `composite: true`, exclui testes, alvo das *project references*. |
 
-`tsc -b` na raiz constrói na ordem correta. `pnpm typecheck` é exatamente isso.
+**Quem ordena a compilação é o Turborepo, não o `tsc -b`.** Cada pacote tem um script `build`
+(`tsc -p tsconfig.build.json`), e a tarefa `build` do `turbo.json` declara `dependsOn: ["^build"]` — a ordem sai
+do grafo de dependências do `package.json`. As `references` continuam nos `tsconfig.build.json` para o editor;
+para o `tsc -p` elas ficam inertes, porque os imports são *bare specifiers* que o node resolve pelo campo
+`exports` direto para o `.d.ts` já emitido.
+
+`pnpm typecheck` roda o `tsconfig.json` (o de editor, com os testes) de cada pacote, também ordenado pelo turbo.
 
 ---
 
@@ -235,8 +241,13 @@ profundidade.
 | Manual | Power BI Desktop + Service | [Matriz MT-01…MT-14](doc-mvp-lowcode-pbi.md) |
 
 **O teste de aceite é o mais importante do projeto.** É ele que prova que o artefato entregue ao usuário é
-válido — e ele é o único que enxerga o que o webpack fez com o bundle. Nunca deve ser pulado nem marcado como
-`skip`; no CI, `VISLOW_REQUIRE_BUILD=1` transforma a ausência do template preparado em falha.
+válido — e ele é o único que enxerga o que o webpack fez com o bundle.
+
+**Ele não tem como se pular.** O sufixo `.e2e.test.ts` é convenção: tira o arquivo da suíte rápida
+(`vitest.config.ts`) e o põe na do gate (`vitest.build.config.ts`), cuja tarefa no `turbo.json` declara
+`stage:vendor` como dependência. Se o gate roda, o template está preparado; se não estiver, o arquivo lança no
+carregamento em vez de avisar e passar verde. A tarefa também é `cache: false` — ela executa `npm ci` e
+`pbiviz` de verdade, e um acerto de cache aqui seria a volta do "passou sem ter rodado".
 
 ### Regras
 
@@ -257,7 +268,8 @@ válido — e ele é o único que enxerga o que o webpack fez com o bundle. Nunc
 3. **Depois o `visual-kit`**: classe mapeada e componente. Nunca o inverso — o schema é a fonte da verdade.
 4. **Depois os hosts**: editor, codegen e template consomem, não redefinem.
 5. **Teste em cada camada** antes de avançar para a próxima.
-6. **Rode `pnpm verify`** (lint + typecheck + testes) antes de abrir PR.
+6. **Rode `pnpm verify`** (build + typecheck + lint + suíte rápida) antes de abrir PR. Se tocou no codegen, no
+   template ou nos nós do kit, rode `pnpm check` — é o `verify` mais o gate de aceite.
 7. **Se a feature toca o pacote `.pbiviz`, teste no Power BI Desktop de verdade.** O CI não substitui isso.
 
 ### Quando fizer um spike
@@ -287,7 +299,7 @@ Faça sempre que a decisão depender do comportamento real de uma ferramenta ext
 
 Uma feature só está pronta quando **todos** os itens valem:
 
-- [ ] `pnpm verify` passa (lint, typecheck, testes).
+- [ ] `pnpm verify` passa (build, typecheck, lint, suíte rápida).
 - [ ] Testes cobrem o caminho feliz **e** os modos de falha relevantes.
 - [ ] Nenhuma invariante da [seção 5](#5-invariantes-do-domínio) foi contornada.
 - [ ] Se toca configuração: schema, tipos, defaults e mapa de classes atualizados **juntos**.

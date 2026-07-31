@@ -9,17 +9,22 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
+    "// comandos": "Cada um faz uma coisa POR INTEIRO. A ordem (build antes de lint pelos .d.ts, build antes de stage:vendor, stage:vendor antes do gate) vive no turbo.json, e vale igual aqui e no CI.",
+    "dev": "turbo run dev",
+    "build": "turbo run build stage:vendor",
+    "verify": "turbo run build typecheck lint test",
+    "check": "turbo run build typecheck lint test test:build",
+
+    "typecheck": "turbo run typecheck",
+    "test:build": "turbo run test:build",
+    "stage:vendor": "turbo run stage:vendor",
+    "dev:api": "turbo run dev --filter @vislow/api",
+    "clean": "turbo run clean && rm -rf .turbo",
+
+    "// tarefas de raiz": "Implementacoes de `//#lint` e `//#test` — o turbo as chama por este nome exato, entao elas nao podem ser wrappers do proprio turbo. Use `pnpm verify`, que as roda na ordem certa.",
     "lint": "eslint .",
-    "typecheck": "tsc -b && tsc -p apps/web/tsconfig.json && tsc -p apps/api/tsconfig.json",
     "test": "vitest run",
-    "test:watch": "vitest",
-    "test:build": "vitest run compiledVisual",
-    "stage:vendor": "pnpm --filter @vislow/visual-template stage:vendor",
-    "dev:api": "pnpm --filter @vislow/api dev",
-    "build": "tsc -b && pnpm -r build:css",
-    "verify": "pnpm typecheck && pnpm lint && pnpm test",
-    "clean": "tsc -b --clean && rm -rf packages/*/dist",
-    "dev": "pnpm --filter @vislow/web dev"
+    "test:watch": "vitest"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
@@ -29,6 +34,7 @@
     "eslint": "10.8.0",
     "globals": "17.8.0",
     "jsdom": "^30.0.1",
+    "turbo": "2.10.7",
     "typescript": "5.9.3",
     "typescript-eslint": "8.65.0",
     "vitest": "4.1.10"

@@ -5,8 +5,10 @@
   "description": "Editor de composicao: monta a arvore do visual e pede a compilacao a API de build",
   "scripts": {
     "dev": "next dev",
-    "build:app": "next build",
-    "start": "next start"
+    "build": "next build",
+    "typecheck": "tsc -p tsconfig.json",
+    "start": "next start",
+    "clean": "rm -rf .next out tsconfig.tsbuildinfo .turbo"
   },
   "dependencies": {
     "@vislow/build-contract": "workspace:*",

@@ -1,0 +1,189 @@
+{
+  "$schema": "https://turborepo.com/schema.json",
+
+  // O gate roda `npm ci` e `npx pbiviz package` num diretorio temporario. Esses
+  // subprocessos leem variaveis que nao ha como enumerar aqui (config do npm,
+  // proxy, HOME). `loose` reproduz o ambiente de hoje; apertar isso e um PR
+  // proprio, com o gate provando que nada quebrou.
+  "envMode": "loose",
+
+  // Mudou aqui, invalida tudo. `pnpm-lock.yaml` e o `package.json` da raiz ja
+  // entram no hash global por padrao.
+  "globalDependencies": ["tsconfig.base.json", "tsconfig.json"],
+
+  "tasks": {
+    // ------------------------------------------------------------------ build
+    // Um `tsc -p tsconfig.build.json` por pacote; quem ordena e o turbo, pelo
+    // grafo de dependencias do pnpm. As `references` continuam nos tsconfig
+    // para o editor e ficam inertes aqui: os imports sao bare specifiers, que o
+    // node resolve pelo `exports` direto para o `.d.ts` emitido.
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "package.json",
+        "tsconfig.json",
+        "tsconfig.build.json",
+        "src/**",
+        "!src/**/*.test.ts",
+        "!src/**/*.test.tsx",
+        "scripts/**"
+      ],
+      // `dist/.tsbuildinfo` listado a parte de proposito. O estado perigoso e
+      // "tsbuildinfo restaurado, outputs ausentes": o tsc se acha atualizado,
+      // nao emite nada, e a falha so aparece tres tarefas depois. Caminho
+      // literal sempre casa; glob com dotfile nao se confia sem prova.
+      "outputs": ["dist/**", "dist/.tsbuildinfo"]
+    },
+
+    // Entrada com escopo SUBSTITUI a generica no turbo 2 — nao herda `dependsOn`
+    // nem `inputs`. Por isso cada uma abaixo esta escrita por inteiro.
+    "@vislow/web#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "package.json",
+        "tsconfig.json",
+        "next.config.ts",
+        "postcss.config.mjs",
+        "next-env.d.ts",
+        "src/**",
+        "public/**"
+      ],
+      // `output: 'export'` escreve os dois. `.next/cache` e cache do proprio
+      // Next: cachear cache dobra o artefato sem ganho nenhum.
+      "outputs": [".next/**", "!.next/cache/**", "out/**"]
+    },
+
+    "@vislow/api#build": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "package.json",
+        "tsconfig.json",
+        "tsconfig.build.json",
+        "src/**",
+        "!src/**/*.test.ts"
+      ],
+      "outputs": ["dist/**"]
+    },
+
+    // ----------------------------------------------------------- stage:vendor
+    // Copia `visual-kit` e `config-schema` compilados para dentro do template.
+    // O `^build` funciona porque o `package.json` do visual-template declara os
+    // dois em devDependencies — a aresta e real, nao um `dependsOn` inventado.
+    //
+    // `template/**` entra nos inputs mesmo o script nao lendo o diretorio. E
+    // deliberado: e por aqui que o hash do gate enxerga uma mudanca no scaffold
+    // ou no package-lock do template. Sem isso, editar o template deixaria o
+    // gate com cache quente e verde sem ter rodado.
+    "@vislow/visual-template#stage:vendor": {
+      "dependsOn": ["^build"],
+      "inputs": ["package.json", "scripts/**", "template/**"],
+      "outputs": ["vendor/**"]
+    },
+
+    // -------------------------------------------------------------- typecheck
+    // `tsc -p tsconfig.json` (noEmit, INCLUI os testes). Le os `.d.ts` dos
+    // pacotes dependentes pelo campo `exports`, entao precisa de `^build`.
+    "typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": ["package.json", "tsconfig.json", "tsconfig.build.json", "src/**"],
+      "outputs": []
+    },
+
+    "@vislow/web#typecheck": {
+      "dependsOn": ["^build"],
+      "inputs": [
+        "package.json",
+        "tsconfig.json",
+        "next.config.ts",
+        "next-env.d.ts",
+        "src/**",
+        "*.ts"
+      ],
+      // `incremental: true` no tsconfig do editor. Cachear junto evita um
+      // tsbuildinfo orfao apontando para outro estado depois de um cache hit.
+      "outputs": ["tsconfig.tsbuildinfo"]
+    },
+
+    // ------------------------------------------------------------- test:build
+    // O GATE DE ACEITE (ADR-08). Vive em `@vislow/api` para que o conjunto de
+    // inputs padrao pegue `apps/api/src/**` sozinho.
+    //   `^build`      -> codegen, component-registry, config-schema, template
+    //   stage:vendor  -> visual-kit compilado e o CSS, copiados para vendor/
+    // `cache: false` porque ele executa `npm ci` e `pbiviz` de verdade: um
+    // acerto de cache aqui seria a volta do "passou sem ter rodado".
+    "@vislow/api#test:build": {
+      "dependsOn": ["^build", "@vislow/visual-template#stage:vendor"],
+      "cache": false,
+      "outputs": []
+    },
+
+    // ------------------------------------------------------- tarefas de raiz
+    // LINT e TEST ficam na raiz porque ha UM `eslint.config.mjs` e UM
+    // `vitest.config.ts` para o repo inteiro. Por pacote seriam 8 processos do
+    // ESLint construindo cada um seu programa do TypeScript via `projectService`
+    // — o custo dominante — e 8 copias do mapa de alias do vitest, que e onde
+    // mora a defesa do achado 39.
+    //
+    // Tarefa de raiz nao tem `^`: as dependencias sao explicitas. Os seis
+    // pacotes estao listados mesmo os folha ja cobrindo os outros por
+    // transitividade, para a lista nao quebrar quando entrar pacote novo sem
+    // dependente.
+    "//#lint": {
+      "dependsOn": [
+        "@vislow/config-schema#build",
+        "@vislow/build-contract#build",
+        "@vislow/component-registry#build",
+        "@vislow/codegen#build",
+        "@vislow/visual-kit#build",
+        "@vislow/visual-template#build"
+      ],
+      "inputs": [
+        "eslint.config.mjs",
+        "*.config.{mjs,ts}",
+        "packages/*/tsconfig*.json",
+        "apps/*/tsconfig*.json",
+        "packages/*/src/**",
+        "packages/*/test/**",
+        "apps/*/src/**"
+      ],
+      "outputs": []
+    },
+
+    // O unico `build` que a suite rapida precisa. `pipeline.test.ts` importa
+    // `pipeline.ts`, que importa `@vislow/visual-template` — o unico `@vislow/*`
+    // que o mapa de alias NAO reescreve para `src/`, porque ele exporta caminhos
+    // resolvidos a partir da posicao do proprio modulo.
+    "//#test": {
+      "dependsOn": ["@vislow/visual-template#build"],
+      "inputs": [
+        "vitest.config.ts",
+        "vitest.shared.ts",
+        "packages/*/src/**",
+        "packages/*/test/**",
+        "apps/*/src/**"
+      ],
+      // Sem outputs: `vitest run` sem `--coverage` nao escreve arquivo nenhum.
+      // O cache aqui guarda o VEREDITO — passou para este conjunto de inputs.
+      "outputs": []
+    },
+
+    // -------------------------------------------------------------------- dev
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
+
+    // A API precisa do template preparado para servir um build, e do proprio
+    // `dist/main.js` existindo antes do `node --watch` subir. `"build"` sem
+    // prefixo = a tarefa `build` DESTE pacote.
+    "@vislow/api#dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build", "build", "@vislow/visual-template#stage:vendor"]
+    },
+
+    // ------------------------------------------------------------------ clean
+    "clean": { "cache": false }
+  }
+}

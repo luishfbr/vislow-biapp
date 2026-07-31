@@ -10,12 +10,21 @@ Plataforma low-code que gera visuais customizados do Power BI (`.pbiviz`) sem qu
 
 ## Comandos
 
+**O monorepo roda sobre Turborepo.** A ordem de build vive no `turbo.json` e vale igual aqui e no CI — não há
+mais sequência a decorar. Cada comando faz uma coisa por inteiro:
+
 ```bash
-pnpm verify      # lint + typecheck + testes — rode antes de qualquer PR
-pnpm test        # vitest
-pnpm typecheck   # tsc -b (project references, ordem topologica)
-pnpm build       # tsc -b + CSS do Tailwind
+pnpm dev         # sobe TUDO: compila o que falta, prepara o template, API + editor com watch
+pnpm build       # pacotes + apps + stage:vendor
+pnpm verify      # build + typecheck + lint + suite rapida — rode antes de qualquer PR
+pnpm check       # o verify MAIS o gate de aceite (compila um .pbiviz de verdade)
+pnpm clean       # apaga dist/, vendor/, .next/ e o cache do turbo
 ```
+
+O turbo cacheia: um `pnpm verify` sem mudanças volta em milissegundos (`>>> FULL TURBO`).
+
+Os scripts `lint` e `test` da raiz são as **implementações** que o turbo invoca (`//#lint` e `//#test`) — chamá-las
+direto pula a ordenação, e o lint com informação de tipos precisa dos `.d.ts` que o build emite. Use `pnpm verify`.
 
 ## Armadilhas que já custaram tempo
 
@@ -75,8 +84,9 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 - **A inspeção do artefato é portão, não teste** (ADR-11). O `pbiviz` já reportou sucesso produzindo pacote
   quebrado três vezes. Nada sai do worker sem passar por `inspectPbiviz`.
 - **`compiledVisual.e2e.test.ts` é o gate de aceite** — e o único teste que executa o artefato. Se você mexer no
-  codegen, no template ou nos nós do kit, é ele que pega o estrago. Ele exige o template preparado
-  (`pnpm build && pnpm stage:vendor`).
+  codegen, no template ou nos nós do kit, é ele que pega o estrago. Rode `pnpm check`: o sufixo `.e2e.test.ts`
+  o tira da suíte rápida, e a tarefa `test:build` do turbo prepara o template antes. Ele **não tem como se
+  ignorar** — sem template, lança no carregamento.
 
 ### Armadilhas do editor de composição (Sprint 5)
 
@@ -128,6 +138,30 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
   `react-dom` resolvível ali, o ESLint com tipos reprova o arquivo inteiro — e a "solução" óbvia é justamente a
   dependência proibida pelo achado 39.
 
+### Armadilhas do Turborepo
+
+- **Entrada `pacote#tarefa` SUBSTITUI a genérica** — não herda `dependsOn` nem `inputs`. Cada uma no
+  `turbo.json` está escrita por inteiro por isso. Esquecer o `^build` numa delas é ordenação quebrada em
+  silêncio.
+- **Tarefa de raiz (`//#lint`, `//#test`) não tem `^`** e exige um script da raiz com o nome **exato**. Por isso
+  `pnpm lint` e `pnpm test` são as implementações cruas, e não wrappers do turbo — o ponto de entrada é
+  `pnpm verify`.
+- **`build` e `build:css` do `visual-kit` são um passo só**, de propósito: escrevem no mesmo `dist/`, e duas
+  tarefas com `outputs` sobrepostos produzem cache parcial. Os inputs também são os mesmos (`src/**`), então
+  separar não granularia nada.
+- **`dist/.tsbuildinfo` está listado à parte do `dist/**` nos `outputs`.** O estado perigoso é "tsbuildinfo
+  restaurado, outputs ausentes": o `tsc` se acha atualizado, não emite nada, e a falha só aparece três tarefas
+  depois como module-not-found. Caminho literal sempre casa; glob com dotfile não se confia sem prova.
+- **`test:build` é `cache: false`.** Ele executa `npm ci` e `pbiviz` de verdade, contra estado que o hash não
+  captura — um acerto de cache seria a volta do "passou sem ter rodado".
+- **`@vislow/visual-template` declara `visual-kit` e `config-schema` em `devDependencies` sem importar
+  nenhum dos dois.** Não remova por parecerem não usados: o `stage-vendor.mjs` lê o `dist/` das duas, e é essa
+  aresta que faz o `^build` ordenar. Ficam em `devDependencies` porque o que chega ao visual é a cópia em
+  `vendor/`, nunca esse `node_modules` — achado 39.
+- **A guarda do CSS confere o CSS de saída, não o `tokens.ts`.** Uma classe pode ter segunda origem no fonte:
+  `pbi:p-4` também aparece literal em `states.tsx`, então quebrar só o mapa de tokens não a remove do bundle.
+  Ao escolher classe para a lista de `check-css.mjs`, prefira as que só o `tokens.ts` produz.
+
 ## Estado
 
 **O pivô da ADR-08 está fechado.** Desde 2026-07-30 o ciclo completo funciona no Power BI Desktop: o usuário
@@ -170,6 +204,21 @@ basta, e o `visual-kit` ficou sem hooks como defesa em profundidade.
   base"; `PbivizBuildError` virou `PbivizInspectionError`. Nenhum comportamento do produto mudou; o gate de
   aceite ficou verde com as mesmas 16 assertivas e o pacote em **221,2 KB** / `content.js` **751,6 KB**.
 
+- **Turborepo (2026-07-31)** — a ordem de build deixou de viver em três lugares que não conversavam (o solution
+  file do `tsc`, a sequência de passos do CI e a memória de quem roda os comandos) e passou a viver no
+  `turbo.json`. Cada pacote ganhou `build`/`typecheck`/`clean`; o `tsc -b` da raiz saiu. Quatro comandos de topo
+  fazem cada coisa por inteiro: `pnpm dev`, `pnpm build`, `pnpm verify`, `pnpm check`.
+  Ganhos medidos: `pnpm verify` de 12,4 s para **18 ms** em cache quente (`FULL TURBO`); a suíte rápida de
+  16,3 s para **1,71 s**, porque o gate de aceite saiu dela. **O gate deixou de poder se ignorar** — o skip
+  silencioso por template ausente virou falha no carregamento, e `VISLOW_REQUIRE_BUILD` deixou de existir.
+  A guarda de CSS do ADR-02 saiu do bash inline do CI e virou `visual-kit/scripts/check-css.mjs`, passo do
+  `build` — agora vale local também. O CI caiu de oito passos para dois, e os dois passos mortos que a faxina
+  tinha deixado (`@vislow/runtime build:runtime` e `test:packaging`) saíram.
+  Novos: `turbo.json`, `vitest.shared.ts`, `vitest.build.config.ts`,
+  `packages/visual-kit/scripts/check-css.mjs`, `packages/codegen/src/projectIdentity.test.ts`.
+  **Nenhum comportamento do produto mudou:** o gate passou com as mesmas 14 assertivas do artefato (mais as 2 de
+  identidade, que voltaram para a suíte rápida) — 230 testes no total, o mesmo baseline.
+
 - **Próximo: Fase 4** — KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E
   Playwright do editor.
 
@@ -179,15 +228,15 @@ a spec vira código, o `pbiviz` compila e o portão inspeciona. Se você encontr
 e 9), é resíduo.
 
 ```bash
-# Numa árvore limpa, nesta ordem:
-pnpm build && pnpm stage:vendor  # compila os pacotes, o CSS e prepara o template do worker
-pnpm dev:api                     # API de build em http://localhost:3001
-pnpm dev                         # editor em http://localhost:3000
-
-pnpm verify                      # typecheck + lint + testes
-pnpm test:build                  # gate de aceite: spec -> .pbiviz compilado -> render em jsdom
+# De uma árvore limpa, um comando. O turbo compila o que falta, prepara o
+# template do worker e sobe os dois — API em :3001, editor em :3000.
+pnpm dev
 ```
 
-**O editor precisa da API para exportar.** O empacotamento no browser acabou: `pnpm dev:api` tem de estar no
-ar, com o template preparado (`pnpm build && pnpm stage:vendor`). A URL da API sai de
-`NEXT_PUBLIC_VISLOW_API_URL`, com `http://localhost:3001` como padrão.
+**O editor precisa da API para exportar** — o empacotamento no browser acabou. Isso não é mais um passo manual:
+`@vislow/api#dev` declara `stage:vendor` e o build dos pacotes como dependências, então `pnpm dev` não consegue
+subir o editor sem a API pronta atrás dele. A URL da API sai de `NEXT_PUBLIC_VISLOW_API_URL`, com
+`http://localhost:3001` como padrão.
+
+Editar um pacote **não** faz hot reload: só os apps estão em watch. Depois de mexer em `packages/`, rode
+`pnpm build` (ou reinicie o `pnpm dev`).
