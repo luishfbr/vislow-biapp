@@ -1,5 +1,5 @@
 /**
- * Catalogo de tokens de design (secao 7.2 do doc de MVP).
+ * Catalogo de tokens de design (docs/build-visual.md).
  *
  * REGRA CENTRAL (ADR-02 / RN-05): estes enums sao FECHADOS. Todo valor aqui tem
  * uma classe correspondente escrita literalmente no mapa do @vislow/visual-kit.

@@ -1,7 +1,7 @@
 import type { PackageVersion } from './types.js';
 
 /**
- * Geracao da identidade do visual (secao 8.4 do doc de MVP).
+ * Geracao da identidade do visual (docs/build-visual.md).
  *
  * CORRIGIDO PELO SPIKE: o GUID nao e apenas metadado — e o nome de uma variavel
  * JavaScript no bundle (`var vislowSpike629BE43A...;(()=>{`). Precisa portanto

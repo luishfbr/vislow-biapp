@@ -9,7 +9,7 @@ import type { VisualConfig } from './types.js';
 
 const ID_RE = new RegExp(PROJECT_ID_PATTERN);
 
-describe('T-01 identidade (secao 8.4)', () => {
+describe('T-01 identidade do visual', () => {
   it('remove diacriticos e caracteres invalidos', () => {
     expect(slugify('Vendas por Região "2026" 🚀')).toBe('VendasporRegiao2026');
   });
