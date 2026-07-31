@@ -17,9 +17,8 @@ import { SpecPreview } from './SpecPreview';
 /**
  * O preview RENDERIZA — nao so compila.
  *
- * E o analogo, do lado do editor, do que `renderRealBundle` e
- * `compiledVisual.e2e` fazem com o artefato: montar de verdade e conferir que
- * saiu dado, e nao card de erro. Um preview que monta em branco e a falha que
+ * E o analogo, do lado do editor, do que o `compiledVisual.e2e` faz com o
+ * artefato: montar de verdade e conferir que saiu dado, e nao card de erro. Um preview que monta em branco e a falha que
  * mais custou tempo neste projeto, e ela nunca aparece em typecheck.
  */
 

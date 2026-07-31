@@ -131,6 +131,15 @@ M-01 e M-02 são as métricas de decisão. M-03 é critério de qualidade não n
 
 ## 3. Arquitetura
 
+> ⚠️ **3.1 a 3.3 descrevem a arquitetura ANTERIOR ao pivô.** A
+> [ADR-08](#35-decisões-de-arquitetura-adr) reverteu a ADR-01 e a ADR-05: não há mais Runtime Core nem patch no
+> browser. Hoje o editor **compõe uma árvore livre**, a API compila um projeto `pbiviz` por usuário e o
+> `.pbiviz` sai da CLI oficial a cada export. O limite que 3.1 chamava de "preço honesto" — o usuário escolher
+> entre tipos prontos — **deixou de existir**, e era a razão do pivô. O código que estas seções descrevem foi
+> removido na [faxina de 2026-07-31](#faxina--aposentadoria-do-caminho-antigo--concluída-em-2026-07-31); o fluxo
+> atual está nos [Sprints 4 a 6](#sprint-4--api-de-build--concluído-no-código-em-2026-07-30). Ficam como
+> registro de uma decisão que foi tomada, validada e depois revertida por um motivo melhor.
+
 ### 3.1 O que "build" significa neste projeto
 
 Este é o ponto mais importante do documento e a origem da maior confusão possível sobre o produto.
@@ -242,6 +251,8 @@ Todo o desenho decorre destas restrições, verificadas na documentação da Mic
 | **ADR-13** | O **nome técnico de um papel é estável**: nasce do rótulo na criação e nunca muda. O usuário edita apenas o `displayName`. | O `name` vai para o `capabilities.json` e amarra toda referência da árvore. Se ele mudasse a cada renomeio, cada edição de rótulo teria de reescrever N nós em cascata — e uma reescrita que falhasse pela metade produziria um visual pedindo uma coluna que nenhum nó lê. Mesma lógica do `project.id` (RN-01): identidade se cria uma vez. | Renomear em cascata (falha parcial silenciosa); expor o `name` como campo editável (o usuário quebra o próprio visual sem entender por quê). |
 | **ADR-14** | O **preview não tem seleção por clique**. A seleção vive no painel de árvore. | Envolver cada nó do preview num elemento clicável insere um `div` na cadeia de flex que os gráficos usam para medir altura — o `ResponsiveContainer` passaria a medir outra coisa e o preview deixaria de valer como referência do resultado final, que é justamente o ADR-04. Na árvore a seleção não custa nada. | Wrapper clicável (quebra o WYSIWYG por dentro, sem sintoma visível); `refs` + overlay posicionado (complexidade alta para ganho pequeno). |
 | **ADR-15** | A união de nós no schema é despachada com **`if`/`then` por `kind`**, não com `oneOf`. | Com `oneOf` o Ajv avalia as sete variantes e reporta o erro de todas: um `barChart` sem medida ligada acusava também "falta `direction`" e "falta `gap`", que são campos de container. Erro de outro tipo de nó é pior que erro nenhum — manda o usuário procurar um controle que a tela dele nem tem. Com `if`/`then`, o `if` que não casa não produz erro. | `oneOf` (ruído inutilizável no painel); `discriminator` do Ajv (extensão fora do dialeto 2020-12 padrão). |
+| **ADR-16** | Os **serviços do host viajam dentro do `DataFrame`**, num objeto `FrameHost`, e não como prop de cada nó. O alto contraste chega ao HTML por **variável CSS com fallback** (`var(--vislow-hc-ink, #1e293b)`) definida no elemento raiz; o SVG dos gráficos lê a paleta do quadro. | Seleção, tooltip e alto contraste não são configuração do usuário: dar-lhes um campo em cada descritor criaria seis propriedades por nó que ninguém edita, e o codegen teria de emitir seis atributos por elemento. O quadro já atravessa a árvore inteira. A variável CSS resolve o que o quadro não alcança — `Container` e `TextNode` não consomem dados e mesmo assim precisam obedecer ao alto contraste — sem contexto do React e **sem hook** ([achado 39](#a7--achados-da-fase-3--export-2026-07-30)). A exceção do SVG não é escolha: `var()` **não é substituído em atributo de apresentação** — `<rect fill="var(--x, red)">` não pinta em navegador nenhum, e todo gráfico tem campo de papel, então sempre tem o quadro. | Prop por capacidade em cada descritor (polui o registro com campos que o usuário nunca vê); React Context (o consumo exige `useContext`, proibido no `visual-kit`); variável CSS também no SVG (não funciona, e falharia em silêncio). |
+| **ADR-17** | **A ordem de build é declarada no `turbo.json`, não reconstruída em cada lugar que a executa.** Um script `build` por pacote (`tsc -p tsconfig.build.json`) ordenado por `dependsOn: ["^build"]` sobre o grafo do `package.json`; o `tsc -b` da raiz sai. Consequência direta: um teste que exige artefato compilado (`*.e2e.test.ts`) **não tem mais como se ignorar** — a tarefa declara `stage:vendor` como dependência, então ou o template está pronto ou o teste lança. | A ordem vivia em três lugares que não conversavam: o solution file do `tsc`, a sequência de passos do CI e a memória de quem roda os comandos — e o CI já tinha divergido, com dois passos apontando para pacotes removidos. Pior, `pnpm test` incluía o gate de aceite, que se auto-pulava sem template: o mesmo comando levava 3 s ou 1 min e passava verde tendo rodado o gate ou não. Declarando uma vez, a mesma ordem vale na máquina e no CI, o CI cai de oito passos para dois, e o "passou sem ter rodado" deixa de ser possível. O cache é consequência, não motivo. | Manter o `tsc -b` da raiz como tarefa única (cache tudo-ou-nada: um comentário em qualquer pacote recompila os seis); Nx (peso de configuração desproporcional para 8 workspaces); scripts em cascata com `pnpm -r` (é o que já havia — ordena o build, mas não sabe nada de lint, teste ou `stage:vendor`). |
 
 ---
 
@@ -589,6 +600,15 @@ Um `.pbiviz` é um ZIP com **apenas três entradas**:
 
 ### 8.2 Contrato de Placeholder
 
+> ⛔ **HISTÓRICO — código removido em 2026-07-31.** Placeholder e reescrita de identidade existiam porque o
+> export do browser tinha de transformar UM pacote pré-compilado no visual de cada usuário. A
+> [ADR-08](#35-decisões-de-arquitetura-adr) trocou isso por compilação real: a identidade nasce certa e a
+> escolha do usuário vira **código**, não payload. `buildPbiviz`, `CONFIG_PLACEHOLDER` e `packages/runtime/`
+> foram aposentados na [faxina](#faxina--aposentadoria-do-caminho-antigo--concluída-em-2026-07-31). O que
+> sobreviveu é `inspectPbiviz`, o portão da [ADR-11](#35-decisões-de-arquitetura-adr). **8.2 e 8.3 ficam como
+> registro do que já foi pago** — os achados 33 a 40 nasceram aqui e explicam armadilhas do formato que
+> continuam valendo.
+
 ✅ **Verificado no spike:** o token sobreviveu à minificação com **exatamente 1 ocorrência**, e o minificador
 preservou a checagem sem dobrar a constante.
 
@@ -748,6 +768,15 @@ funcionar: reexportar reusa o `id` e apenas incrementa `packageVersion`.
 
 ## 9. Especificação do Runtime Core
 
+> ⛔ **HISTÓRICO — `packages/runtime/` removido em 2026-07-31.** O Runtime Core era um visual pré-compilado com
+> papéis de dado FIXOS (`category`, `measure`, `target`) que interpretava um `VisualConfig` embutido. A
+> [ADR-08](#35-decisões-de-arquitetura-adr) o substituiu: hoje o `capabilities.json` é **gerado** a partir dos
+> papéis que o próprio usuário declarou (`packages/codegen`), e o visual é compilado por usuário. As seis
+> capacidades de host descritas aqui (RF-18 a RF-25) foram reimplantadas no caminho novo pelo
+> [Sprint 6](#sprint-6--paridade-de-interatividade--concluído-em-2026-07-31); os requisitos continuam valendo, a
+> implementação descrita nesta seção não. **Fica como registro** — 9.2 (ciclo de vida) e 9.3 (isolamento de CSS)
+> descrevem o comportamento do host, que não mudou.
+
 ### 9.1 `capabilities.json`
 
 ```json
@@ -828,6 +857,11 @@ update(options)
 // build: gera CSS puro, sem PostCSS no webpack do pbiviz
 "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify"
 ```
+
+Desde a [ADR-17](#35-decisões-de-arquitetura-adr) esse passo não se invoca sozinho: o `build` do `visual-kit` é
+`tsc && build:css && check-css.mjs`, um passo só. `tsc` e o Tailwind escrevem no **mesmo** `dist/`, e duas
+tarefas do turbo com `outputs` sobrepostos produzem cache parcial. O `check-css.mjs` no fim é a guarda desta
+seção transformada em portão de build — ver [12.3](#123-teste-de-aceite-do-artefato) e o achado 57.
 
 Três consequências práticas, todas verificadas:
 
@@ -1030,24 +1064,31 @@ Monorepo com pnpm workspaces:
 vislow-biapp/
 ├── packages/
 │   ├── config-schema/        JSON Schema, tipos TS, validador Ajv, defaults,
-│   │                         migrações e buildPbiviz()  (isomórfico)
-│   ├── visual-kit/           componentes React, mapa token→classe, preset Tailwind
-│   └── runtime/              projeto pbiviz  →  dist/base-runtime.pbiviz
+│   │                         migrações; e `packaging/inspectPbiviz` (isomórfico)
+│   ├── build-contract/       contrato HTTP entre o editor e a API de build
+│   ├── component-registry/   catálogo de componentes; schema da árvore derivado dele
+│   ├── visual-kit/           componentes React, mapa token→classe, fonte Tailwind
+│   │                         (`/nodes` = os nós do construtor, fora do barril)
+│   ├── codegen/              spec → fontes de um projeto pbiviz
+│   └── visual-template/      projeto pbiviz base + vendorização dos @vislow/*
 ├── apps/
-│   └── web/                  editor Next.js  →  public/templates/base-runtime.pbiviz
+│   ├── api/                  API de build: spec entra, .pbiviz compilado sai
+│   └── web/                  editor Next.js: compõe a árvore e chama a API
 └── docs/
     └── doc-mvp-lowcode-pbi.md
 ```
 
-Dependências: `runtime` → `visual-kit` → `config-schema`; `web` → todos os três.
+Dependências: `config-schema` ← {`build-contract`, `component-registry`, `visual-kit`} ← `codegen` ←
+{`api`, `web`}. O `config-schema` não importa nada do monorepo.
 
 O `visual-kit` é o coração da garantia de WYSIWYG ([ADR-04](#35-decisões-de-arquitetura-adr)): preview e visual
 final não são "parecidos", são **o mesmo componente**. E como o mapa token → classe usa strings literais
 completas, o Tailwind as encontra em build time — o problema de purge desaparece por construção, não por
 disciplina.
 
-O `base-runtime.pbiviz` é um artefato de build do CI, copiado para `apps/web/public/templates/`. Nunca é
-versionado no Git.
+> **`packages/runtime/` não existe mais.** Era o pacote base pré-compilado que o export do browser reescrevia.
+> A [ADR-08](#35-decisões-de-arquitetura-adr) o substituiu por compilação real por usuário; ele foi aposentado na
+> [faxina de 2026-07-31](#faxina--aposentadoria-do-caminho-antigo--concluída-em-2026-07-31).
 
 ---
 
@@ -1067,36 +1108,39 @@ T-02 é o guardião de [RN-05](#6-regras-de-negócio): um token no schema sem cl
 Fixtures *golden* de `VisualConfig` (mínimo, completo, limites, caracteres especiais) validadas contra o schema
 e renderizadas em snapshot. Um config que renderiza no editor tem de renderizar no runtime.
 
-### 12.3 Testes de Empacotamento
+### 12.3 Teste de Aceite do Artefato
 
-Executam `buildPbiviz` em Node sobre o `base-runtime.pbiviz` recém-construído. São os testes mais importantes do
-projeto — cobrem exatamente o que o usuário quer garantir.
+`apps/api/src/builds/compiledVisual.e2e.test.ts`. É o teste mais importante do projeto — cobre exatamente o que
+o usuário quer garantir: que o `.pbiviz` entregue funciona.
 
-Divididos em duas camadas, porque o pacote real leva ~1 min de `pbiviz package` e `pnpm test` roda antes de
-qualquer build (achado 38):
+Ele faz o ciclo inteiro numa passada: monta uma spec com **todos** os tipos de nó, chama `runBuildPipeline`
+(codegen → `npm ci` → `pbiviz package`), abre o pacote com `inspectPbiviz` e **executa o `content.js`
+minificado dentro de um jsdom**, com o `powerbi` global e um `DataView` falso, exatamente como o Power BI faz.
 
-- **`buildPbiviz.test.ts`** — template sintético (`template.fixture.ts`) que reproduz a estrutura do pacote base.
-  Cobre T-03, T-05, T-07, os caminhos de erro e os casos de borda de identidade. ~300 ms; roda sempre.
-- **`buildPbiviz.real.test.ts`** — o pacote de verdade. Cobre o que só o bundle minificado prova: T-04 (o
-  minificador não duplicou o placeholder), T-06 (nenhum rastro do GUID base) e T-08 (orçamentos de tamanho).
-  Sem o artefato, é ignorado com aviso; no CI, `VISLOW_REQUIRE_TEMPLATE=1` transforma a ausência em falha.
-- **`packages/runtime/test/renderRealBundle.test.ts`** — executa o `content.js` minificado dentro de um jsdom,
-  com o `powerbi` global e um `DataView` falso, exatamente como o Power BI faz. É o **único** teste que verifica
-  o artefato de ponta a ponta e a única verificação executável da [RN-04](#6-regras-de-negócio). Nasceu do
-  achado 39: um bug que só existe no pacote empacotado e que nenhum teste de fonte alcança. Mesmo gate de
-  `VISLOW_REQUIRE_TEMPLATE`.
+Custa ~15 s e exige o template preparado. **Não tem como se ignorar** ([ADR-17](#35-decisões-de-arquitetura-adr)):
+o sufixo `.e2e.test.ts` o tira da suíte rápida (`vitest.config.ts`) e o põe na do gate
+(`vitest.build.config.ts`), cuja tarefa no `turbo.json` declara `stage:vendor` como dependência. Se ele roda, o
+template está preparado; se não estiver, o arquivo lança no carregamento. Rode com `pnpm check`.
 
-> Os testes do runtime vivem em `packages/runtime/test/`, não em `src/`: aquele diretório é compilado pela
-> toolchain do `pbiviz`, cujo `tsconfig.json` lista os arquivos um a um.
+Executar o bundle é o ponto: é a única verificação que enxerga o que o webpack fez. Nasceu daí — herdou do
+`renderRealBundle.test.ts`, o único teste que pegou o achado 39, um bug que só existe no pacote empacotado e que
+nenhum teste de fonte alcança.
 
 | ID | Assertiva | Protege |
 |---|---|---|
-| T-03 | Zip reabre; `resources/{novoGuid}.pbiviz.json` existe; o antigo não; `package.json.resources` aponta para o novo | [8.3](#83-algoritmo-de-export) passo 7 |
-| T-04 | O placeholder aparece **exatamente uma vez** no template e **zero vezes** no pacote gerado | [R-01](#14-riscos-e-mitigações) |
-| T-05 | A config decodificada do pacote gerado é *deep-equal* à config de entrada, incluindo aspas, acentos e emoji | [RF-03](#41-editor), [ADR-07](#35-decisões-de-arquitetura-adr) |
-| T-06 | GUID antigo ausente em `content.js`, no recurso e no `package.json` | [ADR-03](#35-decisões-de-arquitetura-adr), [R-02](#14-riscos-e-mitigações) |
-| T-07 | Dois exports de projetos distintos produzem GUIDs distintos; dois exports do mesmo projeto, o mesmo GUID | [RN-01](#6-regras-de-negócio) |
+| T-03 | Identidade do `package.json` e do recurso coincidem; o recurso declarado é o presente no zip | [ADR-11](#35-decisões-de-arquitetura-adr) |
+| T-04 | O GUID aparece como **variável** no bundle (`var {guid}`), senão o visual não carrega | [RN-06](#6-regras-de-negócio), achado 13 |
+| T-05 | O GUID do pacote é o do projeto, sem reescrita, e o nome exibido é o que o usuário deu — com aspas, acentos e emoji | [RN-01](#6-regras-de-negócio), [ADR-08](#35-decisões-de-arquitetura-adr) |
+| T-06 | O bundle contém as classes `pbi:` — sem elas o visual renderiza sem estilo e o `pbiviz` reporta sucesso igual | [ADR-02](#35-decisões-de-arquitetura-adr) |
+| T-07 | Dois projetos novos nunca compartilham GUID; o mesmo projeto reexportado mantém o seu | [RN-01](#6-regras-de-negócio) |
 | T-08 | Pacote < 2 MB e `content.js` < 1 MB | [RNF-04](#5-requisitos-não-funcionais), [RNF-05](#5-requisitos-não-funcionais) |
+| T-09 | Renderiza dados, estado vazio ou card de erro — nunca tela branca | [RN-04](#6-regras-de-negócio) |
+| T-10 | O que o visual **pede ao host**: seleção com a identidade da linha, tooltip nativo, menu de contexto, alto contraste resolvido e teclado | [RF-18…RF-25](#45-runtime-core) |
+
+> Os IDs T-03…T-08 foram **reaproveitados**, não preservados. Até a faxina de 2026-07-31 eles descreviam a
+> reescrita de identidade dentro de um pacote pré-compilado — um algoritmo que a [ADR-08](#35-decisões-de-arquitetura-adr)
+> tornou desnecessário, porque a identidade agora nasce certa. O que cada ID protege mudou; o que ele garante ao
+> usuário, não.
 
 ### 12.4 Matriz de Teste Manual no Power BI
 
@@ -1338,8 +1382,8 @@ caso do catálogo atual.
 bundle minificado num jsdom — herdeiro direto do `renderRealBundle.test.ts`, o único teste que pegou o
 [achado 39](#a7-achados-da-fase-3--export-2026-07-30). Verifica identidade, orçamentos, CSS no bundle e a
 [RN-04](#6-regras-de-negócio) nos dois lados: com dados renderiza dados (SVG do Recharts e as categorias na
-tela), sem dados renderiza o estado vazio com instrução. No CI, `VISLOW_REQUIRE_BUILD=1` impede que a ausência
-do template passe como "teste ignorado".
+tela), sem dados renderiza o estado vazio com instrução. A ausência do template não passa como "teste ignorado":
+desde a [ADR-17](#35-decisões-de-arquitetura-adr) o gate lança no carregamento em vez de se pular.
 
 **DoD:** ✅ código, testes, CI **e validação manual no Power BI Desktop em 2026-07-30** — o `.pbiviz` gerado
 pela API importa e renderiza com dados reais.
@@ -1386,48 +1430,153 @@ mas não reconfirmadas no caminho compilado.
 
 ---
 
-### Sprint 6 — Paridade de interatividade — ⏳ **PRÓXIMO**
+### Sprint 6 — Paridade de interatividade — ✅ **CONCLUÍDO em 2026-07-31**
 
-Existe porque o pivô deixou seis capacidades para trás
-([achado 53](#a9--achados-do-sprint-5-editor-de-composição-2026-07-30)). Não é escopo novo: as seis foram
-entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual que a API compila hoje desenha
-corretamente, mas **clicar numa barra não filtra o relatório**.
+Existiu porque o pivô deixou seis capacidades para trás
+([achado 53](#a9--achados-do-sprint-5-editor-de-composição-2026-07-30)). Não era escopo novo: as seis foram
+entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual que a API compilava desenhava
+corretamente, mas **clicar numa barra não filtrava o relatório**.
 
-| Capacidade | Referência a portar | Requisito |
+| Capacidade | Onde ficou | Requisito |
 |---|---|---|
-| Cross-filter (`selectionManager`, `createSelectionId`) | `runtime/src/visual.tsx`, `viewModel.ts` | [RF-18](#45-runtime-core) |
-| Tooltip nativo (`tooltipService`) | `runtime/src/visual.tsx` | [RF-19](#45-runtime-core) |
-| Alto contraste | `visual-kit/theme.ts` (a lógica existe; falta o caminho até os nós) | [RF-21](#45-runtime-core) |
-| Navegação por teclado | `visual-kit/BarChart.tsx` (`tabIndex`, `aria-label`) | [RF-23](#45-runtime-core) |
-| Menu de contexto | `runtime/src/visual.tsx:47` | [RF-24](#45-runtime-core) |
-| Aviso de truncamento | `TruncationNotice` + `runtime/src/visual.tsx:195` | [RF-25](#45-runtime-core) |
+| Cross-filter (`selectionManager`, `createSelectionId`) | `visual-template/template/src/interaction.ts` + handlers do Recharts em `visual-kit/src/nodes/charts.tsx` | [RF-18](#45-runtime-core) |
+| Tooltip nativo (`tooltipService`) | `interaction.ts`; o balão do Recharts fica só no preview | [RF-19](#45-runtime-core) |
+| Alto contraste | `visual-kit/src/highContrast.ts` (variável CSS) + paleta no quadro para o SVG | [RF-21](#45-runtime-core) |
+| Navegação por teclado | sobreposição `DataKeys` em `charts.tsx` | [RF-23](#45-runtime-core) |
+| Menu de contexto | `interaction.ts`, no construtor | [RF-24](#45-runtime-core) |
+| Aviso de truncamento | `truncationOf` em `dataFrame.ts` + `TruncationNotice` emitido pelo codegen | [RF-25](#45-runtime-core) |
 
-Os nós novos ([`visual-kit/src/nodes/`](packages/visual-kit/src/nodes/)) não têm **um único** `tabIndex`,
-`aria-label` ou `onKeyDown` — o que a Fase 1 tinha vive em `BarChart.tsx`/`KpiCard.tsx`, que o caminho novo não
-usa. Um visual acessível é requisito de publicação no AppSource, não enfeite.
+**O desenho, e por que ele não é um port simples.** O contrato dos nós tinha mudado: os componentes da Fase 1
+recebiam `DataPoint[]` já resolvido e um `RenderContext` com tema; os nós novos recebem `DataFrame` e props
+literais. Selection id e serviço de tooltip são objetos do host e precisavam chegar aos nós **sem virar prop de
+cada descritor** e **sem introduzir hook no `visual-kit`** (achado 39, verificado por ESLint). A resposta está
+na [ADR-16](#35-decisões-de-arquitetura-adr): os serviços viajam **dentro do quadro**, num `FrameHost`; o alto
+contraste chega ao HTML por **variável CSS** definida no elemento raiz e ao SVG pela paleta no quadro, porque
+`var()` não vale em atributo de apresentação.
 
-**O que torna isto diferente de um port simples:** o contrato dos nós mudou. Os componentes da Fase 1 recebiam
-`DataPoint[]` já resolvido e um `RenderContext` com tema; os nós novos recebem `DataFrame` e props literais
-([`nodes/frame.ts`](packages/visual-kit/src/nodes/frame.ts)). Selection id e serviço de tooltip são objetos do
-host — precisam chegar aos nós sem virar prop de cada descritor e **sem introduzir hook no `visual-kit`**
-(regra do achado 39, verificada por ESLint).
+Três consequências que valem registro:
 
-**Restrição que decide o desenho:** os gráficos agora são Recharts, não SVG nosso. Cross-filter e tooltip
-passam a depender dos handlers do Recharts (`onClick` na série, `content` customizado no `Tooltip`), não de
-elementos que controlamos diretamente.
+- **`packages/visual-template/template/src/interaction.ts` é novo e é estático.** Toda a conversa com o host
+  mora ali, fora do codegen — o fonte gerado apenas instancia a classe e chama `readFrame`. Um visual gerado que
+  trouxesse a implementação da seleção espalharia código idêntico por todo pacote compilado.
+- **O `DataFrame` deixou de ser só dado.** Ele carrega `host` e `truncated`, e por isso entra no fonte gerado
+  mesmo numa árvore só de texto: um visual sem papel nenhum ainda precisa de menu de contexto e alto contraste.
+- **A navegação por teclado é uma sobreposição de `<button>` `sr-only`, não `tabIndex` no SVG.** O que o
+  Recharts desenha é gerado por ele: não há onde pendurar `aria-label` por marca sem reimplementar as formas. A
+  sobreposição é `absolute`, então fica fora da cadeia de flex que o `ResponsiveContainer` mede — a restrição
+  que o [ADR-14](#35-decisões-de-arquitetura-adr) já tinha documentado. As setas andam pela série movendo o
+  **foco do DOM**, que é o que dá navegação por setas sem estado e portanto sem hook.
 
-⚠️ **`packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` não podem ser apagados antes
-deste sprint.** Estão sem chamador desde o Sprint 5, mas são a única implementação das seis capacidades.
+**Onde o mouse e o teclado divergem, e por quê.** Barras e fatias têm área de clique por marca e usam os
+handlers do próprio `<Bar>`/`<Pie>`. Linha e área não têm marca por ponto quando o marcador está desligado, então
+usam o handler do gráfico e leem `activeTooltipIndex`. A diferença vem do Recharts, não do desenho: é o preço de
+ter trocado SVG próprio por biblioteca. Pelo teclado, os cinco tipos se comportam igual.
 
-**DoD:** as seis funcionando num `.pbiviz` compilado pela API e aprovadas no Desktop; gate de aceite estendido
-para cobrir cross-filter (o `compiledVisual.e2e.test.ts` hoje verifica que renderiza dados e a
-[RN-04](#6-regras-de-negócio), não que a seleção propaga).
+**Medido no gate de aceite:** pacote **221,1 KB**, `content.js` **751,3 KB** — os dois abaixo do que o Sprint 4
+mediu, e bem dentro dos orçamentos de 2 MB e 1 MB.
+
+**DoD do código: cumprido.** O `compiledVisual.e2e.test.ts` deixou de perguntar apenas se o visual *desenha* e
+passou a verificar o que ele **pede ao host**: acionar um ponto chama `selectionManager.select` com a identidade
+daquela linha; o foco pede o tooltip nativo com os valores já formatados; o botão direito abre o menu de
+contexto; em alto contraste as variáveis CSS aparecem no elemento raiz e o SVG sai com a cor **resolvida**, sem
+`var(`. Dezesseis assertivas sobre o `.pbiviz` compilado de verdade.
+
+✅ **Aprovado no Power BI Desktop em 2026-07-31.** O gate exercitou as seis contra o artefato real em jsdom, mas
+jsdom não tem motor de layout nem o host de verdade — o gesto de mouse sobre uma barra, o posicionamento do balão
+nativo e o alto contraste do sistema só fechavam no Desktop, e fecharam. O ciclo completo agora entrega um visual
+que o usuário compõe do zero **e que se comporta como visual nativo dentro do relatório**.
+
+---
+
+### Faxina — aposentadoria do caminho antigo — ✅ **CONCLUÍDA em 2026-07-31**
+
+O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) trocou a arquitetura sem apagar a anterior, de propósito: até
+que o caminho novo estivesse **aprovado no Desktop**, o antigo era a evidência de que o produto já tinha
+funcionado. Com o Sprint 6 aprovado, essa razão acabou — e o que sobra é um segundo caminho que ninguém executa,
+que aparece em toda busca e que o CI mantém verde de graça.
+
+| Removido | Por que perdeu o chamador |
+|---|---|
+| `packages/runtime/` inteiro (fonte, projeto pbiviz, 5 scripts, `renderRealBundle.test.ts`) | O visual não é mais pré-compilado: `@vislow/codegen` + `@vislow/visual-template` geram um projeto por usuário |
+| `buildPbiviz`, `toPbivizBlob`, `CONFIG_PLACEHOLDER`, `PbivizBuildError`, `template.fixture.ts` e os testes T-03…T-08 originais | Desde o Sprint 5 o editor não empacota no browser — quem empacota é a API, chamando o `pbiviz` de verdade |
+| `packaging/base64.ts` (`toBase64Utf8`/`fromBase64Utf8`, [ADR-07](#35-decisões-de-arquitetura-adr)) | Existia para transportar a config como payload no bundle. Não há mais payload: a spec vira código |
+| `visual-kit`: `BarChart`, `KpiCard`, `Frame`, `mock.ts`, `resolveColors`/`ResolvedColors`, `DataPoint`, `KpiDatum`, `KpiComparison`, `RenderContext` | Eram os componentes de papéis fixos e o contrato que os alimentava. Os nós de `visual-kit/nodes` os substituíram, com `DataFrame` e `FrameHost` |
+| `apps/web/public/templates/` | Era onde o `base-runtime.pbiviz` era servido ao browser para reescrita |
+| Scripts `test:packaging` e `stage:template`; bloco do runtime no `eslint.config.mjs`; `tsconfig.check.json` do `typecheck` | Apontavam para o que saiu |
+
+**O que ficou de pé, e por quê:**
+
+- **`inspectPbiviz`** — é o portão da [ADR-11](#35-decisões-de-arquitetura-adr), não um teste. Ficou mais
+  simples: perdeu a extração do payload base64 e o conceito de "pacote base", que só existiam para o caminho
+  antigo. `PbivizBuildError` virou `PbivizInspectionError`, sem código de erro — a única coisa que ele reporta
+  hoje é pacote com estrutura inválida.
+- **A regra de ESLint que proíbe hook no `visual-kit`** ([achado 39](#a7-achados-da-fase-3--export-2026-07-30)).
+  A causa raiz — `resolve.symlinks: false` no webpack do `pbiviz` — é do formato, não do runtime antigo. Hoje a
+  duplicação é evitada pela vendorização por cópia de diretório; a regra é a defesa em profundidade.
+- **`autoInstallPeers: false`** no `pnpm-workspace.yaml`, pelo mesmo motivo.
+- **Seções 8.2, 8.3 e 9** deste documento, marcadas como histórico. Os achados 33 a 40 nasceram ali e descrevem
+  armadilhas do formato `.pbiviz` que continuam valendo para quem gera pacote hoje.
+
+**Verificação:** `pnpm verify` verde (230 testes, 16 arquivos) e o gate de aceite verde com as mesmas 16
+assertivas. Pacote **221,2 KB**, `content.js` **751,6 KB** — inalterados dentro da variação de build, o que
+confirma o que já se esperava: o caminho antigo não entrava no bundle, apenas no repositório. O `pnpm install`
+removeu **274 pacotes** de `node_modules` (a toolchain do `pbiviz` e o webpack que só o runtime usava).
+
+> **Nenhum comportamento do produto mudou nesta faxina.** É remoção de código sem chamador, e é por isso que o
+> gate de aceite — que executa o `.pbiviz` compilado — é a evidência que importa aqui.
+
+---
+
+### Turborepo — a ordem de build vira declaração — ✅ **CONCLUÍDO em 2026-07-31**
+
+A faxina removeu o código sem chamador, mas deixou de pé o problema que a antecedia: **a ordem de build não
+morava em lugar nenhum**. Ela era reconstruída três vezes — no solution file do `tsc`, na sequência de passos do
+`ci.yml` e na memória de quem digita os comandos. As três já tinham divergido: o CI mantinha dois passos
+apontando para `@vislow/runtime` e `test:packaging`, removidos pela faxina, e estava **vermelho na `main`**.
+
+A [ADR-17](#35-decisões-de-arquitetura-adr) troca as três por uma: o `turbo.json`.
+
+| Antes | Depois |
+|---|---|
+| `tsc -b` na raiz + `pnpm -r build:css` | Um `build` por pacote, ordenado por `dependsOn: ["^build"]` |
+| Oito passos no CI, dois deles mortos | Dois passos: `turbo run build typecheck lint test` e `turbo run test:build` |
+| `pnpm build && pnpm stage:vendor && pnpm dev:api && pnpm dev` | `pnpm dev` |
+| Guarda do [ADR-02](#35-decisões-de-arquitetura-adr) em bash inline, só no CI | `visual-kit/scripts/check-css.mjs`, passo do `build` — vale local |
+| `pnpm test` às vezes rodava o gate, às vezes não | `test` (rápida) e `test:build` (gate) são tarefas distintas |
+
+**Os quatro comandos**, cada um completo: `pnpm dev` (sobe tudo, com watch), `pnpm build` (pacotes + apps +
+`stage:vendor`), `pnpm verify` (build + typecheck + lint + suíte rápida), `pnpm check` (o `verify` mais o gate).
+
+**Três dependências que existiam mas não estavam escritas**, e por isso só funcionavam por convenção:
+
+- `stage:vendor` lê `packages/{visual-kit,config-schema}/dist/` — agora declarado em `devDependencies` do
+  `visual-template`. Não reintroduz o [achado 39](#a7-achados-da-fase-3--export-2026-07-30): o que chega ao
+  visual é a cópia em `vendor/`, nunca esse `node_modules`, e com `autoInstallPeers: false` o link não arrasta
+  React. Verificado — `packages/visual-template/node_modules/react` não existe, e o gate passou.
+- O lint com informação de tipos precisa dos `.d.ts` do build. Era comentário no `ci.yml`; virou `dependsOn`.
+- A suíte rápida precisa de `@vislow/visual-template#build` — é o único `@vislow/*` que o mapa de alias do
+  vitest **não** reescreve para `src/`, porque ele exporta caminhos resolvidos a partir do próprio módulo.
+
+**Medido:** `pnpm verify` de 12,4 s para **18 ms** em cache quente (`FULL TURBO`); suíte rápida de 16,3 s para
+**1,71 s** (o gate saiu dela); CI de oito passos para dois. O gate passou com as **mesmas 14 assertivas** do
+artefato — as 2 de identidade (`T-07`) que moravam no mesmo arquivo voltaram para a suíte rápida em
+`packages/codegen/src/projectIdentity.test.ts`, somando os mesmos 230 testes de antes.
+
+Três riscos foram resolvidos por sondagem, não por suposição: o turbo **reconhece** `pnpm@11.12.0` (usa o parser
+`pnpm9`, correto para `lockfileVersion: 9.0`, com `hashOfExternalDependencies` não-vazio); os `inputs` de tarefa
+de raiz **alcançam** os workspaces (`//#test` hasheia 92 arquivos, 88 sob `packages/`/`apps/`); e o cache
+restaura o `dist/.tsbuildinfo` **junto** com os `.js`/`.d.ts` — o estado perigoso seria buildinfo sem outputs, em
+que o `tsc` se acha atualizado e não emite nada.
+
+> **Nenhum comportamento do produto mudou.** O que mudou é o que o repositório **impõe** em vez de pedir que se
+> lembre — e o gate de aceite, que agora não tem como se ignorar, é a evidência de que o artefato continua o
+> mesmo.
 
 ---
 
 ### Fase 4 — KPI Card, Robustez e Matriz Completa
 
-Depois do Sprint 6, porque a matriz manual tem cenários de cross-filter que hoje reprovariam.
+Desbloqueada pelo Sprint 6: a matriz manual tem cenários de cross-filter que antes dele reprovariam.
 
 - [ ] KPI Card com comparação ([RF-16](#45-runtime-core)). **Mudou com o pivô:** não é mais a role fixa
       `target` do `capabilities.json` — vira um campo de papel opcional no descritor do `KpiNode`, que o
@@ -1584,4 +1733,20 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 50 | **O `visual-kit` não declara `react` nem em `devDependencies`** (achado 39), então nenhum teste conseguia importar seus componentes a partir do fonte. | Bloqueava qualquer teste de render do preview — justamente a classe de teste que pegou o achado 39. | Alias de `react`/`react-dom` no `vitest.config.ts`, apontando para a cópia do editor. Resolve só no vitest, **sem tocar no layout de `node_modules`**, que é o que não pode mudar. |
 | 51 | **O `apps/web/tsconfig.json` usa `jsx: "preserve"`** porque quem transforma o JSX é o Next — e o vitest lê esse mesmo tsconfig. | Todo teste `.tsx` do editor falhava no parse com `Unexpected JSX expression`, erro que aponta para o código e não para a configuração. O Vite 8 usa `oxc`: definir `esbuild.jsx` é aceito e **silenciosamente ignorado**, com um aviso fácil de não ler. | `oxc: { jsx: { runtime: 'automatic' } }` no `vitest.config.ts`. |
 | 52 | **Um seletor de zustand que constrói o valor a cada chamada re-renderiza em loop.** `selectIssuesByNode` devolvia um `Map` novo; o zustand v5 compara com `Object.is`. | Trava o editor, e o sintoma (aba congelada) não aponta para o seletor. | As derivações que criam objeto saíram do store para `lib/issues.ts` e são memoizadas no componente. O que fica como seletor devolve **referência vinda do estado**, nunca valor construído — com o motivo comentado no arquivo. |
-| 53 | **O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) deixou seis capacidades para trás.** O caminho novo — `codegen` + `visual-template` + `visual-kit/nodes` — não tem **cross-filter**, **tooltip nativo**, **alto contraste**, **navegação por teclado**, **menu de contexto** nem **aviso de truncamento** (RF-18, 19, 21, 23, 24, 25). Vivem em `packages/runtime/src/visual.tsx` e nos componentes `BarChart`/`KpiCard` do `visual-kit` — nenhum dos dois usado pelo caminho novo. Os nós de `visual-kit/src/nodes/` não têm um único `tabIndex` ou `aria-label`. | Regressão, não escopo futuro: as seis foram entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual compilado hoje desenha certo, então nenhum teste acusa — `compiledVisual.e2e.test.ts` verifica que renderiza dados e a RN-04, não que clicar numa barra filtra o relatório. Descoberto ao planejar a Fase 4, não por falha. | Sprint 6 dedicado à paridade, **antes** do resto da Fase 4: a matriz MT-01…MT-14 tem cenários de cross-filter que hoje reprovariam, e acessibilidade é requisito de publicação no AppSource. Enquanto isso, `packages/runtime` e os componentes antigos do `visual-kit` **não podem ser apagados** — estão sem chamador desde o Sprint 5, mas são a única implementação de referência das seis. Anotado no `CLAUDE.md` junto da lista de aposentadoria, que sem o aviso convidava exatamente a esse apagamento. |
+| 53 | **O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) deixou seis capacidades para trás.** O caminho novo — `codegen` + `visual-template` + `visual-kit/nodes` — não tem **cross-filter**, **tooltip nativo**, **alto contraste**, **navegação por teclado**, **menu de contexto** nem **aviso de truncamento** (RF-18, 19, 21, 23, 24, 25). Vivem em `packages/runtime/src/visual.tsx` e nos componentes `BarChart`/`KpiCard` do `visual-kit` — nenhum dos dois usado pelo caminho novo. Os nós de `visual-kit/src/nodes/` não têm um único `tabIndex` ou `aria-label`. | Regressão, não escopo futuro: as seis foram entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual compilado hoje desenha certo, então nenhum teste acusa — `compiledVisual.e2e.test.ts` verifica que renderiza dados e a RN-04, não que clicar numa barra filtra o relatório. Descoberto ao planejar a Fase 4, não por falha. | **FECHADO no Sprint 6 (2026-07-31).** As seis voltaram, com o desenho da [ADR-16](#35-decisões-de-arquitetura-adr): serviços do host dentro do `DataFrame`, alto contraste por variável CSS. O gate de aceite deixou de perguntar só se o visual desenha e passou a verificar o que ele **pede ao host** — foi essa a lacuna que deixou o achado passar. `packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` **já podem ser aposentados**: a portabilidade existe e foi aprovada no Desktop em 2026-07-31. |
+
+### A10 — Achados do Sprint 6: paridade de interatividade (2026-07-31)
+
+| # | Achado | Impacto | Correção |
+|---|---|---|---|
+| 54 | **No Tailwind v4 o prefixo vem ANTES da variante.** `focus-visible:pbi:ring-2` — escrito na Fase 1, em `visual-kit/src/BarChart.tsx` — não é reconhecido pelo CLI: nenhuma regra é gerada e nenhum aviso é emitido. O correto é `pbi:focus-visible:ring-2`. | O anel de foco do gráfico de barras da Fase 1 **nunca existiu**, e o código parecia acessível. É o mesmo mecanismo do erro de interpolação já documentado ([ADR-02](#35-decisões-de-arquitetura-adr)), numa forma nova: a classe é literal e completa, só está com a ordem errada — a regra "use strings literais" não protege contra isso. Descoberto por sondagem ao escrever a sobreposição de teclado, não por sintoma. | Corrigido em `BarChart.tsx`. A sobreposição nova (`pbi:sr-only`, `pbi:focus:not-sr-only`) foi validada **compilando o CSS e conferindo os seletores gerados** antes de escrever o componente. Regra: classe com variante é verificada no `dist/styles.css`, não no olho. |
+| 55 | **`var()` não é substituído em atributo de apresentação de SVG.** `<rect fill="var(--x, red)">` não pinta em navegador nenhum — a substituição só acontece em propriedade CSS. | Teria quebrado o alto contraste exatamente onde ele mais importa (as marcas de dados), e em silêncio: o atributo fica lá, o retângulo some. Como o Recharts emite `fill`/`stroke` como atributo, a variável CSS não serve para gráfico. | Regra explícita na [ADR-16](#35-decisões-de-arquitetura-adr) e no cabeçalho de `highContrast.ts`: **HTML usa a variável, SVG lê o quadro**. Os gráficos sempre têm o quadro, porque todo descritor de gráfico tem campo de papel. O gate verifica que o SVG compilado sai sem `fill="var(`. |
+| 56 | **Um teste de render do `visual-kit` não pode morar no `visual-kit`.** O pacote não declara `react` nem em `devDependencies` (achado 39), então o ESLint com informação de tipos resolve `react-dom/client` como `error` e reprova o arquivo inteiro — mesmo com o alias do vitest fazendo os testes passarem. | O `pnpm test` passava e o `pnpm lint` reprovava, com doze erros que apontavam para o teste e não para a causa. Tentar calar as regras seria reabrir a porta para alguém "resolver" adicionando `react` ao pacote — que é a dependência proibida. | O teste foi para `apps/web/src/components/kitInteraction.test.tsx`, junto do outro teste que monta os mesmos componentes. Mesmo raciocínio de "testes do runtime vivem em `packages/runtime/test/`": a restrição do pacote manda no endereço do teste. |
+
+### A11 — Achados da migração para Turborepo (2026-07-31)
+
+| # | Achado | Impacto | Correção |
+|---|---|---|---|
+| 57 | **A guarda de CSS confere o CSS de saída, e uma classe pode ter segunda origem no fonte.** Ao provar que a guarda do [ADR-02](#35-decisões-de-arquitetura-adr) morde, quebrei `pbi:p-4` no `tokens.ts` com interpolação e **o build passou**: a mesma classe aparece literal em `visual-kit/src/states.tsx`, então o Tailwind continuou gerando a regra. | A guarda parecia proteger o mapa de tokens e protegia menos do que se supunha — o CI verde não distinguia "mapa íntegro" de "outro arquivo por acaso menciona a mesma classe". O bash inline do CI tinha exatamente a mesma cegueira desde a Fase 1, sem ninguém notar, porque nunca foi testado contra uma quebra real. | Escolher para a lista do `check-css.mjs` classes de **origem única** no fonte. `pbi:rounded-xl`, `pbi:text-lg` e `pbi:shadow-sm` só o `tokens.ts` produz — com uma delas, a quebra falha com a mensagem certa. Regra anotada no `CLAUDE.md`: guarda que nunca falhou não é guarda verificada; quebre de propósito antes de confiar. |
+| 58 | **`pnpm test` incluía o gate de aceite, que se auto-pulava.** `compiledVisual.e2e.test.ts` casava com o `include` do vitest e usava `describe.skipIf` quando o `vendor/` não estava preparado. O mesmo comando levava 3 s ou 1 min conforme o estado do disco. | O teste mais importante do projeto podia não rodar sem que nada na saída dissesse isso — e `VISLOW_REQUIRE_BUILD=1`, a defesa, só existia no CI. Localmente, "`pnpm test` passou" não significava nada sobre o artefato. | Split por convenção de nome ([ADR-17](#35-decisões-de-arquitetura-adr)): `*.e2e.test.ts` sai da suíte rápida e entra na do gate, cuja tarefa declara `stage:vendor` como dependência e é `cache: false`. O `skipIf` virou `throw` no carregamento. `VISLOW_REQUIRE_BUILD` deixou de existir — a ordenação declarada tornou a variável desnecessária. Efeito colateral medido: a suíte rápida caiu de 16,3 s para 1,71 s. |
+| 59 | **Scripts `.mjs` de build rodavam com zero regras de ESLint.** O bloco de configuração do `eslint.config.mjs` casava `*.{mjs,ts}` (só a raiz) e `**/*.config.{mjs,ts}` — nenhum dos dois alcança `packages/*/scripts/`. | `stage-vendor.mjs` prepara o template do worker e `check-css.mjs` é a guarda do [ADR-02](#35-decisões-de-arquitetura-adr): dois scripts críticos de build sem lint nenhum, e o `pnpm lint` verde não indicava a lacuna. Descoberto por sondagem com `eslint --print-config`, que respondeu `0 regras`. | `packages/*/scripts/**/*.{mjs,ts}` somado ao bloco de configuração — lint sem informação de tipos, como os demais arquivos que não pertencem a tsconfig de pacote. Passou de 0 para 64 regras; ambos os scripts já estavam limpos. |

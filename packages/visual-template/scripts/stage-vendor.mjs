@@ -29,10 +29,11 @@ const VENDOR = join(TEMPLATE_PKG, 'vendor', '@vislow');
 /**
  * O que copiar de cada pacote.
  *
- * `packaging/` do config-schema fica de FORA: e onde vive o `buildPbiviz`, que
- * importa JSZip. O visual nunca chama esse caminho, mas basta o arquivo existir
- * para que uma importacao distraida arraste JSZip para dentro do bundle, contra
- * o orcamento de 1 MB. Nao copiar torna o invariante fisico em vez de confiado.
+ * `packaging/` do config-schema fica de FORA: e onde vive o `inspectPbiviz`,
+ * que importa JSZip. O visual nunca chama esse caminho, mas basta o arquivo
+ * existir para que uma importacao distraida arraste JSZip para dentro do
+ * bundle, contra o orcamento de 1 MB. Nao copiar torna o invariante fisico em
+ * vez de confiado.
  */
 const PACKAGES = [
   { name: 'visual-kit', exclude: [] },

@@ -15,6 +15,11 @@
   "files": [
     "dist"
   ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "clean": "rm -rf dist .turbo"
+  },
   "dependencies": {
     "@vislow/component-registry": "workspace:*",
     "@vislow/config-schema": "workspace:*"

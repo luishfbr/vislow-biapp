@@ -9,6 +9,10 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -25,75 +29,39 @@ jobs:
       - name: Instalar dependencias
         run: pnpm install --frozen-lockfile
 
-      # tsc -b emite os .d.ts dos pacotes; o lint com informacao de tipos
-      # depende deles, entao typecheck vem antes.
-      - name: Typecheck
-        run: pnpm typecheck
+      # Cache LOCAL do turbo — nao ha cache remoto, por decisao. Um PR reaproveita
+      # o cache do ultimo build da main; o pior caso e um miss, e o CI roda como
+      # rodava antes.
+      - name: Cache do turbo
+        uses: actions/cache@v4
+        with:
+          path: .turbo/cache
+          key: turbo-${{ runner.os }}-${{ github.sha }}
+          restore-keys: |
+            turbo-${{ runner.os }}-
 
-      - name: Lint
-        run: pnpm lint
+      # UM comando. A ordem NAO esta mais aqui — ela vive no `turbo.json`, e por
+      # isso vale igual na maquina de quem desenvolve:
+      #   build dos pacotes -> typecheck e lint (que precisam dos .d.ts emitidos)
+      #   e a suite rapida em paralelo -> build dos apps.
+      #
+      # O `next build` continua sendo a unica coisa que exercita a resolucao do
+      # subcaminho `@vislow/visual-kit/nodes` por um bundler.
+      #
+      # A guarda do CSS do ADR-02 saiu daqui: virou passo do `build` do
+      # visual-kit (`packages/visual-kit/scripts/check-css.mjs`), entao agora
+      # vale tambem no `pnpm dev` local, e nao so no CI.
+      - name: Verificar (build, typecheck, lint, testes)
+        run: pnpm exec turbo run build typecheck lint test --cache-dir=.turbo/cache
 
-      - name: Testes
-        run: pnpm test
-
-      - name: Build
-        run: pnpm build
-
-      # Empacota o Runtime Core e roda as guardas do pacote: placeholder unico,
-      # CSS presente, GUID valido e orcamentos de tamanho. Sao os testes que
-      # provam que o artefato entregue ao usuario e valido.
-      - name: Empacotar Runtime Core
-        run: pnpm --filter @vislow/runtime build:runtime
-
-      # T-03..T-08 (secao 12.3) mais o render do bundle real num jsdom, que e a
-      # unica verificacao executavel da RN-04 e a guarda do achado 39 (React
-      # duplicado pelo `resolve.symlinks: false` do pbiviz). `pnpm test`, acima,
-      # ja rodou a parte sintetica; aqui rodam as assertivas que dependem do
-      # bundle minificado de verdade. VISLOW_REQUIRE_TEMPLATE=1 impede que a
-      # ausencia do artefato passe como "teste ignorado".
-      - name: Testes de empacotamento e render contra o pacote real
-        env:
-          VISLOW_REQUIRE_TEMPLATE: '1'
-        run: pnpm test:packaging
-
-      # Copia `visual-kit` e `config-schema` compilados para dentro do template
-      # do backend. Sao pacotes privados: nao estao em registro nenhum e entram
-      # em `node_modules` como diretorios reais, depois do `npm ci` de cada
-      # build. Depende do `pnpm build` acima ter gerado dist/ e o CSS.
-      - name: Preparar o template de compilacao
-        run: pnpm --filter @vislow/visual-template stage:vendor
-
-      # O GATE DE ACEITE do ADR-08: compila um .pbiviz de verdade a partir de uma
-      # spec e executa o bundle minificado num jsdom. E o herdeiro do teste que
-      # pegou o achado 39 — nenhum teste de fonte enxerga o que o webpack fez
-      # com o bundle. VISLOW_REQUIRE_BUILD=1 impede que a ausencia do template
-      # passe como "teste ignorado".
+      # O GATE DE ACEITE do ADR-08: spec -> .pbiviz compilado de verdade ->
+      # bundle minificado executado num jsdom. E o herdeiro do teste que pegou o
+      # achado 39 — nenhum teste de fonte enxerga o que o webpack fez com o
+      # bundle.
+      #
+      # `stage:vendor` e dependencia declarada desta tarefa, entao nao ha mais
+      # como ele ser ignorado por falta de template: se rodar, roda de verdade;
+      # se o template faltar, o arquivo lanca no carregamento. Por isso o antigo
+      # `VISLOW_REQUIRE_BUILD=1` deixou de existir.
       - name: Gate de compilacao real (spec -> .pbiviz -> render)
-        env:
-          VISLOW_REQUIRE_BUILD: '1'
-        run: pnpm test:build
-
-      # O editor NAO empacota mais no browser (ADR-08): ele monta a arvore e
-      # pede a compilacao a API. Some com isso a verificacao do pacote base no
-      # export estatico, que existia para provar que o `fetch` teria o que
-      # buscar. O que este build ainda protege e a resolucao dos pacotes do
-      # workspace pelo Next — em especial o subcaminho
-      # `@vislow/visual-kit/nodes`, que so o campo `exports` resolve e que o
-      # `pnpm typecheck` nao exercita da mesma forma.
-      - name: Build do editor
-        run: pnpm --filter @vislow/web build:app
-
-      # Guarda do ADR-02: o CSS gerado precisa conter as classes do mapa de
-      # tokens. Se o mapa quebrar a regra de strings literais, o Tailwind nao
-      # gera a classe e o estilo sumiria em silencio dentro do Power BI.
-      - name: Verificar CSS gerado
-        run: |
-          CSS=packages/visual-kit/dist/styles.css
-          test -s "$CSS" || { echo "::error::CSS do visual-kit vazio ou ausente"; exit 1; }
-          for cls in 'pbi\\:p-4' 'pbi\\:rounded-xl' 'pbi\\:text-lg' 'pbi\\:shadow-sm'; do
-            grep -q "$cls" "$CSS" || { echo "::error::classe ausente no CSS: $cls"; exit 1; }
-          done
-          if grep -qE '^\s*(html|body)\s*\{' "$CSS"; then
-            echo "::error::preflight vazou para o CSS do runtime"; exit 1
-          fi
-          echo "CSS verificado: $(wc -c < "$CSS") bytes"
+        run: pnpm exec turbo run test:build --cache-dir=.turbo/cache

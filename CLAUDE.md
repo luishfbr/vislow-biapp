@@ -10,20 +10,32 @@ Plataforma low-code que gera visuais customizados do Power BI (`.pbiviz`) sem qu
 
 ## Comandos
 
+**O monorepo roda sobre Turborepo.** A ordem de build vive no `turbo.json` e vale igual aqui e no CI — não há
+mais sequência a decorar. Cada comando faz uma coisa por inteiro:
+
 ```bash
-pnpm verify      # lint + typecheck + testes — rode antes de qualquer PR
-pnpm test        # vitest
-pnpm typecheck   # tsc -b (project references, ordem topologica)
-pnpm build       # tsc -b + CSS do Tailwind
+pnpm dev         # sobe TUDO: compila o que falta, prepara o template, API + editor com watch
+pnpm build       # pacotes + apps + stage:vendor
+pnpm verify      # build + typecheck + lint + suite rapida — rode antes de qualquer PR
+pnpm check       # o verify MAIS o gate de aceite (compila um .pbiviz de verdade)
+pnpm clean       # apaga dist/, vendor/, .next/ e o cache do turbo
 ```
+
+O turbo cacheia: um `pnpm verify` sem mudanças volta em milissegundos (`>>> FULL TURBO`).
+
+Os scripts `lint` e `test` da raiz são as **implementações** que o turbo invoca (`//#lint` e `//#test`) — chamá-las
+direto pula a ordenação, e o lint com informação de tipos precisa dos `.d.ts` que o build emite. Use `pnpm verify`.
 
 ## Armadilhas que já custaram tempo
 
 Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 
-- **Classe Tailwind construída por interpolação some sem erro** dentro do Power BI. O runtime é compilado antes
-  de o usuário escolher qualquer coisa. Use sempre strings literais completas em `visual-kit/src/tokens.ts`.
-- **Tailwind v4 usa prefixo de variante:** `pbi:flex`, não `pbi-flex`.
+- **Classe Tailwind construída por interpolação some sem erro** dentro do Power BI. O CSS é pré-compilado pelo
+  CLI do Tailwind, que só enxerga o fonte do `visual-kit` — nunca a spec do usuário. Use sempre strings literais
+  completas em `visual-kit/src/tokens.ts`.
+- **Tailwind v4 usa prefixo de variante:** `pbi:flex`, não `pbi-flex`. **E o prefixo vem ANTES da variante:**
+  `pbi:focus:ring-2`, nunca `focus:pbi:ring-2` — escrito ao contrário, o CLI não reconhece a classe, não gera
+  regra nenhuma e não reclama (achado 54). Classe com variante se confere no `dist/styles.css`, não no olho.
 - **Ajv:** importe `ajv/dist/2020.js`. O entrypoint padrão é draft-07 e falha só em runtime.
 - **O campo `style` do `pbiviz.json` é ignorado.** O CSS entra pelo `import` no `visual.ts` — e o build reporta
   sucesso mesmo sem ele.
@@ -34,33 +46,27 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 - **Discriminante de união é string (`kind`), nunca booleano.** A toolchain do `pbiviz` compila sem
   `strictNullChecks`, e sem ela o TypeScript não estreita união por discriminante booleano.
 - **O `pnpm` estrito esconde dependências do webpack do `pbiviz`.** Ele resolve loaders e transitivas a partir do
-  diretório do projeto — por isso `packages/runtime` declara `ts-loader`, `scheduler`, os utils do Power BI e as
-  dependências internas do Ajv explicitamente.
+  diretório do projeto — por isso o `package.json` do template declara `ts-loader`, `scheduler`, os utils do
+  Power BI e as dependências internas do Ajv explicitamente.
 - **Coordenadas do `tooltipService` são relativas ao elemento do visual**, não à viewport.
 - **Props opcionais de React declaram `prop?: T | undefined`** — `exactOptionalPropertyTypes` está ligado e
   proíbe repassar `undefined` explícito para `prop?: T`.
-- **A reescrita de identidade no `.pbiviz` é UMA passada, com alternação de regex.** Duas passadas sequenciais
-  (GUID, depois nome) duplicam o sufixo hex dentro dos GUIDs novos quando o slug do projeto coincide com o nome
-  do pacote base — e `slugify("vislow Runtime")` produz exatamente esse slug.
-- **Identidade primeiro, payload base64 depois.** Injetar antes é o que expõe o payload à reescrita.
-- **`buildPbiviz` vive em `@vislow/config-schema/packaging`, fora do `index.ts`.** O Runtime Core importa o
-  barril; reexportar levaria o JSZip para dentro do bundle do visual, contra o orçamento de 1 MB.
-- **`Uint8Array` do TS 5.9 é genérico sobre `ArrayBufferLike`** e `BlobPart` só aceita `Uint8Array<ArrayBuffer>`.
+- **`inspectPbiviz` vive em `@vislow/config-schema/packaging`, fora do `index.ts`.** O barril é importado por
+  código que termina dentro do bundle do visual; reexportar levaria o JSZip junto, contra o orçamento de 1 MB.
 - **O webpack do `pbiviz` usa `resolve.symlinks: false`, então dois symlinks para o mesmo pacote viram dois
   módulos.** Foi assim que o React entrou duas vezes no bundle e o dispatcher de hooks ficou `null` — só
-  componentes com hook falhavam, o resto renderizava. Por isso `autoInstallPeers: false` e nenhum `react` nas
-  `devDependencies` do `visual-kit`. **Não reintroduza**, e não adicione dependência duplicada entre pacotes que
-  o runtime empacota.
-- **Testes do runtime vivem em `packages/runtime/test/`, nunca em `src/`** — `src/` é compilado pela toolchain do
-  `pbiviz`, cujo `tsconfig.json` lista os arquivos um a um.
-- **`renderRealBundle.test.ts` é o único teste que executa o artefato.** Se você mexer no bundle, na resolução de
-  módulos ou nas dependências do runtime, é ele que pega o estrago.
+  componentes com hook falhavam, o resto renderizava. Por isso `autoInstallPeers: false`, nenhum `react` nas
+  `devDependencies` do `visual-kit` e vendorização por **cópia de diretório, nunca symlink**. **Não reintroduza**,
+  e não adicione dependência duplicada entre pacotes que o template empacota.
+- **`compiledVisual.e2e.test.ts` é o único teste que executa o artefato.** Se você mexer no bundle, na resolução
+  de módulos ou nas dependências do template, é ele que pega o estrago.
 - **O `visual-kit` não usa hooks** — regra de ESLint, não convenção. Hook é o único ponto sensível à duplicação
   do React no bundle (achado 39): elementos JSX atravessam cópias, hooks não. Use classe (ver `ErrorBoundary`) ou
   calcule no render.
-- **Todo pacote carrega uma impressão digital de build** (`stamp-build-id.mjs`, exibida no canto do visual e no
-  card de erro). Ao diagnosticar qualquer coisa no Desktop, **peça o id primeiro** — sem ele, "importou o arquivo
-  antigo" é indistinguível de "a correção não funciona", e isso já custou uma sessão inteira.
+- **Todo pacote carrega uma impressão digital de build** (o `buildId` que a API passa ao codegen, exibido no
+  canto do visual e no card de erro). Ao diagnosticar qualquer coisa no Desktop, **peça o id primeiro** — sem
+  ele, "importou o arquivo antigo" é indistinguível de "a correção não funciona", e isso já custou uma sessão
+  inteira.
 
 ### Armadilhas da API de build (Sprint 4)
 
@@ -73,13 +79,14 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
   `@vislow/visual-kit/nodes`.
 - **Os `@vislow/*` entram em `node_modules` DEPOIS do `npm ci`**, que apaga o diretório inteiro antes de
   instalar. Cópia de diretório, nunca symlink — symlink reintroduz o achado 39.
-- **`@vislow/visual-kit/nodes` fica fora do barril** pelo mesmo motivo do `config-schema/packaging`: o Runtime
-  Core importa o barril, e reexportar levaria o Recharts (~575 KB) para dentro do bundle dele.
+- **`@vislow/visual-kit/nodes` fica fora do barril** pelo mesmo motivo do `config-schema/packaging`: quem
+  importa só o barril não deve pagar pelo Recharts (~575 KB) contra o orçamento de 1 MB.
 - **A inspeção do artefato é portão, não teste** (ADR-11). O `pbiviz` já reportou sucesso produzindo pacote
   quebrado três vezes. Nada sai do worker sem passar por `inspectPbiviz`.
-- **`compiledVisual.e2e.test.ts` é o gate de aceite** — herdeiro do `renderRealBundle`. Se você mexer no
-  codegen, no template ou nos nós do kit, é ele que pega o estrago. Ele exige o template preparado
-  (`pnpm build && pnpm stage:vendor`).
+- **`compiledVisual.e2e.test.ts` é o gate de aceite** — e o único teste que executa o artefato. Se você mexer no
+  codegen, no template ou nos nós do kit, é ele que pega o estrago. Rode `pnpm check`: o sufixo `.e2e.test.ts`
+  o tira da suíte rápida, e a tarefa `test:build` do turbo prepara o template antes. Ele **não tem como se
+  ignorar** — sem template, lança no carregamento.
 
 ### Armadilhas do editor de composição (Sprint 5)
 
@@ -107,20 +114,66 @@ Todas descobertas empiricamente. Detalhes no Anexo A do doc de MVP.
 - **`react` no vitest vem por alias para a cópia do editor.** O `visual-kit` não pode declarar react (achado
   39), então sem o alias nenhum teste importa os componentes do fonte.
 
+### Armadilhas da paridade de interatividade (Sprint 6)
+
+- **Os serviços do host viajam dentro do `DataFrame`** (ADR-16), num `FrameHost`. Nunca leia `frame.host`
+  direto — use `hostOf(frame)`, que devolve o `INERT_HOST` no preview. Um `?.` por chamada é uma chance por
+  chamada de esquecer, e o esquecimento só quebra o editor.
+- **Alto contraste: HTML usa variável CSS, SVG lê o quadro.** `var()` **não é substituído em atributo de
+  apresentação** de SVG — `<rect fill="var(--x, red)">` não pinta (achado 55). Nos nós de HTML use `hcInk`,
+  `hcSurface`, `hcAccent`, `hcLine`; nos gráficos resolva por `hostOf(frame).highContrast`.
+- **O `FrameHost` tem discriminante `kind: 'host' | 'inert'`**, e é ele que decide o tooltip: no visual
+  compilado o balão é o do host (RF-19); no preview fica o do Recharts, senão passar o mouse no editor não
+  mostraria nada.
+- **A navegação por teclado é uma sobreposição `absolute` de `<button>` `sr-only`**, não `tabIndex` no SVG.
+  Absoluta porque um elemento a mais na cadeia de flex quebra a medida do `ResponsiveContainer` (ADR-14); o
+  grupo é `pointer-events-none` para não roubar clique do gráfico. As setas movem o **foco do DOM**, não um
+  índice em estado — é o que dá navegação por setas sem hook.
+- **Mouse e teclado divergem por tipo de gráfico, de propósito.** Barra e pizza têm marca por ponto e usam
+  `onClick` do `<Bar>`/`<Pie>`; linha e área usam o handler do gráfico e o `activeTooltipIndex`. Restrição do
+  Recharts, não escolha.
+- **Toda a conversa com o host é estática, em `visual-template/template/src/interaction.ts`.** O codegen só
+  instancia e chama `readFrame`. Não mova implementação de seleção para o fonte gerado.
+- **Um teste que MONTA componentes do `visual-kit` vive em `apps/web`, não no `visual-kit`** (achado 56): sem
+  `react-dom` resolvível ali, o ESLint com tipos reprova o arquivo inteiro — e a "solução" óbvia é justamente a
+  dependência proibida pelo achado 39.
+
+### Armadilhas do Turborepo
+
+- **Entrada `pacote#tarefa` SUBSTITUI a genérica** — não herda `dependsOn` nem `inputs`. Cada uma no
+  `turbo.json` está escrita por inteiro por isso. Esquecer o `^build` numa delas é ordenação quebrada em
+  silêncio.
+- **Tarefa de raiz (`//#lint`, `//#test`) não tem `^`** e exige um script da raiz com o nome **exato**. Por isso
+  `pnpm lint` e `pnpm test` são as implementações cruas, e não wrappers do turbo — o ponto de entrada é
+  `pnpm verify`.
+- **`build` e `build:css` do `visual-kit` são um passo só**, de propósito: escrevem no mesmo `dist/`, e duas
+  tarefas com `outputs` sobrepostos produzem cache parcial. Os inputs também são os mesmos (`src/**`), então
+  separar não granularia nada.
+- **`dist/.tsbuildinfo` está listado à parte do `dist/**` nos `outputs`.** O estado perigoso é "tsbuildinfo
+  restaurado, outputs ausentes": o `tsc` se acha atualizado, não emite nada, e a falha só aparece três tarefas
+  depois como module-not-found. Caminho literal sempre casa; glob com dotfile não se confia sem prova.
+- **`test:build` é `cache: false`.** Ele executa `npm ci` e `pbiviz` de verdade, contra estado que o hash não
+  captura — um acerto de cache seria a volta do "passou sem ter rodado".
+- **`@vislow/visual-template` declara `visual-kit` e `config-schema` em `devDependencies` sem importar
+  nenhum dos dois.** Não remova por parecerem não usados: o `stage-vendor.mjs` lê o `dist/` das duas, e é essa
+  aresta que faz o `^build` ordenar. Ficam em `devDependencies` porque o que chega ao visual é a cópia em
+  `vendor/`, nunca esse `node_modules` — achado 39.
+- **A guarda do CSS confere o CSS de saída, não o `tokens.ts`.** Uma classe pode ter segunda origem no fonte:
+  `pbi:p-4` também aparece literal em `states.tsx`, então quebrar só o mapa de tokens não a remove do bundle.
+  Ao escolher classe para a lista de `check-css.mjs`, prefira as que só o `tokens.ts` produz.
+
 ## Estado
 
 **O pivô da ADR-08 está fechado.** Desde 2026-07-30 o ciclo completo funciona no Power BI Desktop: o usuário
 compõe do zero no editor, a API compila um `.pbiviz` de verdade e o pacote importa e renderiza. O produto
 prometido — o usuário **cria** o visual, não escolhe entre prontos — existe de ponta a ponta.
 
-Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (editor web) **concluídas**.
-O runtime foi validado no Power BI Desktop com dados reais: barras e KPI Card com cross-filter, tooltip nativo,
-formatação por locale, alto contraste e estados vazio/erro. Pacote 131 KB.
+Desde 2026-07-31 o visual compilado também **filtra o relatório, mostra tooltip nativo, respeita alto contraste,
+é navegável por teclado e abre o menu de contexto** — a paridade que o pivô tinha deixado para trás.
 
-**Fase 3 (export)** concluída no código e o ciclo completo **validado no Desktop em 2026-07-30**: pacote gerado
-pelo editor importa, lê o modelo e renderiza barras com dados reais (MT-01 e MT-02 aprovados). O achado 39
-(React duplicado) está fechado — a deduplicação basta, e o `visual-kit` ficou sem hooks como defesa em
-profundidade.
+Gate de arquitetura **aprovado**. Fases 0 (fundação), 1 (Runtime Core) e 2 (editor web) **concluídas** — e
+depois **substituídas** pelo pivô. O achado 39 (React duplicado) está fechado desde a Fase 3: a deduplicação
+basta, e o `visual-kit` ficou sem hooks como defesa em profundidade.
 
 **Pivô para compilação real por usuário** (ADR-08, reverte a ADR-01 e a ADR-05). Plano em `~/.claude/plans/`.
 
@@ -135,35 +188,55 @@ profundidade.
   Novos: `component-registry/tree.ts`, `visual-kit/nodes/mockFrame.ts` e `@vislow/build-contract`.
   Aposentados: `exportPbiviz.ts`, `AppearancePanel` e `CONTROL_GROUPS`. **Validado no Desktop em 2026-07-30**:
   o ciclo completo fecha — compor no editor, exportar pela API e importar no Power BI.
-- **Próximo: Sprint 6 (paridade de interatividade)** — o visual compilado renderiza dados corretamente, mas
-  **não filtra, não mostra tooltip nativo, ignora alto contraste e não é navegável por teclado**. São seis
-  capacidades que a Fase 1 já tinha aprovado no Desktop e que o pivô deixou para trás (achado 53). Vem antes do
-  resto da Fase 4: a matriz MT-01…MT-14 tem cenários de cross-filter que hoje reprovariam.
+- **Sprint 6 (paridade de interatividade)** — concluído em 2026-07-31. O achado 53 está **fechado**:
+  as seis capacidades voltaram ao caminho novo pelo desenho da ADR-16 — serviços do host dentro do `DataFrame`,
+  alto contraste por variável CSS, teclado por sobreposição de botões. Novos:
+  `visual-kit/src/highContrast.ts`, `visual-template/template/src/interaction.ts` e
+  `apps/web/src/components/kitInteraction.test.tsx`. O gate de aceite passou a verificar o que o visual **pede
+  ao host**, não só o que ele desenha. Pacote **221,1 KB**, `content.js` **751,3 KB**.
+  **Validado no Desktop em 2026-07-31**: as seis funcionam num `.pbiviz` compilado pela API.
 
-**Ainda por aposentar:** `buildPbiviz`/`CONFIG_PLACEHOLDER` em `config-schema/packaging` e os testes T-03…T-08
-não têm mais chamador desde o Sprint 5 — o editor não empacota no browser. `inspectPbiviz` **sobrevive**, é o
-portão da ADR-11.
+- **Faxina (2026-07-31)** — o caminho antigo foi aposentado, agora que o novo está aprovado no Desktop.
+  Saíram: `packages/runtime` inteiro, `buildPbiviz`/`CONFIG_PLACEHOLDER`/`base64.ts` e os testes T-03…T-08
+  originais, `BarChart`/`KpiCard`/`Frame`/`mock.ts` do `visual-kit` com `resolveColors`, `DataPoint`, `KpiDatum`
+  e `RenderContext`, `apps/web/public/templates/` e os scripts `test:packaging`/`stage:template`.
+  **`inspectPbiviz` sobrevive** — é o portão da ADR-11 — mais enxuto: sem extração de payload e sem "pacote
+  base"; `PbivizBuildError` virou `PbivizInspectionError`. Nenhum comportamento do produto mudou; o gate de
+  aceite ficou verde com as mesmas 16 assertivas e o pacote em **221,2 KB** / `content.js` **751,6 KB**.
 
-⚠️ **`packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` NÃO podem ser apagados ainda**
-(achado 53). Também estão sem chamador, mas são a única implementação de seis capacidades que o caminho novo
-não tem — cross-filter, tooltip nativo, alto contraste, navegação por teclado, menu de contexto e aviso de
-truncamento. Apagá-los destrói a referência antes de a portabilidade existir. Ver o Sprint 6 no doc de MVP.
+- **Turborepo (2026-07-31)** — a ordem de build deixou de viver em três lugares que não conversavam (o solution
+  file do `tsc`, a sequência de passos do CI e a memória de quem roda os comandos) e passou a viver no
+  `turbo.json`. Cada pacote ganhou `build`/`typecheck`/`clean`; o `tsc -b` da raiz saiu. Quatro comandos de topo
+  fazem cada coisa por inteiro: `pnpm dev`, `pnpm build`, `pnpm verify`, `pnpm check`.
+  Ganhos medidos: `pnpm verify` de 12,4 s para **18 ms** em cache quente (`FULL TURBO`); a suíte rápida de
+  16,3 s para **1,71 s**, porque o gate de aceite saiu dela. **O gate deixou de poder se ignorar** — o skip
+  silencioso por template ausente virou falha no carregamento, e `VISLOW_REQUIRE_BUILD` deixou de existir.
+  A guarda de CSS do ADR-02 saiu do bash inline do CI e virou `visual-kit/scripts/check-css.mjs`, passo do
+  `build` — agora vale local também. O CI caiu de oito passos para dois, e os dois passos mortos que a faxina
+  tinha deixado (`@vislow/runtime build:runtime` e `test:packaging`) saíram.
+  Novos: `turbo.json`, `vitest.shared.ts`, `vitest.build.config.ts`,
+  `packages/visual-kit/scripts/check-css.mjs`, `packages/codegen/src/projectIdentity.test.ts`.
+  **Nenhum comportamento do produto mudou:** o gate passou com as mesmas 14 assertivas do artefato (mais as 2 de
+  identidade, que voltaram para a suíte rápida) — 230 testes no total, o mesmo baseline.
+
+- **Próximo: Fase 4** — KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E
+  Playwright do editor.
+
+**Há um só caminho.** Não existe mais pacote base pré-compilado, patch no browser nem reescrita de identidade:
+a spec vira código, o `pbiviz` compila e o portão inspeciona. Se você encontrar referência a `buildPbiviz`,
+`CONFIG_PLACEHOLDER` ou "Runtime Core" fora das seções marcadas como histórico no doc de MVP (3.1–3.3, 8.2, 8.3
+e 9), é resíduo.
 
 ```bash
-# Numa árvore limpa, nesta ordem:
-pnpm build && pnpm stage:vendor  # compila os pacotes, o CSS e prepara o template do worker
-pnpm dev:api                     # API de build em http://localhost:3001
-pnpm dev                         # editor em http://localhost:3000
-
-pnpm verify                      # typecheck + lint + testes
-pnpm test:build                  # gate de aceite: spec -> .pbiviz compilado -> render em jsdom
-
-# Caminho antigo (Fase 3), sem chamador desde o Sprint 5 — ver "ainda por aposentar"
-pnpm --filter @vislow/runtime build:runtime     # empacota + 11 guardas
-pnpm test:packaging                             # T-03…T-08 isolados
-node packages/runtime/scripts/make-samples.mjs  # amostras para teste manual no Power BI
+# De uma árvore limpa, um comando. O turbo compila o que falta, prepara o
+# template do worker e sobe os dois — API em :3001, editor em :3000.
+pnpm dev
 ```
 
-**O editor precisa da API para exportar.** O empacotamento no browser acabou: `pnpm dev:api` tem de estar no
-ar, com o template preparado (`pnpm build && pnpm stage:vendor`). A URL da API sai de
-`NEXT_PUBLIC_VISLOW_API_URL`, com `http://localhost:3001` como padrão.
+**O editor precisa da API para exportar** — o empacotamento no browser acabou. Isso não é mais um passo manual:
+`@vislow/api#dev` declara `stage:vendor` e o build dos pacotes como dependências, então `pnpm dev` não consegue
+subir o editor sem a API pronta atrás dele. A URL da API sai de `NEXT_PUBLIC_VISLOW_API_URL`, com
+`http://localhost:3001` como padrão.
+
+Editar um pacote **não** faz hot reload: só os apps estão em watch. Depois de mexer em `packages/`, rode
+`pnpm build` (ou reinicie o `pnpm dev`).

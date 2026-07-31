@@ -1,5 +1,6 @@
 import type { FontSize } from '@vislow/config-schema';
 import { FONT_SIZE_CLASS, cx } from '../tokens.js';
+import { hcAccent, hcInk } from '../highContrast.js';
 import { EmptyState } from '../states.js';
 import { sumOf, type DataFrame } from './frame.js';
 
@@ -36,7 +37,8 @@ export function KpiNode({
     <div className="pbi:flex-1 pbi:min-h-0 pbi:min-w-0 pbi:flex pbi:flex-col pbi:items-center pbi:justify-center">
       <div
         className={cx('pbi:truncate', 'pbi:max-w-full', 'pbi:font-bold', FONT_SIZE_CLASS[valueFontSize])}
-        style={{ color: valueColor }}
+        // RF-21: alto contraste vence a cor do usuario. Ver `highContrast.ts`.
+        style={{ color: hcAccent(valueColor) }}
         title={aggregate.formatted}
       >
         {aggregate.formatted}
@@ -44,7 +46,7 @@ export function KpiNode({
       {caption !== '' && (
         <div
           className="pbi:text-sm pbi:truncate pbi:max-w-full pbi:mt-1"
-          style={{ color: labelColor }}
+          style={{ color: hcInk(labelColor) }}
           title={caption}
         >
           {caption}
