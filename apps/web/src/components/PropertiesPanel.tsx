@@ -2,6 +2,8 @@
 
 import {
   NODE_DESCRIPTORS,
+  parentOf,
+  positionsChildren,
   type DataRole,
   type FieldSpec,
   type SpecNode,
@@ -10,6 +12,7 @@ import { useMemo } from 'react';
 import {
   ColorField,
   NumberField,
+  RectField,
   SelectField,
   TextField,
   ToggleField,
@@ -147,15 +150,44 @@ function errorFor(problems: NodeIssues | undefined, key: string): string | undef
   return found.message.includes('required property') ? 'Escolha um campo.' : found.message;
 }
 
+/**
+ * O campo esta visivel para este no?
+ *
+ * A condicao vem do descritor (`showWhen`), nao de uma lista de excecoes aqui:
+ * um container que posiciona livremente ignora `direction` e `gap`, e deixar os
+ * dois na tela seria oferecer controles que nao fazem nada.
+ */
+function isVisible(field: FieldSpec, node: SpecNode): boolean {
+  if (!field.showWhen) return true;
+  const descriptor = NODE_DESCRIPTORS[node.kind];
+  const governing = descriptor.fields.find((f) => f.key === field.showWhen?.key);
+  const current = node.props[field.showWhen.key];
+  const value =
+    typeof current === 'string'
+      ? current
+      : governing && governing.kind !== 'role'
+        ? String(governing.default)
+        : undefined;
+  return value === field.showWhen.equals;
+}
+
 export function PropertiesPanel() {
   const spec = useEditorStore((s) => s.spec);
   const issues = useEditorStore((s) => s.issues);
   const node = useEditorStore(selectSelectedNode);
   const setProp = useEditorStore((s) => s.setProp);
+  const setRect = useEditorStore((s) => s.setRect);
 
   const byNode = useMemo(() => issuesByNode(spec, issues), [spec, issues]);
   const descriptor = NODE_DESCRIPTORS[node.kind];
   const problems = byNode.get(node.id);
+
+  // A geometria e propriedade da RELACAO com o pai: so aparece quando o pai
+  // posiciona. Num container que empilha, quem manda no tamanho e a cadeia de
+  // flex, e oferecer x/y/w/h seria prometer um controle que nao existe.
+  const parent = parentOf(spec.root, node.id);
+  const placed = parent && positionsChildren(parent) ? node.rect : undefined;
+  const rectError = problems?.all.find((issue) => issue.path.endsWith('.rect'))?.message;
 
   return (
     <aside className="flex h-full w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
@@ -169,8 +201,20 @@ export function PropertiesPanel() {
         <p className="text-[11px] leading-tight text-slate-500">{descriptor.hint}</p>
       </header>
 
+      {placed && (
+        <div className="mb-2 border-b border-slate-100 pb-1 dark:border-slate-800">
+          <RectField
+            value={placed}
+            error={rectError}
+            onChange={(axis, v) => {
+              setRect(node.id, { ...placed, [axis]: v });
+            }}
+          />
+        </div>
+      )}
+
       <div className="divide-y divide-slate-100 dark:divide-slate-800">
-        {descriptor.fields.map((field) => (
+        {descriptor.fields.filter((field) => isVisible(field, node)).map((field) => (
           <Control
             key={field.key}
             field={field}

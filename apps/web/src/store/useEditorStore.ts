@@ -14,10 +14,12 @@ import {
   reparentNode,
   selectionAfterRemoval,
   setNodeProps,
+  setNodeRect,
   suggestRoleBindings,
   unbindRole,
   validateSpec,
   type NodeKind,
+  type NodeRect,
   type RoleKind,
   type SpecNode,
   type VisualSpec,
@@ -52,6 +54,8 @@ export interface EditorState {
   moveSelected: (delta: number) => void;
   reparent: (id: string, parentId: string, index?: number) => void;
   setProp: (id: string, key: string, value: unknown) => void;
+  /** Move ou redimensiona dentro de um pai que posiciona. Prende na borda. */
+  setRect: (id: string, rect: NodeRect) => void;
 
   addRole: (kind: RoleKind) => void;
   setRoleLabel: (name: string, displayName: string) => void;
@@ -150,6 +154,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     setProp: (id, key, value) => {
       editTree(setNodeProps(get().spec.root, id, { [key]: value }));
+    },
+
+    setRect: (id, rect) => {
+      editTree(setNodeRect(get().spec.root, id, rect));
     },
 
     addRole: (kind) => {

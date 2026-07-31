@@ -20,6 +20,7 @@ import { hcLine, hcSurface } from '../highContrast.js';
  * visual gerado, que e onde queremos que quebre.
  */
 export function Container({
+  placement,
   direction,
   gap,
   padding,
@@ -30,6 +31,15 @@ export function Container({
   borderColor,
   children,
 }: {
+  /**
+   * `stack` divide o espaco sozinho; `canvas` da a cada filho a sua caixa.
+   *
+   * Em `canvas` o container vira o BLOCO DE CONTENCAO dos filhos — e por isso
+   * que ele troca `flex` por `relative`, e nao apenas acrescenta. Com os dois, o
+   * filho absoluto sairia da cadeia de flex e o `gap` continuaria reservando
+   * espaco para itens que ja nao estao nela.
+   */
+  placement: 'stack' | 'canvas';
   direction: 'row' | 'column';
   gap: Spacing;
   padding: Spacing;
@@ -40,18 +50,20 @@ export function Container({
   borderColor: string;
   children?: ReactNode;
 }) {
+  const free = placement === 'canvas';
+
   return (
     <div
       // `min-h-0`/`min-w-0` nao sao decorativos: sem eles um filho flexivel nunca
       // encolhe abaixo do proprio conteudo, e o ResponsiveContainer do Recharts
       // mede altura zero — grafico invisivel, sem erro nenhum.
       className={cx(
-        'pbi:flex',
         'pbi:flex-1',
         'pbi:min-h-0',
         'pbi:min-w-0',
-        DIRECTION_CLASS[direction],
-        GAP_CLASS[gap],
+        free ? 'pbi:relative' : 'pbi:flex',
+        !free && DIRECTION_CLASS[direction],
+        !free && GAP_CLASS[gap],
         SPACING_CLASS[padding],
         RADIUS_CLASS[radius],
         BORDER_CLASS[border],

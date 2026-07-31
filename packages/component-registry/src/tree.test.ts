@@ -4,6 +4,7 @@ import { assertValidSpec, validateSpec } from './schema.js';
 import type { SpecNode } from './spec.js';
 import {
   ancestryOf,
+  clampRect,
   findNode,
   insertChild,
   moveNode,
@@ -12,6 +13,7 @@ import {
   reparentNode,
   selectionAfterRemoval,
   setNodeProps,
+  setNodeRect,
   subtreeIds,
 } from './tree.js';
 
@@ -143,6 +145,46 @@ describe('props', () => {
 
   it('rejeita id inexistente', () => {
     expect(setNodeProps(fixture(), 'inexistente', { content: 'Ola' })).toBeNull();
+  });
+});
+
+describe('geometria', () => {
+  it('prende a caixa dentro do pai em vez de rejeitar o arrasto', () => {
+    // Arrastar alem da borda quer dizer "encosta na borda". Rejeitar faria o no
+    // saltar de volta para a posicao anterior no meio do gesto.
+    const next = setNodeRect(fixture(), 'titulo', { x: 80, y: -10, w: 40, h: 30 });
+    expect(findNode(next!, 'titulo')?.rect).toEqual({ x: 60, y: 0, w: 40, h: 30 });
+  });
+
+  it('respeita o piso de tamanho', () => {
+    expect(clampRect({ x: 0, y: 0, w: 0, h: -3 })).toEqual({ x: 0, y: 0, w: 2, h: 2 });
+  });
+
+  it('arredonda para duas casas — o numero vai literal para o fonte gerado', () => {
+    expect(clampRect({ x: 100 / 3, y: 0, w: 100 / 3, h: 50 })).toEqual({
+      x: 33.33,
+      y: 0,
+      w: 33.33,
+      h: 50,
+    });
+  });
+
+  it('preserva props e filhos, e rejeita id inexistente', () => {
+    const next = setNodeRect(fixture(), 'linha', { x: 0, y: 0, w: 50, h: 50 });
+    expect(findNode(next!, 'linha')?.props).toMatchObject({ direction: 'column' });
+    expect(idsOf(findNode(next!, 'linha'))).toEqual(['kpi']);
+    expect(setNodeRect(fixture(), 'inexistente', { x: 0, y: 0, w: 10, h: 10 })).toBeNull();
+  });
+
+  it('as demais operacoes de arvore carregam o rect junto', () => {
+    // Reordenar ou mudar de pai nao pode limpar a geometria: o no reapareceria
+    // no canto superior esquerdo, e nada indicaria por que.
+    const comRect = setNodeRect(fixture(), 'barras', { x: 10, y: 20, w: 30, h: 40 });
+    const reordenado = moveNode(comRect!, 'barras', -1);
+    expect(findNode(reordenado!, 'barras')?.rect).toEqual({ x: 10, y: 20, w: 30, h: 40 });
+
+    const movido = reparentNode(comRect!, 'barras', 'linha');
+    expect(findNode(movido!, 'barras')?.rect).toEqual({ x: 10, y: 20, w: 30, h: 40 });
   });
 });
 

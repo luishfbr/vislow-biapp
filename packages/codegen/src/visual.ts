@@ -1,6 +1,7 @@
 import {
   NODE_DESCRIPTORS,
   consumesData,
+  positionsChildren,
   type SpecNode,
   type VisualSpec,
 } from '@vislow/component-registry';
@@ -56,8 +57,32 @@ function emitNode(node: SpecNode): string {
     return `${open}\n${attrs}\n/>`;
   }
 
-  const body = children.map((child) => indent(emitNode(child), 1)).join('\n');
+  // GEMEO de `renderNode` no editor: quem decide o embrulho e o pai, com a mesma
+  // funcao do registro. Divergir aqui faria o preview mostrar a composicao
+  // posicionada e o pacote entregue sair empilhado — sem erro nos dois lados.
+  const free = positionsChildren(node);
+  const body = children
+    .map((child) => indent(free ? emitSlot(child) : emitNode(child), 1))
+    .join('\n');
   return `${open}\n${attrs}\n>\n${body}\n</${descriptor.component}>`;
+}
+
+/**
+ * Embrulha um filho posicionado.
+ *
+ * A caixa e obrigatoria aqui — nao ha default. Uma spec sem ela nao chega ao
+ * codegen: `validateSpec` roda no editor antes de enviar e de novo na API antes
+ * de compilar, e essa e a spec que ja passou duas vezes.
+ */
+function emitSlot(node: SpecNode): string {
+  const rect = node.rect;
+  if (!rect) throw new Error(`no "${node.id}" e filho de um canvas e nao tem caixa`);
+
+  const attrs = (['x', 'y', 'w', 'h'] as const)
+    .map((axis) => indent(`${axis}={${String(rect[axis])}}`, 1))
+    .join('\n');
+
+  return `<CanvasSlot\n${attrs}\n>\n${indent(emitNode(node), 1)}\n</CanvasSlot>`;
 }
 
 /** Componentes usados na arvore, em ordem alfabetica (import deterministico). */
@@ -65,6 +90,9 @@ function usedComponents(spec: VisualSpec): string[] {
   const names = new Set<string>();
   const visit = (node: SpecNode): void => {
     names.add(NODE_DESCRIPTORS[node.kind].component);
+    // O embrulho entra como qualquer outro no — import nomeado —, e so quando ha
+    // filho posicionado: quem so empilha nao paga por ele no bundle.
+    if (positionsChildren(node) && (node.children ?? []).length > 0) names.add('CanvasSlot');
     node.children?.forEach(visit);
   };
   visit(spec.root);

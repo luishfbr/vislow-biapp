@@ -327,6 +327,29 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
     expect(errors).toEqual([]);
   }, 60_000);
 
+  /**
+   * A geometria sobrevive a toolchain inteira.
+   *
+   * A fixture posiciona cada tipo de no numa faixa, e a caixa e percentual em
+   * `style` inline. Nada no caminho — codegen, webpack, `pbiviz package` —
+   * reclamaria se ela sumisse: o visual so voltaria a empilhar, com todos os nos
+   * amontoados no canto. Esta e a unica assertiva do projeto que prova que um no
+   * posicionado no editor sai posicionado do compilador.
+   */
+  it('o no posicionado chega ao DOM compilado com a caixa da spec', async () => {
+    const { html } = await renderCompiled(js, guid, true);
+    const rects = spec.root.children!.map((child) => child.rect!);
+
+    expect(rects.length).toBeGreaterThan(1);
+    for (const rect of rects) {
+      expect(html).toContain(`top: ${String(rect.y)}%`);
+      expect(html).toContain(`height: ${String(rect.h)}%`);
+    }
+    // E o container que as contem virou bloco de contencao — sem isto as caixas
+    // se posicionariam contra a janela, nao contra o visual.
+    expect(html).toContain('pbi:relative');
+  }, 60_000);
+
   /** O selo de build e o que torna um relato de erro identificavel (achado 40). */
   it('carimba a impressao digital do build na tela', async () => {
     const { html } = await renderCompiled(js, guid, true);

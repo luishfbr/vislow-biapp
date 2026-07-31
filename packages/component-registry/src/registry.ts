@@ -11,6 +11,17 @@ import type { FieldSpec, NodeDescriptor, NodeKind } from './types.js';
  * lugar nenhum: o schema e derivado, entao nao ha como divergir.
  */
 
+/**
+ * As duas disposicoes de um container.
+ *
+ * Constantes, e nao strings soltas, porque o valor e comparado em cinco lugares
+ * — descritor, `showWhen`, o proprio componente, o preview e o codegen — e um
+ * erro de digitacao em qualquer um deles nao quebra nada: o container so volta a
+ * empilhar em silencio.
+ */
+export const CONTAINER_STACK = 'stack';
+export const CONTAINER_CANVAS = 'canvas';
+
 /** Campos de moldura, repetidos em todo no que desenha uma superficie. */
 const SURFACE_FIELDS: FieldSpec[] = [
   { key: 'padding', label: 'Espacamento', kind: 'token', token: 'spacing', default: 'md' },
@@ -38,19 +49,41 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
   container: {
     kind: 'container',
     label: 'Container',
-    hint: 'Agrupa e posiciona outros componentes em linha ou coluna.',
-    keywords: ['grupo', 'caixa', 'secao', 'layout', 'empilhar', 'painel'],
+    hint: 'Agrupa outros componentes: empilhados, ou posicionados livremente.',
+    keywords: ['grupo', 'caixa', 'secao', 'layout', 'empilhar', 'painel', 'canvas', 'prancheta'],
     acceptsChildren: true,
     component: 'Container',
     fields: [
+      {
+        // `placement`, e nao `layout`: o grafico de barras JA tem um campo
+        // chamado `layout` (orientacao). Dois campos de mesmo nome e sentido
+        // diferente nao quebram nada em compilacao — quebram a leitura do fonte
+        // gerado, e um teste deste repo ja mediu o campo errado por causa disso.
+        key: 'placement',
+        label: 'Disposicao',
+        hint: 'Empilhar divide o espaco sozinho; livre da a cada filho a sua propria caixa.',
+        kind: 'select',
+        options: [CONTAINER_STACK, CONTAINER_CANVAS],
+        // `stack` e o default para que toda spec ja salva continue igual sem
+        // migracao nenhuma: o campo ausente vira o comportamento de sempre.
+        default: CONTAINER_STACK,
+      },
       {
         key: 'direction',
         label: 'Direcao',
         kind: 'select',
         options: ['row', 'column'],
         default: 'column',
+        showWhen: { key: 'placement', equals: CONTAINER_STACK },
       },
-      { key: 'gap', label: 'Espaco entre itens', kind: 'token', token: 'spacing', default: 'sm' },
+      {
+        key: 'gap',
+        label: 'Espaco entre itens',
+        kind: 'token',
+        token: 'spacing',
+        default: 'sm',
+        showWhen: { key: 'placement', equals: CONTAINER_STACK },
+      },
       ...SURFACE_FIELDS,
     ],
   },

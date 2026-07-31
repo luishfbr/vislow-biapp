@@ -72,8 +72,11 @@ O ciclo completo funciona no Power BI Desktop desde 2026-07-30: o usuário comp�
 relatório, mostra tooltip nativo, respeita alto contraste, é navegável por teclado e abre o menu de contexto**.
 
 Concluídos: fundação e primeiro editor (depois substituídos pelo pivô da ADR-08), registro de componentes, API
-de build, editor de composição, paridade de interatividade, faxina do caminho antigo e migração para Turborepo.
-Pacote **221,1 KB**, `content.js` **751,3 KB**.
+de build, editor de composição, paridade de interatividade, faxina do caminho antigo, migração para Turborepo e
+o **canvas de posicionamento livre** (ADR-18). Pacote **221,1 KB**, `content.js` **751,3 KB**.
+
+O container tem duas disposições: `stack` empilha como sempre, `canvas` dá a cada filho uma caixa em `%` do pai,
+arrastável e redimensionável no preview. Raiz de projeto novo nasce canvas; spec já salva continua empilhando.
 
 **Próximo — Fase 4:** KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E Playwright
 do editor.

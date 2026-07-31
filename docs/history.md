@@ -987,7 +987,47 @@ que o `tsc` se acha atualizado e não emite nada.
 
 ---
 
+### Canvas — posicionamento livre — ✅ **CONCLUÍDO em 2026-07-31**
 
+Até aqui a composição era uma pilha: a posição de um nó era a ordem dele no array e o tamanho era o que sobrava
+da cadeia de flex. Dava para montar um relatório, não para desenhar um. O pedido foi direto — mover por linha e
+coluna livremente, e dar a cada componente o tamanho que se quisesse.
+
+**A pergunta que decidiu tudo não era de UI: um visual do Power BI não tem tamanho.** O autor do relatório
+arrasta a moldura para o que quiser, então "posição" precisa significar algo em 400 e em 1600 de largura. Daí a
+ADR-18: `rect` em **% do pai**, com encaixe em grade de 24×16 e nas arestas dos irmãos. As alternativas
+morreram por consequência, não por gosto — prancheta de pixel com `transform: scale()` entrega texto de 8px numa
+moldura estreita; grade com linha de altura fixa não permite sobrepor e não fecha com a moldura.
+
+**A ADR-14 não foi revogada, foi restringida.** Ela proibia interação no preview por **medição**: um wrapper
+clicável entra na cadeia de flex e o `ResponsiveContainer` mede outra altura. A camada de alças é filha
+`absolute` do próprio container — fora do fluxo, não altera medida de irmão nenhum — e, por viver **dentro**
+dele, herda o sistema de coordenadas: desenha com os mesmos `%` que já estão na spec, sem `ref`, sem
+`ResizeObserver`. A objeção registrada em 2026-07-30 ("refs + overlay: complexidade alta") era sobre medir, e
+com geometria declarativa não há o que medir. Em container que empilha o ADR-14 continua valendo integralmente.
+
+Três PRs, cada um deixando o app de pé: `rect` na spec (inerte), o render posicionado (já exportável), a
+manipulação direta.
+
+**Duas guardas foram quebradas de propósito, e uma delas não mordeu:**
+
+- **A guarda de CSS estava se auto-satisfazendo desde que existe.** O Tailwind v4 varre o pacote inteiro, não
+  só o `@source` declarado — e isso inclui o próprio `check-css.mjs`. Com as classes escritas por extenso na
+  lista de exigências, o CLI as lia **de lá** e gerava a regra: a guarda teria passado com o `tokens.ts` inteiro
+  quebrado. Descoberto tentando derrubá-la; ninguém tinha tentado antes. Prefixo e utilidade agora viajam
+  separados e só se juntam em runtime.
+- **O portão compilava uma árvore empilhada**, então nada no pipeline real exercitava o caminho novo. A fixture
+  passa a posicionar, e há assertiva sobre o DOM compilado — com o codegen parando de embrulhar, só ela falha.
+
+Dois defeitos apareceram por colisão de nomes, e nenhum dos dois quebrava compilação: o campo do container
+chamava-se `layout`, que **já era** o campo de orientação do gráfico de barras — um teste media a ordem dos
+campos do container achando que media os da barra; e as oito alças anunciavam "Redimensionar **pelo** borda
+direita", porque a frase era montada com artigo fixo sobre substantivos de gêneros diferentes.
+
+**Aberto, deliberadamente:** não há aviso de "esse texto não cabe nessa caixa". O `overflow-hidden` do
+`CanvasSlot` impede o dano visual — corta, nunca escorre sobre o vizinho —, mas medir o conteúdo para avisar
+ficou fora. E, dentro de um canvas, a camada cobre os gráficos: o tooltip do Recharts **no preview** não aparece
+ali. O do host, no visual compilado, não é afetado.
 
 ---
 

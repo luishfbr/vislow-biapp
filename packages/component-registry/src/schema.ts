@@ -18,7 +18,15 @@ import {
   type ValidationIssue,
 } from '@vislow/config-schema';
 import { NODE_DESCRIPTORS, NODE_KINDS } from './registry.js';
-import { NODE_ID_PATTERN, ROLE_NAME_PATTERN, SPEC_VERSION, type VisualSpec } from './spec.js';
+import {
+  NODE_ID_PATTERN,
+  RECT_MIN_SIZE,
+  ROLE_NAME_PATTERN,
+  SPEC_VERSION,
+  type NodeRect,
+  type VisualSpec,
+} from './spec.js';
+import { positionsChildren } from './tree.js';
 import type { FieldSpec } from './types.js';
 
 /** Schema de um campo, derivado do seu descritor. */
@@ -43,6 +51,24 @@ function fieldSchema(field: FieldSpec): Record<string, unknown> {
   }
 }
 
+/**
+ * Geometria opcional do no.
+ *
+ * O schema garante que cada eixo e um numero na faixa; que a caixa CABE dentro
+ * do pai (`x + w <= 100`) e regra semantica, em `validateSpec` — JSON Schema nao
+ * relaciona duas propriedades irmas sem `dependentSchemas` acrobatico, e o erro
+ * dele nao diria qual das duas esta errada.
+ */
+const AXIS_SCHEMA = { type: 'number', minimum: 0, maximum: 100 };
+const SIZE_SCHEMA = { type: 'number', minimum: RECT_MIN_SIZE, maximum: 100 };
+
+const rectSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['x', 'y', 'w', 'h'],
+  properties: { x: AXIS_SCHEMA, y: AXIS_SCHEMA, w: SIZE_SCHEMA, h: SIZE_SCHEMA },
+};
+
 function nodeSchemaFor(kind: (typeof NODE_KINDS)[number]): Record<string, unknown> {
   const descriptor = NODE_DESCRIPTORS[kind];
   const properties: Record<string, unknown> = {};
@@ -61,6 +87,7 @@ function nodeSchemaFor(kind: (typeof NODE_KINDS)[number]): Record<string, unknow
       id: { type: 'string', pattern: NODE_ID_PATTERN },
       kind: { const: kind },
       props: { type: 'object', additionalProperties: false, required, properties },
+      rect: rectSchema,
       ...(descriptor.acceptsChildren
         ? { children: { type: 'array', items: { $ref: '#/$defs/node' }, maxItems: 50 } }
         : {}),
@@ -203,6 +230,31 @@ function isInformative(error: ErrorObject): boolean {
   return error.keyword !== 'if';
 }
 
+/**
+ * A caixa cabe dentro do pai?
+ *
+ * Uma caixa que passa da borda nao some — ela e cortada, e o pedaco que falta
+ * some sem erro nenhum dentro do Power BI. O editor PRENDE a caixa na borda
+ * enquanto o usuario arrasta (ver `clampRect`); esta regra existe para a spec que
+ * chega por importacao de arquivo, onde ninguem prendeu nada.
+ */
+function rectIssues(rect: NodeRect, path: string): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  if (rect.x + rect.w > 100) {
+    issues.push({
+      path: `${path}.rect`,
+      message: `a caixa passa da borda direita do pai: x + largura = ${String(rect.x + rect.w)}`,
+    });
+  }
+  if (rect.y + rect.h > 100) {
+    issues.push({
+      path: `${path}.rect`,
+      message: `a caixa passa da borda inferior do pai: y + altura = ${String(rect.y + rect.h)}`,
+    });
+  }
+  return issues;
+}
+
 export function validateSpec(value: unknown): SpecValidationResult {
   const validate = validator();
   if (!validate(value)) {
@@ -227,6 +279,22 @@ export function validateSpec(value: unknown): SpecValidationResult {
       issues.push({ path, message: `id de no duplicado: ${node.id}` });
     }
     seenIds.add(node.id);
+
+    if (node.rect) issues.push(...rectIssues(node.rect, path));
+
+    // Num pai que posiciona, filho sem caixa nao tem tamanho nenhum — sai com
+    // zero por zero, invisivel e sem erro. As operacoes de arvore ja garantem a
+    // caixa (`withPlacedChildren`); esta regra pega a spec que veio de fora.
+    if (positionsChildren(node)) {
+      (node.children ?? []).forEach((child, index) => {
+        if (!child.rect) {
+          issues.push({
+            path: `${path}.children[${String(index)}].rect`,
+            message: 'falta a caixa: o pai posiciona os filhos livremente',
+          });
+        }
+      });
+    }
 
     for (const field of NODE_DESCRIPTORS[node.kind].fields) {
       if (field.kind !== 'role') continue;

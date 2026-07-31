@@ -23,6 +23,17 @@ interface FieldBase {
   key: string;
   label: string;
   hint?: string;
+  /**
+   * Mostra o campo so quando outro campo do MESMO no tem este valor.
+   *
+   * Existe porque um container que posiciona livremente ignora `direction` e
+   * `gap`: deixa-los na tela seria oferecer dois controles que nao fazem nada, e
+   * o usuario gira o de espacamento tres vezes antes de concluir que o editor
+   * esta quebrado. Vive AQUI, no descritor, e nao numa lista de excecoes no
+   * painel — a mesma regra de sempre, senao a proxima condicao nasce na tela e o
+   * catalogo deixa de descrever o que a tela mostra.
+   */
+  showWhen?: { key: string; equals: string };
 }
 
 /**

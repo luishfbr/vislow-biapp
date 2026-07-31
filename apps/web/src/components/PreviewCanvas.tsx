@@ -13,10 +13,11 @@ import { SpecPreview } from './SpecPreview';
  * permite mexer na aparencia do editor sem risco de mexer no que o Power BI vai
  * mostrar.
  *
- * O preview NAO tem selecao por clique de proposito: qualquer wrapper com
- * `onClick` em volta de um no mudaria a arvore de flex que os graficos usam para
- * medir altura, e o preview deixaria de valer como referencia (ADR-04). A
- * selecao vive no painel de arvore, onde nao custa nada.
+ * Num container que POSICIONA, o preview tem selecao e arrasto: a camada de
+ * manipulacao e filha absoluta do container, fora do fluxo, e nao toca na cadeia
+ * de flex que os graficos usam para medir (ADR-18). Num container que EMPILHA
+ * continua sem — la nao ha geometria de onde derivar a camada, e a objecao da
+ * ADR-14 segue de pe. A selecao pelo painel de arvore funciona nos dois casos.
  *
  * RN-02: nenhum dado do modelo do Power BI passa por aqui — o app nem tem acesso
  * a ele.
@@ -31,6 +32,9 @@ const RATIOS = [
 export function PreviewCanvas() {
   const spec = useEditorStore((s) => s.spec);
   const issues = useEditorStore((s) => s.issues);
+  const selectedId = useEditorStore((s) => s.selectedId);
+  const select = useEditorStore((s) => s.select);
+  const setRect = useEditorStore((s) => s.setRect);
   const [ratio, setRatio] = useState<number>(16 / 9);
 
   // Memoizado porque `issuesByNode` constroi Maps novos: sem isso o
@@ -38,13 +42,21 @@ export function PreviewCanvas() {
   // proporcao, e os graficos remontam sem motivo.
   const byNode = useMemo(() => issuesByNode(spec, issues), [spec, issues]);
 
+  // Memoizado pelo mesmo motivo do `byNode`: um objeto novo a cada render faria
+  // o `SpecPreview` remontar os graficos a cada movimento do ponteiro, que e
+  // exatamente quando isso mais custa.
+  const edit = useMemo(
+    () => ({ selectedId, onSelect: select, onChange: setRect }),
+    [selectedId, select, setRect],
+  );
+
   return (
     <main className="flex h-full flex-1 flex-col items-center justify-center gap-4 overflow-auto bg-slate-100 p-8 dark:bg-slate-950">
       <div
         className="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-slate-200 dark:ring-slate-700"
         style={{ aspectRatio: String(ratio) }}
       >
-        <SpecPreview spec={spec} issues={byNode} />
+        <SpecPreview spec={spec} issues={byNode} edit={edit} />
       </div>
 
       <div className="flex items-center gap-2">

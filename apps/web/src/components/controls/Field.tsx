@@ -1,5 +1,6 @@
 'use client';
 
+import { RECT_MIN_SIZE } from '@vislow/component-registry';
 import { useId } from 'react';
 
 const LABEL = 'text-xs font-medium text-slate-600 dark:text-slate-300';
@@ -114,6 +115,93 @@ export function NumberField({
         <span className="w-8 shrink-0 text-right text-xs tabular-nums text-slate-500">{value}</span>
       </div>
     </Row>
+  );
+}
+
+/**
+ * Geometria de um no: x, y, largura e altura, em % do pai.
+ *
+ * NAO usa o `Row` dos demais controles de proposito. Os outros campos sao
+ * perguntas independentes; estes quatro sao UM valor com quatro eixos, e quem
+ * ajusta olha os quatro ao mesmo tempo — em quatro linhas separadas o painel
+ * ficaria com 320px de altura so de geometria e a relacao entre eles sumiria.
+ *
+ * A caixa de coordenada — rotulo dentro da borda, unidade muda, numeral tabular
+ * — e o formato de instrumento de desenho: compacta, e o digito nao dança de
+ * posicao quando o numero muda durante um arrasto.
+ */
+export function RectField({
+  value,
+  error,
+  onChange,
+}: {
+  value: { x: number; y: number; w: number; h: number };
+  error?: string | undefined;
+  onChange: (axis: 'x' | 'y' | 'w' | 'h', v: number) => void;
+}) {
+  const axes = [
+    { key: 'x', mark: 'X', label: 'Distancia da esquerda' },
+    { key: 'y', mark: 'Y', label: 'Distancia do topo' },
+    { key: 'w', mark: 'L', label: 'Largura' },
+    { key: 'h', mark: 'A', label: 'Altura' },
+  ] as const;
+
+  return (
+    <section className="py-2">
+      <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        Posicao e tamanho
+      </h3>
+
+      <div className="grid grid-cols-2 gap-1.5">
+        {axes.map((axis) => (
+          <label
+            key={axis.key}
+            className="flex items-center gap-1.5 rounded-md border border-slate-300 bg-white px-2 py-1 focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:focus-within:ring-sky-900"
+          >
+            <span
+              aria-hidden="true"
+              className="w-2.5 shrink-0 text-[10px] font-semibold text-slate-400"
+            >
+              {axis.mark}
+            </span>
+            {/* As setas do teclado ajustam de 0,5 em 0,5 — e o caminho preciso e
+                tambem o acessivel. O spinner nativo fica escondido: em duas
+                colunas de 140px ele come a largura do proprio numero. */}
+            <input
+              type="number"
+              inputMode="decimal"
+              name={`rect-${axis.key}`}
+              autoComplete="off"
+              step={0.5}
+              // O piso vem do schema, nao de um 2 escrito aqui: com a constante
+              // duplicada, mudar o minimo num lado deixaria o controle oferecendo
+              // um valor que a validacao reprova.
+              min={axis.key === 'x' || axis.key === 'y' ? 0 : RECT_MIN_SIZE}
+              max={100}
+              value={value[axis.key]}
+              aria-label={`${axis.label}, em porcentagem`}
+              onChange={(e) => {
+                const parsed = Number(e.target.value);
+                if (!Number.isNaN(parsed)) onChange(axis.key, parsed);
+              }}
+              className="min-w-0 flex-1 bg-transparent text-right text-sm tabular-nums text-slate-900 outline-none [appearance:textfield] dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+            />
+            <span aria-hidden="true" className="shrink-0 text-[10px] text-slate-400">
+              %
+            </span>
+          </label>
+        ))}
+      </div>
+
+      {error !== undefined && (
+        <div
+          role="alert"
+          className="mt-1 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+        >
+          {error}
+        </div>
+      )}
+    </section>
   );
 }
 

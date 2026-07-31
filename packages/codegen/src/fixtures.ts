@@ -1,8 +1,10 @@
 import {
+  CONTAINER_CANVAS,
   NODE_KINDS,
   SPEC_VERSION,
   createNode,
   defaultPropsFor,
+  insertChild,
   roleFieldsOf,
   type DataRole,
   type SpecNode,
@@ -58,8 +60,16 @@ export function specWith(root: SpecNode, name = 'Teste de Codegen'): VisualSpec 
  * id fixo esconderia justamente essa regressao.
  */
 export function specWithEveryKind(name = 'Teste de Codegen'): VisualSpec {
-  const container = createNode('container');
-  container.children = NODE_KINDS.filter((kind) => kind !== 'container').map(nodeOf);
+  // POSICIONADO, porque e o que a raiz de um projeto novo faz. O portao compila
+  // esta fixture de verdade: se ele empilhasse, nada no pipeline real exercitaria
+  // o `CanvasSlot`, e a primeira vez que alguem visse um no posicionado dentro do
+  // Power BI seria em producao. Cada tipo cai numa faixa — inclusive os graficos,
+  // que passam a medir dentro de uma caixa absoluta e nao mais na cadeia de flex.
+  let container = createNode('container');
+  container.props.placement = CONTAINER_CANVAS;
+  for (const kind of NODE_KINDS.filter((kind) => kind !== 'container')) {
+    container = insertChild(container, container.id, nodeOf(kind)) ?? container;
+  }
   return {
     ...specWith(container, name),
     project: {

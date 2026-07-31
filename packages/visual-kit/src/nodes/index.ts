@@ -9,6 +9,7 @@
 export * from './frame.js';
 export * from './mockFrame.js';
 export * from './Container.js';
+export * from './CanvasSlot.js';
 export * from './TextNode.js';
 export * from './KpiNode.js';
 export * from './charts.js';
