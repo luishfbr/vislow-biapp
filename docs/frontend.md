@@ -1,0 +1,181 @@
+# Frontend — o editor e os componentes que desenham
+
+Duas superfícies que o usuário enxerga: **`apps/web`**, onde ele compõe, e **`packages/visual-kit`**, que
+desenha tanto o preview quanto o visual compilado. Leia antes de escrever JSX ou CSS em qualquer uma das duas.
+
+## 1. As duas skills são obrigatórias
+
+**Toda feature que cria ou reformula UI passa pelas duas skills de `.claude/skills/`.** Não é polimento
+opcional: tem item próprio no Definition of Done. O motivo é o princípio 4 da casa — *o preview é o produto*. Um
+editor que parece formulário genérico não convence ninguém a compor um visual nele, e um visual que destoa do
+relatório em volta é devolvido antes de qualquer bug.
+
+| Skill | Quando | O que entrega |
+|---|---|---|
+| **`frontend-design`** | **Antes** da primeira linha de JSX ou CSS | Direção visual deliberada: paleta nomeada (4–6 hex), tipografia por papel, conceito de layout, elemento-assinatura — com o passo de autocrítica que rejeita o que sair templated |
+| **`web-design-guidelines`** | **Depois**, sobre os arquivos do diff | Auditoria contra as Web Interface Guidelines (foco visível, semântica, estados, formulários, movimento, contraste), com achados em `arquivo:linha` |
+
+**A ordem não é negociável:** plano de design → implementar seguindo o plano → auditar o diff → resolver cada
+achado ou justificá-lo por escrito no PR. Design depois do código é retrabalho, porque a estrutura do JSX já
+congelou as decisões de layout que a etapa 1 existia para tomar.
+
+Instaladas por cópia, com origem e hash em [`skills-lock.json`](../skills-lock.json); atualização por
+`npx skills update`, em PR próprio. `.claude/skills/` e `.agents/skills/` são a mesma coisa — **nunca edite uma
+sem a outra**. O `web-design-guidelines` busca as regras pela rede a cada uso; sem rede ele falha, e isso é
+problema a resolver, não dispensa da auditoria.
+
+### 1.1 As invariantes deste repo vencem a skill
+
+O `frontend-design` foi escrito para páginas livres. Este repo tem restrições que não são estéticas — são o
+preço já pago por falhas silenciosas dentro do Power BI. **Quando colidirem, a invariante vence e a skill se
+adapta.**
+
+| A skill sugere | Aqui vira |
+|---|---|
+| Cor livre no CSS | Hex validado, aplicado por `style` inline — cor **nunca** vira classe |
+| Classe utilitária escrita na hora | String literal completa no mapa de `visual-kit/src/tokens.ts`; variante com o prefixo **antes** (`pbi:focus:ring-2`) |
+| Família tipográfica característica | Só no editor. O `visual-kit` **não tem token de família** — a face vem do host. Precisar de uma é feature de schema primeiro, nunca webfont externa: o visual roda offline e contra orçamento de 1 MB |
+| Micro-interação com estado | No `visual-kit`, sem hooks — classe, ou cálculo no render |
+| Wrapper clicável para seleção | No preview, não: quebra a medida do `ResponsiveContainer` (ADR-14) |
+
+### 1.2 O que a auditoria não dispensa
+
+O `web-design-guidelines` cobre UI genérica da web. Ele **não sabe** o que o Power BI exige:
+
+- **Alto contraste** — ver [3.2](#32-alto-contraste-html-usa-a-variável-svg-lê-o-quadro).
+- **Teclado nos gráficos** — sobreposição de botões, não `tabIndex` no SVG. Ver [3.3](#33-teclado-é-uma-sobreposição-de-botões).
+- **O estado vazio e o de erro.** O visual nunca renderiza em branco (RN-04). Um design que só previu o caminho
+  feliz está incompleto, por mais bonito que esteja.
+
+## 2. O editor (`apps/web`)
+
+```
+┌───────────────────────────────────────────────────────────────────────────────┐
+│  [Vislow]   Nome do visual: [__________]   v1.0.0.0   [ Baixar .pbiviz ]      │
+├──────────────────┬────────────────────────────────────┬───────────────────────┤
+│  COMPONENTES     │        PREVIEW (visual-kit)        │    PROPRIEDADES       │
+│  COMPOSIÇÃO ↑↓✕  │   render ao vivo com mockFrame     │    (do descritor)     │
+│  CAMPOS DO VISUAL│        [16:9] [4:3] [1:1]          │                       │
+│  PROJETO         │                                    │                       │
+└──────────────────┴────────────────────────────────────┴───────────────────────┘
+```
+
+**Nada nesta tela é escrito à mão por tipo ou por propriedade.** Paleta, painel e preview saem todos de
+`NODE_DESCRIPTORS` (ADR-09) — a mesma fonte do schema e do codegen. Um tipo novo aparece nos três lugares no
+commit em que passa a existir. **Uma lista paralela é a quinta cópia do catálogo e a primeira a divergir.**
+
+- Onde o componente novo entra: **dentro** da seleção quando ela aceita filhos, senão logo **depois**, como
+  irmão. A seleção passa a ser o nó novo.
+- O marcador de pendência acende no nó **e em todos os seus ancestrais**: com a árvore recolhida, marcar só o nó
+  defeituoso deixaria o export bloqueado sem indício de onde (RF-12).
+- **`lib/nodeComponents.ts` é o gêmeo por referência do que o codegen faz por texto.**
+  `nodeComponents.test.ts` compara o nome da função com `descriptor.component` — é a única coisa ligando os dois
+  caminhos.
+
+### 2.1 Estado
+
+Store Zustand única com `spec`, `issues` e `selectedId`. Toda escrita passa por `commit`, que revalida com o
+**mesmo `validateSpec` que a API aplica** e persiste com debounce. Não existe caminho que altere a árvore sem
+revalidar — é o que garante que o botão de export só fique ativo com uma spec que a API aceitaria (RN-03).
+
+**Seletor de zustand nunca constrói valor** (achado 52). O v5 compara com `Object.is`, então devolver um `Map`
+ou objeto novo re-renderiza em loop e trava a aba. O que fica como seletor devolve **referência vinda do
+estado**; a derivação que cria objeto vive em `lib/issues.ts` e é memoizada no componente.
+
+**Nome de papel é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createRole` e amarra as
+referências da árvore e o `capabilities.json`.
+
+Um projeto v1 no `localStorage` é migrado na hidratação preservando o `project.id` — sem ele, reexportar
+duplicaria o visual em vez de atualizá-lo.
+
+### 2.2 Export
+
+```
+clique → valida (inválido: aponta os campos na árvore e no painel, e para)
+       → POST /builds { spec }           → 202 { buildId }
+       → GET  /builds/:id [polling 1 s]  → "na fila..." / "compilando..."
+       → GET  /builds/:id/artifact       → blob
+       → saveAs + bump da versão + instruções de importação
+```
+
+As fases são nomeadas porque a espera passou a existir: ~12 s medidos, e "Gerando..." parado por doze segundos é
+indistinguível de travado. O download só acontece após um estado **terminal** — pedir o artefato antes traz um
+`409`, não um pacote.
+
+Cada `BuildErrorCode` vira uma frase que diz o que fazer, num `switch` exaustivo por compilador sobre o tipo de
+`@vislow/build-contract`: um código novo no servidor **quebra o build do editor** em vez de virar "erro
+desconhecido" na tela. `ARTIFACT_REJECTED` é redigido como *reprovado na inspeção*, não como *falhou* — o
+primeiro sugere reportar, o segundo sugere tentar de novo, e a ADR-11 significa que tentar de novo não ajuda.
+
+### 2.3 Armadilhas do ambiente do editor
+
+- **`react-is` é peer do Recharts** e o repo usa `autoInstallPeers: false`, então `apps/web` o declara
+  explicitamente (achado 49). O `npm ci` do template instala peers sozinho — por isso o visual compilado esconde
+  esse problema e só o editor quebra.
+- **Testes `.tsx` precisam do `oxc.jsx` no `vitest.config.ts`** (achado 51): o `apps/web/tsconfig.json` usa
+  `jsx: "preserve"` (exigência do Next) e o vitest lê o mesmo arquivo. Definir `esbuild.jsx` é aceito e
+  **silenciosamente ignorado** no Vite 8.
+- **`react` no vitest vem por alias para a cópia do editor** (achado 50). O kit não pode declarar react, então
+  sem o alias nenhum teste importa os componentes a partir do fonte.
+
+## 3. Os nós que desenham (`packages/visual-kit`)
+
+O mesmo código roda no preview e dentro do Power BI (ADR-04, ADR-10). Tudo aqui é compilado para dentro do
+bundle do visual, e é isso que explica cada restrição abaixo.
+
+### 3.1 O kit não usa hooks
+
+**Regra de ESLint, não convenção.** Hook é o único ponto sensível à duplicação do React no bundle (achado 39):
+elementos JSX atravessam cópias sem problema — o `$$typeof` é um `Symbol.for`, global — mas hooks não. Use
+classe (ver `ErrorBoundary`) ou calcule no render.
+
+Pelo mesmo motivo o kit **não declara `react` nem em `devDependencies`**, e um teste que monte seus componentes
+mora em `apps/web` (achado 56).
+
+### 3.2 Alto contraste: HTML usa a variável, SVG lê o quadro
+
+**`var()` não é substituído em atributo de apresentação de SVG** (achado 55). `<rect fill="var(--x, red)">` não
+pinta em navegador nenhum — a substituição só acontece em propriedade CSS, e o Recharts emite `fill`/`stroke`
+como atributo. Teria quebrado o alto contraste exatamente onde ele mais importa, e em silêncio.
+
+- **Nós de HTML** (`Container`, `TextNode`, `KpiNode`): use `hcInk`, `hcSurface`, `hcAccent`, `hcLine` de
+  `highContrast.ts`.
+- **Gráficos**: resolva por `hostOf(frame).highContrast`. Todo descritor de gráfico tem campo de papel, então
+  sempre tem o quadro.
+
+### 3.3 Teclado é uma sobreposição de botões
+
+Uma sobreposição `absolute` de `<button>` `sr-only`, **não `tabIndex` no SVG**. Absoluta porque um elemento a
+mais na cadeia de flex quebra a medida do `ResponsiveContainer` (ADR-14); o grupo é `pointer-events-none` para
+não roubar clique do gráfico. As setas movem o **foco do DOM**, não um índice em estado — é o que dá navegação
+por setas sem hook.
+
+**Classe com variante se confere no `dist/styles.css`, não no olho** (achado 54): `pbi:sr-only` e
+`pbi:focus:not-sr-only` foram validadas compilando o CSS e lendo os seletores gerados antes de o componente ser
+escrito.
+
+### 3.4 Os serviços do host viajam no quadro
+
+Nunca leia `frame.host` direto — **use `hostOf(frame)`**, que devolve o `INERT_HOST` no preview (ADR-16). Um
+`?.` por chamada é uma chance por chamada de esquecer, e o esquecimento só quebra o editor.
+
+O `FrameHost` tem discriminante `kind: 'host' | 'inert'`, e é ele que decide o tooltip: no visual compilado o
+balão é o do host (RF-19); no preview fica o do Recharts, senão passar o mouse no editor não mostraria nada.
+
+**Mouse e teclado divergem por tipo de gráfico, de propósito.** Barra e pizza têm marca por ponto e usam
+`onClick` do `<Bar>`/`<Pie>`; linha e área usam o handler do gráfico e o `activeTooltipIndex`. Restrição do
+Recharts, não escolha.
+
+### 3.5 O preview não tem seleção por clique
+
+ADR-14. Um wrapper clicável entra na cadeia de flex que o `ResponsiveContainer` usa para medir altura, e o
+preview deixa de valer como referência do resultado — que é justamente o ponto do ADR-04. A seleção vive no
+painel de árvore, onde não custa nada.
+
+### 3.6 Classes Tailwind e cores
+
+As regras que produzem falha silenciosa dentro do Power BI estão em [build-visual.md](build-visual.md) — leia
+antes de mexer em `tokens.ts`. Em resumo: **string literal completa, sempre**; **prefixo antes da variante**; e
+**cor nunca vira classe** (hex validado por `pattern`, aplicado por `style` inline, que é a exceção deliberada
+que permite qualquer cor de marca sem quebrar a garantia de purge).
+

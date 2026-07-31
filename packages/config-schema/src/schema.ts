@@ -16,7 +16,7 @@ import {
  */
 export const SCHEMA_VERSION = '1.0.0';
 
-/** Identificador do visual: tambem e nome de variavel JS no bundle (secao 8.4). */
+/** Identificador do visual: tambem e nome de variavel JS no bundle (docs/build-visual.md). */
 export const PROJECT_ID_PATTERN = '^[A-Za-z][A-Za-z0-9]{7,63}$';
 
 /** Versao do pacote no formato de 4 componentes do Power BI (RN-07). */

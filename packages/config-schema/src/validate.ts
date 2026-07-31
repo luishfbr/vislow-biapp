@@ -49,7 +49,7 @@ function toIssue(err: ErrorObject): ValidationIssue {
 /**
  * Valida um VisualConfig contra o JSON Schema.
  *
- * Usado nos DOIS lados da fronteira (RN-03 e defesa em profundidade da secao 13):
+ * Usado nos DOIS lados da fronteira (RN-03 e defesa em profundidade, docs/architecture.md):
  * o editor bloqueia o export de config invalida; o runtime revalida ao ler a
  * config embutida, porque o pacote pode ser editado a mao entre os dois pontos.
  */

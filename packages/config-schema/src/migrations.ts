@@ -1,7 +1,7 @@
 import { SCHEMA_VERSION } from './schema.js';
 
 /**
- * Compatibilidade e migracao de schema (RN-09 / RN-12, secao 7.5).
+ * Compatibilidade e migracao de schema (RN-09 / RN-12, docs/architecture.md).
  *
  * Regra: mudancas sao ADITIVAS dentro de uma major. Remover ou renomear campo
  * exige bump de major E uma funcao aqui.

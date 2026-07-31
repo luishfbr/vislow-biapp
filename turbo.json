@@ -149,6 +149,22 @@
       "outputs": []
     },
 
+    // A guarda da documentacao: link relativo que nao resolve, e nome do caminho
+    // antigo fora do historico. Nao depende de build — le texto, nao codigo — e
+    // por isso e a tarefa mais barata do `verify`.
+    "//#lint:docs": {
+      "dependsOn": [],
+      "inputs": [
+        "scripts/check-docs.mjs",
+        "*.md",
+        "docs/**/*.md",
+        "apps/*/*.md",
+        "packages/*/*.md",
+        "packages/*/template/*.md"
+      ],
+      "outputs": []
+    },
+
     // O unico `build` que a suite rapida precisa. `pipeline.test.ts` importa
     // `pipeline.ts`, que importa `@vislow/visual-template` — o unico `@vislow/*`
     // que o mapa de alias NAO reescreve para `src/`, porque ele exporta caminhos

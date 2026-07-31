@@ -11,7 +11,7 @@ export type ChartType = 'bar' | 'kpi';
 export interface ProjectIdentity {
   /**
    * Identidade do visual. Vira o GUID do pacote E o nome de uma variavel
-   * JavaScript dentro do bundle (verificado no spike — secao 8.4), portanto
+   * JavaScript dentro do bundle (verificado no spike, docs/build-visual.md), portanto
    * precisa casar com `^[A-Za-z][A-Za-z0-9]*$`.
    *
    * Gerado UMA vez, na criacao do projeto, e imutavel dai em diante (RN-01).

@@ -114,11 +114,18 @@ export default defineConfig([
   // pertencem a nenhum tsconfig de pacote. Lint sem informacao de tipos, de
   // proposito.
   //
-  // `packages/*/scripts/**` entra aqui porque sao scripts CRITICOS de build
-  // (`stage-vendor.mjs` prepara o template do worker, `check-css.mjs` e a guarda
-  // do ADR-02) e antes nao casavam com padrao nenhum — rodavam com zero regras.
+  // `packages/*/scripts/**` e `scripts/**` entram aqui porque sao scripts
+  // CRITICOS de build (`stage-vendor.mjs` prepara o template do worker,
+  // `check-css.mjs` e a guarda do ADR-02, `check-docs.mjs` e a guarda da
+  // documentacao) e antes nao casavam com padrao nenhum — rodavam com zero
+  // regras. Um diretorio de scripts novo precisa entrar nesta lista.
   {
-    files: ['*.{mjs,ts}', '**/*.config.{mjs,ts}', 'packages/*/scripts/**/*.{mjs,ts}'],
+    files: [
+      '*.{mjs,ts}',
+      '**/*.config.{mjs,ts}',
+      'scripts/**/*.{mjs,ts}',
+      'packages/*/scripts/**/*.{mjs,ts}',
+    ],
     // `base` traz o parser de TypeScript sem as regras que exigem informacao de
     // tipos — arquivos de configuracao nao pertencem a nenhum tsconfig.
     extends: [eslint.configs.recommended, tseslint.configs.base],

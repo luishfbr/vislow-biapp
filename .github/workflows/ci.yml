@@ -52,7 +52,7 @@ jobs:
       # visual-kit (`packages/visual-kit/scripts/check-css.mjs`), entao agora
       # vale tambem no `pnpm dev` local, e nao so no CI.
       - name: Verificar (build, typecheck, lint, testes)
-        run: pnpm exec turbo run build typecheck lint test --cache-dir=.turbo/cache
+        run: pnpm exec turbo run build typecheck lint lint:docs test --cache-dir=.turbo/cache
 
       # O GATE DE ACEITE do ADR-08: spec -> .pbiviz compilado de verdade ->
       # bundle minificado executado num jsdom. E o herdeiro do teste que pegou o
