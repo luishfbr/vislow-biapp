@@ -124,10 +124,12 @@ export function TreePanel() {
   const canMoveUp = !isRoot && index > 0;
   const canMoveDown = !isRoot && index >= 0 && index < siblings.length - 1;
 
+  const empty = (spec.root.children?.length ?? 0) === 0;
+
   return (
-    <section className="flex min-h-0 flex-1 flex-col">
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+    <section className="flex min-h-0 flex-1 flex-col px-3 pb-3">
+      <div className="mb-1.5 flex items-center justify-between gap-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
           Composicao
         </h2>
         <div className="flex gap-1">
@@ -168,8 +170,16 @@ export function TreePanel() {
         </div>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto rounded border border-slate-200 py-1 dark:border-slate-700">
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 dark:border-slate-700 dark:bg-slate-900">
         <TreeRow node={spec.root} depth={0} faultyIds={faultyIds} />
+        {empty && (
+          // Estado vazio: a raiz sozinha nao explica que falta alguma coisa, e o
+          // export fica bloqueado sem que nada na tela diga o porque.
+          <p className="px-3 py-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            A composicao esta vazia. Use <strong className="font-medium">Adicionar componente</strong>{' '}
+            para colocar a primeira peca dentro do container.
+          </p>
+        )}
       </div>
     </section>
   );

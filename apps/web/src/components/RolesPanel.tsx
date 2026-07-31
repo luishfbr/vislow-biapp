@@ -45,18 +45,33 @@ export function RolesPanel() {
   }, [spec]);
 
   return (
-    <section>
-      <h2 className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-        Campos do visual
-      </h2>
+    // Faixa propria, com fundo e borda de topo: e a segunda coisa mais olhada da
+    // coluna e antes ela era a quarta secao de uma pilha rolavel, saindo da tela
+    // quando a arvore crescia. Aqui ela tem lugar fixo e rolagem propria.
+    <section className="shrink-0 border-t border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
+      <div className="mb-1.5 flex items-baseline justify-between gap-2">
+        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+          Campos do visual
+        </h2>
+        <span className="text-[10px] text-slate-400">
+          {spec.dataRoles.length === 0 ? 'nenhum' : `${String(spec.dataRoles.length)} declarado(s)`}
+        </span>
+      </div>
 
-      <div className="flex flex-col gap-1.5">
+      <div className="flex max-h-44 flex-col gap-1.5 overflow-y-auto">
+        {spec.dataRoles.length === 0 && (
+          // Sem campo declarado nenhum grafico consegue ligar dados — e o erro
+          // aparece la no painel de propriedades, longe da causa.
+          <p className="rounded-md border border-dashed border-slate-300 px-2 py-2 text-[11px] leading-relaxed text-slate-500 dark:border-slate-600 dark:text-slate-400">
+            Nenhum campo declarado. Graficos e KPI precisam de pelo menos um.
+          </p>
+        )}
         {spec.dataRoles.map((role) => {
           const used = usage.get(role.name) ?? 0;
           return (
             <div
               key={role.name}
-              className="rounded-md border border-slate-200 px-2 py-1.5 dark:border-slate-700"
+              className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900"
             >
               <div className="flex items-center gap-1.5">
                 <input
@@ -66,7 +81,11 @@ export function RolesPanel() {
                     setRoleLabel(role.name, e.target.value);
                   }}
                   aria-label={`Rotulo do campo ${role.name}`}
-                  className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-800 outline-none hover:border-slate-300 focus:border-sky-500 dark:text-slate-100 dark:hover:border-slate-600"
+                  autoComplete="off"
+                  // O foco precisa de mais do que a troca de 1px de borda: aqui
+                  // o campo nasce sem moldura, e so a cor da borda mudando passa
+                  // despercebido.
+                  className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs text-slate-800 outline-none hover:border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:text-slate-100 dark:hover:border-slate-600 dark:focus:ring-sky-900"
                 />
                 <button
                   type="button"
@@ -85,9 +104,11 @@ export function RolesPanel() {
                 </button>
               </div>
               <div className="mt-0.5 flex items-center gap-2 px-1 text-[10px] text-slate-400">
-                <span>{role.kind === 'grouping' ? 'categoria' : 'medida'}</span>
-                <span className="font-mono">{role.name}</span>
-                <span className="ml-auto">{used === 0 ? 'nao usado' : `${String(used)} uso(s)`}</span>
+                <span className="shrink-0">{role.kind === 'grouping' ? 'categoria' : 'medida'}</span>
+                <span className="min-w-0 truncate font-mono">{role.name}</span>
+                <span className="ml-auto shrink-0">
+                  {used === 0 ? 'nao usado' : `${String(used)} uso(s)`}
+                </span>
               </div>
             </div>
           );
@@ -115,9 +136,10 @@ export function RolesPanel() {
         </button>
       </div>
 
-      <p className="mt-2 text-[10px] leading-tight text-slate-400">
+      <p className="mt-2 text-[10px] leading-tight text-slate-500 dark:text-slate-400">
         Estes sao os campos que o visual vai pedir no Power BI. As colunas do modelo sao arrastadas
-        para eles <strong>dentro do relatorio</strong> — o editor nao acessa seu modelo.
+        para eles <strong className="font-medium">dentro do relatorio</strong> — o editor nao acessa
+        seu modelo.
       </p>
     </section>
   );

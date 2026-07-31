@@ -55,6 +55,21 @@ describe('registro de componentes', () => {
     }
   });
 
+  it('todo no declara termos de busca', () => {
+    // Sem isto o tipo de no novo entra no catalogo achavel so pelo rotulo, que
+    // e uma palavra so — e o dialogo de componentes passa a esconder o que
+    // acabou de ganhar.
+    for (const kind of NODE_KINDS) {
+      const { keywords } = NODE_DESCRIPTORS[kind];
+      expect(keywords.length, `${kind} sem keywords`).toBeGreaterThan(0);
+      for (const term of keywords) {
+        expect(term, `${kind}: "${term}" deve ser minusculo e sem espaco nas pontas`).toBe(
+          term.trim().toLowerCase(),
+        );
+      }
+    }
+  });
+
   it('todo no declara um componente para o codegen importar', () => {
     for (const kind of NODE_KINDS) {
       expect(NODE_DESCRIPTORS[kind].component).toMatch(/^[A-Z][A-Za-z0-9]*$/);

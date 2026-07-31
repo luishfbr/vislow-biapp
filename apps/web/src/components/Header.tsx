@@ -1,6 +1,7 @@
 'use client';
 
 import { ExportButton } from '@/components/ExportButton';
+import { ProjectMenu } from '@/components/ProjectMenu';
 import { useEditorStore } from '@/store/useEditorStore';
 
 export function Header() {
@@ -41,6 +42,10 @@ export function Header() {
       <span className="text-[11px] text-slate-400">v{spec.project.packageVersion}</span>
 
       <div className="ml-auto flex items-center gap-2">
+        {/* Acoes de arquivo do PROJETO — vieram da coluna esquerda, onde
+            ocupavam altura permanente para uso ocasional. Ficam a esquerda do
+            export porque o export e a acao principal, e a principal e a ultima. */}
+        <ProjectMenu />
         {/* O botao fica desabilitado com spec invalida: RN-03 impede pedir uma
             build que o servidor recusaria de qualquer forma. */}
         <ExportButton />
