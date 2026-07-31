@@ -1403,7 +1403,7 @@ inteiramente **derivada do registro**.
 | `component-registry/tree.ts` | Edição da árvore — inserir, remover, reordenar, reparentar — como funções puras. Mora no registro porque é lá que vive a regra do que é válido (folha não aceita filho, raiz não some, nó não entra em si mesmo). |
 | `visual-kit/nodes/mockFrame.ts` | `DataFrame` de exemplo **derivado dos papéis declarados**. Não existe mais dataset mock fixo: os papéis são do usuário, então o dado de exemplo nasce deles. |
 | `@vislow/build-contract` | Tipos de fio da API, com dois donos: servidor e editor. Um código de erro novo no servidor quebra o `switch` do editor em tempo de compilação em vez de virar "erro desconhecido" na tela. |
-| `apps/web` — `Palette`, `TreePanel`, `PropertiesPanel`, `RolesPanel`, `SpecPreview` | Paleta, árvore navegável, painel de propriedades e mapeamento de papéis. **Nenhuma lista de tipos ou de propriedades escrita à mão** — tudo sai de `NODE_DESCRIPTORS`. |
+| `apps/web` — `AddComponentDialog`, `TreePanel`, `PropertiesPanel`, `RolesPanel`, `SpecPreview` | Busca de componentes, árvore navegável, painel de propriedades e mapeamento de papéis. **Nenhuma lista de tipos ou de propriedades escrita à mão** — tudo sai de `NODE_DESCRIPTORS`, inclusive os termos de busca (`keywords`). |
 | `apps/web/lib/buildApi.ts` | Substitui `exportPbiviz.ts`. Sobe a spec, acompanha a build e baixa o artefato, com as fases nomeadas — "Gerando..." parado por doze segundos é indistinguível de travado. |
 
 **A garantia do [ADR-04](#35-decisões-de-arquitetura-adr) depois do pivô.** Preview e visual compilado chegam ao

@@ -45,8 +45,18 @@ export interface NodeDescriptor {
   kind: NodeKind;
   /** Nome exibido na paleta do editor. */
   label: string;
-  /** Uma linha explicando quando usar. Aparece na paleta. */
+  /** Uma linha explicando quando usar. Aparece na busca e no painel. */
   hint: string;
+  /**
+   * Termos alternativos que a busca do dialogo de componentes tambem casa.
+   *
+   * Existem porque o rotulo e uma palavra so: quem procura "donut", "cartao" ou
+   * "tempo" nao acha nada casando so `label` e `hint`. Ficam AQUI, e nao no
+   * editor, pela mesma regra do resto do catalogo — uma lista de sinonimos em
+   * `apps/web` seria a lista paralela que este registro existe para evitar, e a
+   * primeira a esquecer o tipo de no seguinte.
+   */
+  keywords: string[];
   /** Se aceita filhos. So o container aceita — arvore com folhas bem definidas. */
   acceptsChildren: boolean;
   fields: FieldSpec[];

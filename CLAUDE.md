@@ -8,6 +8,30 @@ Plataforma low-code que gera visuais customizados do Power BI (`.pbiviz`) sem qu
 2. **[docs/doc-mvp-lowcode-pbi.md](docs/doc-mvp-lowcode-pbi.md)** — o quê e por quê. Requisitos (`RF-xx`),
    regras (`RN-xx`), decisões (`ADR-xx`), riscos (`R-xx`). O **Anexo A** lista erros já pagos — não os repita.
 
+## Frontend: duas skills obrigatorias
+
+**Toda feature que cria ou reformula UI usa as duas skills de `.claude/skills/`.** Vale para `apps/web` (o
+editor) e para `packages/visual-kit` (o que o preview e o visual compilado desenham). Não é polimento opcional —
+é a [seção 5 do doc de padrões](docs/padroes-de-engenharia.md#5-design-de-frontend), com item próprio no
+Definition of Done.
+
+| Skill | Quando | Para quê |
+|---|---|---|
+| **`frontend-design`** | **antes** da primeira linha de JSX/CSS | plano de direção visual: paleta, tipografia, layout, elemento-assinatura — com a autocrítica que a skill descreve |
+| **`web-design-guidelines`** | **depois**, sobre o diff | auditoria de acessibilidade e interação, achados em `arquivo:linha` |
+
+A ordem importa: design depois do código é retrabalho, porque a estrutura do JSX já congelou o layout.
+
+**As invariantes deste repo vencem qualquer sugestão da skill.** Cor não vira classe, classe Tailwind é string
+literal completa, o `visual-kit` não tem hooks nem token de família tipográfica, e o preview não ganha wrapper
+clicável (ADR-14). A skill se adapta à restrição — nunca o contrário. A tabela de conflitos está na
+[seção 5.3](docs/padroes-de-engenharia.md#53-precedência-as-invariantes-deste-repo-vencem-a-skill).
+
+O `web-design-guidelines` busca as regras pela rede a cada uso; sem rede, ele falha — e isso é problema a
+resolver, não dispensa da auditoria. Origem e hash das duas em `skills-lock.json`; atualização por
+`npx skills update`, em PR próprio. `.claude/skills/` e `.agents/skills/` são cópias da mesma coisa: nunca edite
+uma sem a outra.
+
 ## Comandos
 
 **O monorepo roda sobre Turborepo.** A ordem de build vive no `turbo.json` e vale igual aqui e no CI — não há

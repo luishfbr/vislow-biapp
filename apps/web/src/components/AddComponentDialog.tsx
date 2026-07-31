@@ -1,0 +1,296 @@
+'use client';
+
+import { NODE_DESCRIPTORS, acceptsChildren, type NodeKind } from '@vislow/component-registry';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { searchComponents } from '@/lib/componentSearch';
+import { selectSelectedNode, useEditorStore } from '@/store/useEditorStore';
+
+/**
+ * Adicionar componente (RF-04).
+ *
+ * Substitui a paleta fixa que ocupava o topo da coluna esquerda. O motivo e de
+ * espaco, mas tambem de escala: sete tipos ainda cabiam empilhados, trinta nao —
+ * e a lista fixa cresce justamente para baixo, comendo a arvore e os campos, que
+ * sao o que a pessoa olha o tempo todo. Aqui a lista custa zero enquanto fechada.
+ *
+ * Continua GERADA do registro, como a paleta era: os candidatos saem de
+ * `searchComponents`, que le `NODE_DESCRIPTORS`.
+ *
+ * Usa o `<dialog>` nativo, como o `ImportInstructions`: Esc, retencao de foco e
+ * backdrop vem de graca, e nao ha biblioteca de modal no projeto.
+ */
+
+const OPTION_ID = (kind: NodeKind): string => `add-component-${kind}`;
+
+/**
+ * O gatilho, com o atalho que o abre de qualquer lugar do editor.
+ *
+ * Mora no mesmo arquivo que o dialogo de proposito: o atalho e o botao sao duas
+ * portas para a mesma coisa, e separa-los e como perdem a sincronia.
+ */
+export function AddComponentButton() {
+  const [open, setOpen] = useState(false);
+  // O rotulo do atalho so pode ser decidido no cliente. Comeca em "Ctrl" e
+  // corrige depois de montar — no servidor nao ha plataforma para consultar, e
+  // adivinhar aqui seria divergencia de hidratacao.
+  const [shortcut, setShortcut] = useState('Ctrl K');
+
+  useEffect(() => {
+    if (/Mac|iPhone|iPad/u.test(navigator.userAgent)) setShortcut('⌘K');
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== 'k') return;
+      // O navegador usa Ctrl/⌘+K para a barra de busca; aqui a acao e nossa.
+      event.preventDefault();
+      setOpen(true);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, []);
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setOpen(true);
+        }}
+        aria-haspopup="dialog"
+        className="flex w-full items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-left text-xs font-medium text-sky-900 transition-colors hover:border-sky-300 hover:bg-sky-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100 dark:hover:bg-sky-900"
+      >
+        <span aria-hidden className="text-sm leading-none">
+          +
+        </span>
+        Adicionar componente
+        <kbd className="ml-auto rounded border border-sky-300 px-1 py-0.5 font-mono text-[10px] font-normal text-sky-700 dark:border-sky-800 dark:text-sky-300">
+          {shortcut}
+        </kbd>
+      </button>
+
+      <AddComponentDialog
+        open={open}
+        onClose={() => {
+          setOpen(false);
+        }}
+      />
+    </>
+  );
+}
+
+export interface AddComponentDialogProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+export function AddComponentDialog({ open, onClose }: AddComponentDialogProps) {
+  const dialog = useRef<HTMLDialogElement>(null);
+  const addNode = useEditorStore((s) => s.addNode);
+  const target = useEditorStore(selectSelectedNode);
+
+  const [query, setQuery] = useState('');
+  const [active, setActive] = useState(0);
+
+  const results = useMemo(() => searchComponents(query), [query]);
+  const activeKind = results[active];
+
+  useEffect(() => {
+    const node = dialog.current;
+    if (!node) return;
+    if (open && !node.open) {
+      // Zerado na ABERTURA, e nao no fechamento: limpar ao fechar deixaria a
+      // lista saltar durante a animacao de saida do backdrop.
+      setQuery('');
+      setActive(0);
+      node.showModal();
+    }
+    if (!open && node.open) node.close();
+  }, [open]);
+
+  // A lista mudou embaixo do indice: sem isto, digitar mais uma letra podia
+  // deixar o destaque num item que ja nao existe e o Enter nao fazer nada.
+  useEffect(() => {
+    setActive(0);
+  }, [query]);
+
+  // Segue o destaque com a rolagem — navegar por seta ate o fim de uma lista
+  // longa nao pode empurrar o item para fora da vista.
+  useEffect(() => {
+    if (!activeKind) return;
+    document.getElementById(OPTION_ID(activeKind))?.scrollIntoView({ block: 'nearest' });
+  }, [activeKind]);
+
+  const commit = (kind: NodeKind) => {
+    addNode(kind);
+    onClose();
+  };
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (results.length === 0) return;
+
+    switch (event.key) {
+      case 'ArrowDown':
+        event.preventDefault();
+        setActive((index) => (index + 1) % results.length);
+        break;
+      case 'ArrowUp':
+        event.preventDefault();
+        setActive((index) => (index - 1 + results.length) % results.length);
+        break;
+      case 'Home':
+        event.preventDefault();
+        setActive(0);
+        break;
+      case 'End':
+        event.preventDefault();
+        setActive(results.length - 1);
+        break;
+      case 'Enter':
+        event.preventDefault();
+        if (activeKind) commit(activeKind);
+        break;
+      default:
+        break;
+    }
+  };
+
+  // A MESMA regra de `addNode`, dita em portugues: dentro da selecao quando ela
+  // aceita filhos, senao logo depois dela.
+  const targetLabel = NODE_DESCRIPTORS[target.kind].label;
+  const destination = acceptsChildren(target)
+    ? `Entra dentro de ${targetLabel}`
+    : `Entra logo depois de ${targetLabel}`;
+
+  return (
+    <dialog
+      ref={dialog}
+      onClose={onClose}
+      onClick={(event) => {
+        // Clique no backdrop: o alvo e o proprio <dialog>, porque o conteudo
+        // esta dentro de um filho. O nativo nao fecha sozinho.
+        if (event.target === dialog.current) onClose();
+      }}
+      aria-labelledby="add-component-title"
+      className="m-auto w-[30rem] max-w-[calc(100vw-2rem)] rounded-lg bg-white p-0 text-slate-800 shadow-xl backdrop:bg-slate-900/40 dark:bg-slate-900 dark:text-slate-100"
+    >
+      <div className="flex flex-col">
+        <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+          <h2 id="add-component-title" className="sr-only">
+            Adicionar componente
+          </h2>
+          <input
+            // O dialogo existe para ser digitado: sem isto, cada abertura pede um
+            // Tab antes da primeira letra. E `showModal()` ja prendeu o foco
+            // dentro do dialogo, entao nao ha para onde ele fugir.
+            autoFocus
+            type="text"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+            }}
+            onKeyDown={handleKeyDown}
+            role="combobox"
+            aria-expanded
+            aria-controls="add-component-results"
+            aria-autocomplete="list"
+            aria-activedescendant={activeKind ? OPTION_ID(activeKind) : undefined}
+            aria-label="Buscar componente"
+            placeholder="Buscar componente…"
+            // Nao e campo de formulario: preenchimento automatico e corretor
+            // ortografico so atrapalhariam uma busca por nome de componente.
+            autoComplete="off"
+            spellCheck={false}
+            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:focus:ring-sky-900"
+          />
+        </div>
+
+        {/*
+          O resultado da busca muda sem que nada receba foco: sem uma regiao
+          viva, quem usa leitor de tela digita e nao ouve nada mudar.
+        */}
+        <p aria-live="polite" className="sr-only">
+          {results.length === 0
+            ? 'Nenhum componente encontrado'
+            : `${String(results.length)} componente(s)`}
+        </p>
+
+        {results.length === 0 ? (
+          <p className="px-4 py-8 text-center text-xs wrap-break-word text-slate-500 dark:text-slate-400">
+            Nenhum componente para <span className="font-medium">{query}</span>. Tente “grafico”,
+            “numero” ou “texto”.
+          </p>
+        ) : (
+          // Sem `<ul>/<li>`: filho direto de um `listbox` tem de ser `option`, e
+          // um `<li>` no meio quebraria a relacao que o leitor de tela usa para
+          // anunciar "3 de 7".
+          <div
+            id="add-component-results"
+            role="listbox"
+            aria-label="Componentes"
+            // `overscroll-contain`: rolar ate o fim da lista nao pode continuar
+            // rolando a pagina atras do modal.
+            className="max-h-72 overflow-y-auto overscroll-contain py-1"
+          >
+            {results.map((kind, index) => {
+              const descriptor = NODE_DESCRIPTORS[kind];
+              const highlighted = index === active;
+              return (
+                <button
+                  key={kind}
+                  type="button"
+                  id={OPTION_ID(kind)}
+                  role="option"
+                  aria-selected={highlighted}
+                  tabIndex={-1}
+                  onClick={() => {
+                    commit(kind);
+                  }}
+                  // Mouse e teclado compartilham UM destaque: mover o ponteiro
+                  // move o mesmo indice que a seta move, entao nunca ha duas
+                  // linhas parecendo ativas ao mesmo tempo.
+                  onMouseMove={() => {
+                    setActive(index);
+                  }}
+                  className={`block w-full px-4 py-2 text-left transition-colors ${
+                    highlighted ? 'bg-sky-50 dark:bg-sky-950' : ''
+                  }`}
+                >
+                  <span
+                    className={`block text-xs font-medium ${
+                      highlighted
+                        ? 'text-sky-900 dark:text-sky-100'
+                        : 'text-slate-800 dark:text-slate-100'
+                    }`}
+                  >
+                    {descriptor.label}
+                  </span>
+                  <span className="block text-[11px] leading-tight text-slate-500 dark:text-slate-400">
+                    {descriptor.hint}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+
+        {/*
+          O destino resolvido, e nao uma frase generica: a regra de `addNode`
+          depende da selecao atual, e ela e a duvida real de quem esta prestes a
+          clicar. A paleta antiga dizia as duas metades da regra e deixava o
+          usuario decidir qual valia para ele.
+        */}
+        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-2 dark:border-slate-700">
+          <p className="min-w-0 truncate text-[11px] text-slate-500 dark:text-slate-400">
+            {destination}
+          </p>
+          <p className="hidden shrink-0 text-[10px] text-slate-400 sm:block">
+            ↑↓ navegar · ↵ adicionar · Esc fechar
+          </p>
+        </div>
+      </div>
+    </dialog>
+  );
+}

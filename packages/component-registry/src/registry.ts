@@ -39,6 +39,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     kind: 'container',
     label: 'Container',
     hint: 'Agrupa e posiciona outros componentes em linha ou coluna.',
+    keywords: ['grupo', 'caixa', 'secao', 'layout', 'empilhar', 'painel'],
     acceptsChildren: true,
     component: 'Container',
     fields: [
@@ -58,6 +59,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     kind: 'text',
     label: 'Texto',
     hint: 'Titulo, rotulo ou nota. Nao le dados do modelo.',
+    keywords: ['titulo', 'rotulo', 'legenda', 'nota', 'paragrafo', 'cabecalho'],
     acceptsChildren: false,
     component: 'TextNode',
     fields: [
@@ -73,6 +75,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     kind: 'kpi',
     label: 'KPI',
     hint: 'Destaca um numero unico, agregado da medida.',
+    keywords: ['numero', 'cartao', 'card', 'indicador', 'metrica', 'total'],
     acceptsChildren: false,
     component: 'KpiNode',
     fields: [
@@ -88,6 +91,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     kind: 'barChart',
     label: 'Barras',
     hint: 'Compara valores entre categorias.',
+    keywords: ['grafico', 'colunas', 'ranking', 'comparar', 'barra'],
     acceptsChildren: false,
     component: 'BarChartNode',
     fields: [
@@ -108,6 +112,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     kind: 'lineChart',
     label: 'Linha',
     hint: 'Mostra evolucao ao longo de uma sequencia.',
+    keywords: ['grafico', 'tempo', 'serie temporal', 'tendencia', 'evolucao'],
     acceptsChildren: false,
     component: 'LineChartNode',
     fields: [
@@ -123,6 +128,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     kind: 'areaChart',
     label: 'Area',
     hint: 'Como linha, com enfase no volume acumulado.',
+    keywords: ['grafico', 'tempo', 'volume', 'acumulado', 'tendencia'],
     acceptsChildren: false,
     component: 'AreaChartNode',
     fields: [
@@ -137,6 +143,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     kind: 'pieChart',
     label: 'Pizza',
     hint: 'Composicao de um total. Use com poucas categorias.',
+    keywords: ['grafico', 'rosca', 'donut', 'proporcao', 'participacao', 'fatia'],
     acceptsChildren: false,
     component: 'PieChartNode',
     fields: [
