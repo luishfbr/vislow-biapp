@@ -252,6 +252,7 @@ Todo o desenho decorre destas restrições, verificadas na documentação da Mic
 | **ADR-14** | O **preview não tem seleção por clique**. A seleção vive no painel de árvore. | Envolver cada nó do preview num elemento clicável insere um `div` na cadeia de flex que os gráficos usam para medir altura — o `ResponsiveContainer` passaria a medir outra coisa e o preview deixaria de valer como referência do resultado final, que é justamente o ADR-04. Na árvore a seleção não custa nada. | Wrapper clicável (quebra o WYSIWYG por dentro, sem sintoma visível); `refs` + overlay posicionado (complexidade alta para ganho pequeno). |
 | **ADR-15** | A união de nós no schema é despachada com **`if`/`then` por `kind`**, não com `oneOf`. | Com `oneOf` o Ajv avalia as sete variantes e reporta o erro de todas: um `barChart` sem medida ligada acusava também "falta `direction`" e "falta `gap`", que são campos de container. Erro de outro tipo de nó é pior que erro nenhum — manda o usuário procurar um controle que a tela dele nem tem. Com `if`/`then`, o `if` que não casa não produz erro. | `oneOf` (ruído inutilizável no painel); `discriminator` do Ajv (extensão fora do dialeto 2020-12 padrão). |
 | **ADR-16** | Os **serviços do host viajam dentro do `DataFrame`**, num objeto `FrameHost`, e não como prop de cada nó. O alto contraste chega ao HTML por **variável CSS com fallback** (`var(--vislow-hc-ink, #1e293b)`) definida no elemento raiz; o SVG dos gráficos lê a paleta do quadro. | Seleção, tooltip e alto contraste não são configuração do usuário: dar-lhes um campo em cada descritor criaria seis propriedades por nó que ninguém edita, e o codegen teria de emitir seis atributos por elemento. O quadro já atravessa a árvore inteira. A variável CSS resolve o que o quadro não alcança — `Container` e `TextNode` não consomem dados e mesmo assim precisam obedecer ao alto contraste — sem contexto do React e **sem hook** ([achado 39](#a7--achados-da-fase-3--export-2026-07-30)). A exceção do SVG não é escolha: `var()` **não é substituído em atributo de apresentação** — `<rect fill="var(--x, red)">` não pinta em navegador nenhum, e todo gráfico tem campo de papel, então sempre tem o quadro. | Prop por capacidade em cada descritor (polui o registro com campos que o usuário nunca vê); React Context (o consumo exige `useContext`, proibido no `visual-kit`); variável CSS também no SVG (não funciona, e falharia em silêncio). |
+| **ADR-17** | **A ordem de build é declarada no `turbo.json`, não reconstruída em cada lugar que a executa.** Um script `build` por pacote (`tsc -p tsconfig.build.json`) ordenado por `dependsOn: ["^build"]` sobre o grafo do `package.json`; o `tsc -b` da raiz sai. Consequência direta: um teste que exige artefato compilado (`*.e2e.test.ts`) **não tem mais como se ignorar** — a tarefa declara `stage:vendor` como dependência, então ou o template está pronto ou o teste lança. | A ordem vivia em três lugares que não conversavam: o solution file do `tsc`, a sequência de passos do CI e a memória de quem roda os comandos — e o CI já tinha divergido, com dois passos apontando para pacotes removidos. Pior, `pnpm test` incluía o gate de aceite, que se auto-pulava sem template: o mesmo comando levava 3 s ou 1 min e passava verde tendo rodado o gate ou não. Declarando uma vez, a mesma ordem vale na máquina e no CI, o CI cai de oito passos para dois, e o "passou sem ter rodado" deixa de ser possível. O cache é consequência, não motivo. | Manter o `tsc -b` da raiz como tarefa única (cache tudo-ou-nada: um comentário em qualquer pacote recompila os seis); Nx (peso de configuração desproporcional para 8 workspaces); scripts em cascata com `pnpm -r` (é o que já havia — ordena o build, mas não sabe nada de lint, teste ou `stage:vendor`). |
 
 ---
 
@@ -857,6 +858,11 @@ update(options)
 "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify"
 ```
 
+Desde a [ADR-17](#35-decisões-de-arquitetura-adr) esse passo não se invoca sozinho: o `build` do `visual-kit` é
+`tsc && build:css && check-css.mjs`, um passo só. `tsc` e o Tailwind escrevem no **mesmo** `dist/`, e duas
+tarefas do turbo com `outputs` sobrepostos produzem cache parcial. O `check-css.mjs` no fim é a guarda desta
+seção transformada em portão de build — ver [12.3](#123-teste-de-aceite-do-artefato) e o achado 57.
+
 Três consequências práticas, todas verificadas:
 
 1. **O prefixo da v4 é uma variante:** `pbi:flex`, não `pbi-flex`. O mapa de tokens usa essa forma.
@@ -1111,8 +1117,10 @@ Ele faz o ciclo inteiro numa passada: monta uma spec com **todos** os tipos de n
 (codegen → `npm ci` → `pbiviz package`), abre o pacote com `inspectPbiviz` e **executa o `content.js`
 minificado dentro de um jsdom**, com o `powerbi` global e um `DataView` falso, exatamente como o Power BI faz.
 
-Custa ~15 s e exige o template preparado (`pnpm build && pnpm stage:vendor`). Sem isso, avisa e se ignora; no
-CI, `VISLOW_REQUIRE_BUILD=1` transforma a ausência em falha, para que nunca passe como "teste ignorado".
+Custa ~15 s e exige o template preparado. **Não tem como se ignorar** ([ADR-17](#35-decisões-de-arquitetura-adr)):
+o sufixo `.e2e.test.ts` o tira da suíte rápida (`vitest.config.ts`) e o põe na do gate
+(`vitest.build.config.ts`), cuja tarefa no `turbo.json` declara `stage:vendor` como dependência. Se ele roda, o
+template está preparado; se não estiver, o arquivo lança no carregamento. Rode com `pnpm check`.
 
 Executar o bundle é o ponto: é a única verificação que enxerga o que o webpack fez. Nasceu daí — herdou do
 `renderRealBundle.test.ts`, o único teste que pegou o achado 39, um bug que só existe no pacote empacotado e que
@@ -1374,8 +1382,8 @@ caso do catálogo atual.
 bundle minificado num jsdom — herdeiro direto do `renderRealBundle.test.ts`, o único teste que pegou o
 [achado 39](#a7-achados-da-fase-3--export-2026-07-30). Verifica identidade, orçamentos, CSS no bundle e a
 [RN-04](#6-regras-de-negócio) nos dois lados: com dados renderiza dados (SVG do Recharts e as categorias na
-tela), sem dados renderiza o estado vazio com instrução. No CI, `VISLOW_REQUIRE_BUILD=1` impede que a ausência
-do template passe como "teste ignorado".
+tela), sem dados renderiza o estado vazio com instrução. A ausência do template não passa como "teste ignorado":
+desde a [ADR-17](#35-decisões-de-arquitetura-adr) o gate lança no carregamento em vez de se pular.
 
 **DoD:** ✅ código, testes, CI **e validação manual no Power BI Desktop em 2026-07-30** — o `.pbiviz` gerado
 pela API importa e renderiza com dados reais.
@@ -1516,6 +1524,53 @@ removeu **274 pacotes** de `node_modules` (a toolchain do `pbiviz` e o webpack q
 
 > **Nenhum comportamento do produto mudou nesta faxina.** É remoção de código sem chamador, e é por isso que o
 > gate de aceite — que executa o `.pbiviz` compilado — é a evidência que importa aqui.
+
+---
+
+### Turborepo — a ordem de build vira declaração — ✅ **CONCLUÍDO em 2026-07-31**
+
+A faxina removeu o código sem chamador, mas deixou de pé o problema que a antecedia: **a ordem de build não
+morava em lugar nenhum**. Ela era reconstruída três vezes — no solution file do `tsc`, na sequência de passos do
+`ci.yml` e na memória de quem digita os comandos. As três já tinham divergido: o CI mantinha dois passos
+apontando para `@vislow/runtime` e `test:packaging`, removidos pela faxina, e estava **vermelho na `main`**.
+
+A [ADR-17](#35-decisões-de-arquitetura-adr) troca as três por uma: o `turbo.json`.
+
+| Antes | Depois |
+|---|---|
+| `tsc -b` na raiz + `pnpm -r build:css` | Um `build` por pacote, ordenado por `dependsOn: ["^build"]` |
+| Oito passos no CI, dois deles mortos | Dois passos: `turbo run build typecheck lint test` e `turbo run test:build` |
+| `pnpm build && pnpm stage:vendor && pnpm dev:api && pnpm dev` | `pnpm dev` |
+| Guarda do [ADR-02](#35-decisões-de-arquitetura-adr) em bash inline, só no CI | `visual-kit/scripts/check-css.mjs`, passo do `build` — vale local |
+| `pnpm test` às vezes rodava o gate, às vezes não | `test` (rápida) e `test:build` (gate) são tarefas distintas |
+
+**Os quatro comandos**, cada um completo: `pnpm dev` (sobe tudo, com watch), `pnpm build` (pacotes + apps +
+`stage:vendor`), `pnpm verify` (build + typecheck + lint + suíte rápida), `pnpm check` (o `verify` mais o gate).
+
+**Três dependências que existiam mas não estavam escritas**, e por isso só funcionavam por convenção:
+
+- `stage:vendor` lê `packages/{visual-kit,config-schema}/dist/` — agora declarado em `devDependencies` do
+  `visual-template`. Não reintroduz o [achado 39](#a7-achados-da-fase-3--export-2026-07-30): o que chega ao
+  visual é a cópia em `vendor/`, nunca esse `node_modules`, e com `autoInstallPeers: false` o link não arrasta
+  React. Verificado — `packages/visual-template/node_modules/react` não existe, e o gate passou.
+- O lint com informação de tipos precisa dos `.d.ts` do build. Era comentário no `ci.yml`; virou `dependsOn`.
+- A suíte rápida precisa de `@vislow/visual-template#build` — é o único `@vislow/*` que o mapa de alias do
+  vitest **não** reescreve para `src/`, porque ele exporta caminhos resolvidos a partir do próprio módulo.
+
+**Medido:** `pnpm verify` de 12,4 s para **18 ms** em cache quente (`FULL TURBO`); suíte rápida de 16,3 s para
+**1,71 s** (o gate saiu dela); CI de oito passos para dois. O gate passou com as **mesmas 14 assertivas** do
+artefato — as 2 de identidade (`T-07`) que moravam no mesmo arquivo voltaram para a suíte rápida em
+`packages/codegen/src/projectIdentity.test.ts`, somando os mesmos 230 testes de antes.
+
+Três riscos foram resolvidos por sondagem, não por suposição: o turbo **reconhece** `pnpm@11.12.0` (usa o parser
+`pnpm9`, correto para `lockfileVersion: 9.0`, com `hashOfExternalDependencies` não-vazio); os `inputs` de tarefa
+de raiz **alcançam** os workspaces (`//#test` hasheia 92 arquivos, 88 sob `packages/`/`apps/`); e o cache
+restaura o `dist/.tsbuildinfo` **junto** com os `.js`/`.d.ts` — o estado perigoso seria buildinfo sem outputs, em
+que o `tsc` se acha atualizado e não emite nada.
+
+> **Nenhum comportamento do produto mudou.** O que mudou é o que o repositório **impõe** em vez de pedir que se
+> lembre — e o gate de aceite, que agora não tem como se ignorar, é a evidência de que o artefato continua o
+> mesmo.
 
 ---
 
@@ -1687,3 +1742,11 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 54 | **No Tailwind v4 o prefixo vem ANTES da variante.** `focus-visible:pbi:ring-2` — escrito na Fase 1, em `visual-kit/src/BarChart.tsx` — não é reconhecido pelo CLI: nenhuma regra é gerada e nenhum aviso é emitido. O correto é `pbi:focus-visible:ring-2`. | O anel de foco do gráfico de barras da Fase 1 **nunca existiu**, e o código parecia acessível. É o mesmo mecanismo do erro de interpolação já documentado ([ADR-02](#35-decisões-de-arquitetura-adr)), numa forma nova: a classe é literal e completa, só está com a ordem errada — a regra "use strings literais" não protege contra isso. Descoberto por sondagem ao escrever a sobreposição de teclado, não por sintoma. | Corrigido em `BarChart.tsx`. A sobreposição nova (`pbi:sr-only`, `pbi:focus:not-sr-only`) foi validada **compilando o CSS e conferindo os seletores gerados** antes de escrever o componente. Regra: classe com variante é verificada no `dist/styles.css`, não no olho. |
 | 55 | **`var()` não é substituído em atributo de apresentação de SVG.** `<rect fill="var(--x, red)">` não pinta em navegador nenhum — a substituição só acontece em propriedade CSS. | Teria quebrado o alto contraste exatamente onde ele mais importa (as marcas de dados), e em silêncio: o atributo fica lá, o retângulo some. Como o Recharts emite `fill`/`stroke` como atributo, a variável CSS não serve para gráfico. | Regra explícita na [ADR-16](#35-decisões-de-arquitetura-adr) e no cabeçalho de `highContrast.ts`: **HTML usa a variável, SVG lê o quadro**. Os gráficos sempre têm o quadro, porque todo descritor de gráfico tem campo de papel. O gate verifica que o SVG compilado sai sem `fill="var(`. |
 | 56 | **Um teste de render do `visual-kit` não pode morar no `visual-kit`.** O pacote não declara `react` nem em `devDependencies` (achado 39), então o ESLint com informação de tipos resolve `react-dom/client` como `error` e reprova o arquivo inteiro — mesmo com o alias do vitest fazendo os testes passarem. | O `pnpm test` passava e o `pnpm lint` reprovava, com doze erros que apontavam para o teste e não para a causa. Tentar calar as regras seria reabrir a porta para alguém "resolver" adicionando `react` ao pacote — que é a dependência proibida. | O teste foi para `apps/web/src/components/kitInteraction.test.tsx`, junto do outro teste que monta os mesmos componentes. Mesmo raciocínio de "testes do runtime vivem em `packages/runtime/test/`": a restrição do pacote manda no endereço do teste. |
+
+### A11 — Achados da migração para Turborepo (2026-07-31)
+
+| # | Achado | Impacto | Correção |
+|---|---|---|---|
+| 57 | **A guarda de CSS confere o CSS de saída, e uma classe pode ter segunda origem no fonte.** Ao provar que a guarda do [ADR-02](#35-decisões-de-arquitetura-adr) morde, quebrei `pbi:p-4` no `tokens.ts` com interpolação e **o build passou**: a mesma classe aparece literal em `visual-kit/src/states.tsx`, então o Tailwind continuou gerando a regra. | A guarda parecia proteger o mapa de tokens e protegia menos do que se supunha — o CI verde não distinguia "mapa íntegro" de "outro arquivo por acaso menciona a mesma classe". O bash inline do CI tinha exatamente a mesma cegueira desde a Fase 1, sem ninguém notar, porque nunca foi testado contra uma quebra real. | Escolher para a lista do `check-css.mjs` classes de **origem única** no fonte. `pbi:rounded-xl`, `pbi:text-lg` e `pbi:shadow-sm` só o `tokens.ts` produz — com uma delas, a quebra falha com a mensagem certa. Regra anotada no `CLAUDE.md`: guarda que nunca falhou não é guarda verificada; quebre de propósito antes de confiar. |
+| 58 | **`pnpm test` incluía o gate de aceite, que se auto-pulava.** `compiledVisual.e2e.test.ts` casava com o `include` do vitest e usava `describe.skipIf` quando o `vendor/` não estava preparado. O mesmo comando levava 3 s ou 1 min conforme o estado do disco. | O teste mais importante do projeto podia não rodar sem que nada na saída dissesse isso — e `VISLOW_REQUIRE_BUILD=1`, a defesa, só existia no CI. Localmente, "`pnpm test` passou" não significava nada sobre o artefato. | Split por convenção de nome ([ADR-17](#35-decisões-de-arquitetura-adr)): `*.e2e.test.ts` sai da suíte rápida e entra na do gate, cuja tarefa declara `stage:vendor` como dependência e é `cache: false`. O `skipIf` virou `throw` no carregamento. `VISLOW_REQUIRE_BUILD` deixou de existir — a ordenação declarada tornou a variável desnecessária. Efeito colateral medido: a suíte rápida caiu de 16,3 s para 1,71 s. |
+| 59 | **Scripts `.mjs` de build rodavam com zero regras de ESLint.** O bloco de configuração do `eslint.config.mjs` casava `*.{mjs,ts}` (só a raiz) e `**/*.config.{mjs,ts}` — nenhum dos dois alcança `packages/*/scripts/`. | `stage-vendor.mjs` prepara o template do worker e `check-css.mjs` é a guarda do [ADR-02](#35-decisões-de-arquitetura-adr): dois scripts críticos de build sem lint nenhum, e o `pnpm lint` verde não indicava a lacuna. Descoberto por sondagem com `eslint --print-config`, que respondeu `0 regras`. | `packages/*/scripts/**/*.{mjs,ts}` somado ao bloco de configuração — lint sem informação de tipos, como os demais arquivos que não pertencem a tsconfig de pacote. Passou de 0 para 64 regras; ambos os scripts já estavam limpos. |
