@@ -242,6 +242,7 @@ Todo o desenho decorre destas restrições, verificadas na documentação da Mic
 | **ADR-13** | O **nome técnico de um papel é estável**: nasce do rótulo na criação e nunca muda. O usuário edita apenas o `displayName`. | O `name` vai para o `capabilities.json` e amarra toda referência da árvore. Se ele mudasse a cada renomeio, cada edição de rótulo teria de reescrever N nós em cascata — e uma reescrita que falhasse pela metade produziria um visual pedindo uma coluna que nenhum nó lê. Mesma lógica do `project.id` (RN-01): identidade se cria uma vez. | Renomear em cascata (falha parcial silenciosa); expor o `name` como campo editável (o usuário quebra o próprio visual sem entender por quê). |
 | **ADR-14** | O **preview não tem seleção por clique**. A seleção vive no painel de árvore. | Envolver cada nó do preview num elemento clicável insere um `div` na cadeia de flex que os gráficos usam para medir altura — o `ResponsiveContainer` passaria a medir outra coisa e o preview deixaria de valer como referência do resultado final, que é justamente o ADR-04. Na árvore a seleção não custa nada. | Wrapper clicável (quebra o WYSIWYG por dentro, sem sintoma visível); `refs` + overlay posicionado (complexidade alta para ganho pequeno). |
 | **ADR-15** | A união de nós no schema é despachada com **`if`/`then` por `kind`**, não com `oneOf`. | Com `oneOf` o Ajv avalia as sete variantes e reporta o erro de todas: um `barChart` sem medida ligada acusava também "falta `direction`" e "falta `gap`", que são campos de container. Erro de outro tipo de nó é pior que erro nenhum — manda o usuário procurar um controle que a tela dele nem tem. Com `if`/`then`, o `if` que não casa não produz erro. | `oneOf` (ruído inutilizável no painel); `discriminator` do Ajv (extensão fora do dialeto 2020-12 padrão). |
+| **ADR-16** | Os **serviços do host viajam dentro do `DataFrame`**, num objeto `FrameHost`, e não como prop de cada nó. O alto contraste chega ao HTML por **variável CSS com fallback** (`var(--vislow-hc-ink, #1e293b)`) definida no elemento raiz; o SVG dos gráficos lê a paleta do quadro. | Seleção, tooltip e alto contraste não são configuração do usuário: dar-lhes um campo em cada descritor criaria seis propriedades por nó que ninguém edita, e o codegen teria de emitir seis atributos por elemento. O quadro já atravessa a árvore inteira. A variável CSS resolve o que o quadro não alcança — `Container` e `TextNode` não consomem dados e mesmo assim precisam obedecer ao alto contraste — sem contexto do React e **sem hook** ([achado 39](#a7--achados-da-fase-3--export-2026-07-30)). A exceção do SVG não é escolha: `var()` **não é substituído em atributo de apresentação** — `<rect fill="var(--x, red)">` não pinta em navegador nenhum, e todo gráfico tem campo de papel, então sempre tem o quadro. | Prop por capacidade em cada descritor (polui o registro com campos que o usuário nunca vê); React Context (o consumo exige `useContext`, proibido no `visual-kit`); variável CSS também no SVG (não funciona, e falharia em silêncio). |
 
 ---
 
@@ -1386,48 +1387,67 @@ mas não reconfirmadas no caminho compilado.
 
 ---
 
-### Sprint 6 — Paridade de interatividade — ⏳ **PRÓXIMO**
+### Sprint 6 — Paridade de interatividade — ✅ **CONCLUÍDO em 2026-07-31**
 
-Existe porque o pivô deixou seis capacidades para trás
-([achado 53](#a9--achados-do-sprint-5-editor-de-composição-2026-07-30)). Não é escopo novo: as seis foram
-entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual que a API compila hoje desenha
-corretamente, mas **clicar numa barra não filtra o relatório**.
+Existiu porque o pivô deixou seis capacidades para trás
+([achado 53](#a9--achados-do-sprint-5-editor-de-composição-2026-07-30)). Não era escopo novo: as seis foram
+entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual que a API compilava desenhava
+corretamente, mas **clicar numa barra não filtrava o relatório**.
 
-| Capacidade | Referência a portar | Requisito |
+| Capacidade | Onde ficou | Requisito |
 |---|---|---|
-| Cross-filter (`selectionManager`, `createSelectionId`) | `runtime/src/visual.tsx`, `viewModel.ts` | [RF-18](#45-runtime-core) |
-| Tooltip nativo (`tooltipService`) | `runtime/src/visual.tsx` | [RF-19](#45-runtime-core) |
-| Alto contraste | `visual-kit/theme.ts` (a lógica existe; falta o caminho até os nós) | [RF-21](#45-runtime-core) |
-| Navegação por teclado | `visual-kit/BarChart.tsx` (`tabIndex`, `aria-label`) | [RF-23](#45-runtime-core) |
-| Menu de contexto | `runtime/src/visual.tsx:47` | [RF-24](#45-runtime-core) |
-| Aviso de truncamento | `TruncationNotice` + `runtime/src/visual.tsx:195` | [RF-25](#45-runtime-core) |
+| Cross-filter (`selectionManager`, `createSelectionId`) | `visual-template/template/src/interaction.ts` + handlers do Recharts em `visual-kit/src/nodes/charts.tsx` | [RF-18](#45-runtime-core) |
+| Tooltip nativo (`tooltipService`) | `interaction.ts`; o balão do Recharts fica só no preview | [RF-19](#45-runtime-core) |
+| Alto contraste | `visual-kit/src/highContrast.ts` (variável CSS) + paleta no quadro para o SVG | [RF-21](#45-runtime-core) |
+| Navegação por teclado | sobreposição `DataKeys` em `charts.tsx` | [RF-23](#45-runtime-core) |
+| Menu de contexto | `interaction.ts`, no construtor | [RF-24](#45-runtime-core) |
+| Aviso de truncamento | `truncationOf` em `dataFrame.ts` + `TruncationNotice` emitido pelo codegen | [RF-25](#45-runtime-core) |
 
-Os nós novos ([`visual-kit/src/nodes/`](packages/visual-kit/src/nodes/)) não têm **um único** `tabIndex`,
-`aria-label` ou `onKeyDown` — o que a Fase 1 tinha vive em `BarChart.tsx`/`KpiCard.tsx`, que o caminho novo não
-usa. Um visual acessível é requisito de publicação no AppSource, não enfeite.
+**O desenho, e por que ele não é um port simples.** O contrato dos nós tinha mudado: os componentes da Fase 1
+recebiam `DataPoint[]` já resolvido e um `RenderContext` com tema; os nós novos recebem `DataFrame` e props
+literais. Selection id e serviço de tooltip são objetos do host e precisavam chegar aos nós **sem virar prop de
+cada descritor** e **sem introduzir hook no `visual-kit`** (achado 39, verificado por ESLint). A resposta está
+na [ADR-16](#35-decisões-de-arquitetura-adr): os serviços viajam **dentro do quadro**, num `FrameHost`; o alto
+contraste chega ao HTML por **variável CSS** definida no elemento raiz e ao SVG pela paleta no quadro, porque
+`var()` não vale em atributo de apresentação.
 
-**O que torna isto diferente de um port simples:** o contrato dos nós mudou. Os componentes da Fase 1 recebiam
-`DataPoint[]` já resolvido e um `RenderContext` com tema; os nós novos recebem `DataFrame` e props literais
-([`nodes/frame.ts`](packages/visual-kit/src/nodes/frame.ts)). Selection id e serviço de tooltip são objetos do
-host — precisam chegar aos nós sem virar prop de cada descritor e **sem introduzir hook no `visual-kit`**
-(regra do achado 39, verificada por ESLint).
+Três consequências que valem registro:
 
-**Restrição que decide o desenho:** os gráficos agora são Recharts, não SVG nosso. Cross-filter e tooltip
-passam a depender dos handlers do Recharts (`onClick` na série, `content` customizado no `Tooltip`), não de
-elementos que controlamos diretamente.
+- **`packages/visual-template/template/src/interaction.ts` é novo e é estático.** Toda a conversa com o host
+  mora ali, fora do codegen — o fonte gerado apenas instancia a classe e chama `readFrame`. Um visual gerado que
+  trouxesse a implementação da seleção espalharia código idêntico por todo pacote compilado.
+- **O `DataFrame` deixou de ser só dado.** Ele carrega `host` e `truncated`, e por isso entra no fonte gerado
+  mesmo numa árvore só de texto: um visual sem papel nenhum ainda precisa de menu de contexto e alto contraste.
+- **A navegação por teclado é uma sobreposição de `<button>` `sr-only`, não `tabIndex` no SVG.** O que o
+  Recharts desenha é gerado por ele: não há onde pendurar `aria-label` por marca sem reimplementar as formas. A
+  sobreposição é `absolute`, então fica fora da cadeia de flex que o `ResponsiveContainer` mede — a restrição
+  que o [ADR-14](#35-decisões-de-arquitetura-adr) já tinha documentado. As setas andam pela série movendo o
+  **foco do DOM**, que é o que dá navegação por setas sem estado e portanto sem hook.
 
-⚠️ **`packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` não podem ser apagados antes
-deste sprint.** Estão sem chamador desde o Sprint 5, mas são a única implementação das seis capacidades.
+**Onde o mouse e o teclado divergem, e por quê.** Barras e fatias têm área de clique por marca e usam os
+handlers do próprio `<Bar>`/`<Pie>`. Linha e área não têm marca por ponto quando o marcador está desligado, então
+usam o handler do gráfico e leem `activeTooltipIndex`. A diferença vem do Recharts, não do desenho: é o preço de
+ter trocado SVG próprio por biblioteca. Pelo teclado, os cinco tipos se comportam igual.
 
-**DoD:** as seis funcionando num `.pbiviz` compilado pela API e aprovadas no Desktop; gate de aceite estendido
-para cobrir cross-filter (o `compiledVisual.e2e.test.ts` hoje verifica que renderiza dados e a
-[RN-04](#6-regras-de-negócio), não que a seleção propaga).
+**Medido no gate de aceite:** pacote **221,1 KB**, `content.js` **751,3 KB** — os dois abaixo do que o Sprint 4
+mediu, e bem dentro dos orçamentos de 2 MB e 1 MB.
+
+**DoD do código: cumprido.** O `compiledVisual.e2e.test.ts` deixou de perguntar apenas se o visual *desenha* e
+passou a verificar o que ele **pede ao host**: acionar um ponto chama `selectionManager.select` com a identidade
+daquela linha; o foco pede o tooltip nativo com os valores já formatados; o botão direito abre o menu de
+contexto; em alto contraste as variáveis CSS aparecem no elemento raiz e o SVG sai com a cor **resolvida**, sem
+`var(`. Dezesseis assertivas sobre o `.pbiviz` compilado de verdade.
+
+✅ **Aprovado no Power BI Desktop em 2026-07-31.** O gate exercitou as seis contra o artefato real em jsdom, mas
+jsdom não tem motor de layout nem o host de verdade — o gesto de mouse sobre uma barra, o posicionamento do balão
+nativo e o alto contraste do sistema só fechavam no Desktop, e fecharam. O ciclo completo agora entrega um visual
+que o usuário compõe do zero **e que se comporta como visual nativo dentro do relatório**.
 
 ---
 
 ### Fase 4 — KPI Card, Robustez e Matriz Completa
 
-Depois do Sprint 6, porque a matriz manual tem cenários de cross-filter que hoje reprovariam.
+Desbloqueada pelo Sprint 6: a matriz manual tem cenários de cross-filter que antes dele reprovariam.
 
 - [ ] KPI Card com comparação ([RF-16](#45-runtime-core)). **Mudou com o pivô:** não é mais a role fixa
       `target` do `capabilities.json` — vira um campo de papel opcional no descritor do `KpiNode`, que o
@@ -1584,4 +1604,12 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 50 | **O `visual-kit` não declara `react` nem em `devDependencies`** (achado 39), então nenhum teste conseguia importar seus componentes a partir do fonte. | Bloqueava qualquer teste de render do preview — justamente a classe de teste que pegou o achado 39. | Alias de `react`/`react-dom` no `vitest.config.ts`, apontando para a cópia do editor. Resolve só no vitest, **sem tocar no layout de `node_modules`**, que é o que não pode mudar. |
 | 51 | **O `apps/web/tsconfig.json` usa `jsx: "preserve"`** porque quem transforma o JSX é o Next — e o vitest lê esse mesmo tsconfig. | Todo teste `.tsx` do editor falhava no parse com `Unexpected JSX expression`, erro que aponta para o código e não para a configuração. O Vite 8 usa `oxc`: definir `esbuild.jsx` é aceito e **silenciosamente ignorado**, com um aviso fácil de não ler. | `oxc: { jsx: { runtime: 'automatic' } }` no `vitest.config.ts`. |
 | 52 | **Um seletor de zustand que constrói o valor a cada chamada re-renderiza em loop.** `selectIssuesByNode` devolvia um `Map` novo; o zustand v5 compara com `Object.is`. | Trava o editor, e o sintoma (aba congelada) não aponta para o seletor. | As derivações que criam objeto saíram do store para `lib/issues.ts` e são memoizadas no componente. O que fica como seletor devolve **referência vinda do estado**, nunca valor construído — com o motivo comentado no arquivo. |
-| 53 | **O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) deixou seis capacidades para trás.** O caminho novo — `codegen` + `visual-template` + `visual-kit/nodes` — não tem **cross-filter**, **tooltip nativo**, **alto contraste**, **navegação por teclado**, **menu de contexto** nem **aviso de truncamento** (RF-18, 19, 21, 23, 24, 25). Vivem em `packages/runtime/src/visual.tsx` e nos componentes `BarChart`/`KpiCard` do `visual-kit` — nenhum dos dois usado pelo caminho novo. Os nós de `visual-kit/src/nodes/` não têm um único `tabIndex` ou `aria-label`. | Regressão, não escopo futuro: as seis foram entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual compilado hoje desenha certo, então nenhum teste acusa — `compiledVisual.e2e.test.ts` verifica que renderiza dados e a RN-04, não que clicar numa barra filtra o relatório. Descoberto ao planejar a Fase 4, não por falha. | Sprint 6 dedicado à paridade, **antes** do resto da Fase 4: a matriz MT-01…MT-14 tem cenários de cross-filter que hoje reprovariam, e acessibilidade é requisito de publicação no AppSource. Enquanto isso, `packages/runtime` e os componentes antigos do `visual-kit` **não podem ser apagados** — estão sem chamador desde o Sprint 5, mas são a única implementação de referência das seis. Anotado no `CLAUDE.md` junto da lista de aposentadoria, que sem o aviso convidava exatamente a esse apagamento. |
+| 53 | **O pivô da [ADR-08](#35-decisões-de-arquitetura-adr) deixou seis capacidades para trás.** O caminho novo — `codegen` + `visual-template` + `visual-kit/nodes` — não tem **cross-filter**, **tooltip nativo**, **alto contraste**, **navegação por teclado**, **menu de contexto** nem **aviso de truncamento** (RF-18, 19, 21, 23, 24, 25). Vivem em `packages/runtime/src/visual.tsx` e nos componentes `BarChart`/`KpiCard` do `visual-kit` — nenhum dos dois usado pelo caminho novo. Os nós de `visual-kit/src/nodes/` não têm um único `tabIndex` ou `aria-label`. | Regressão, não escopo futuro: as seis foram entregues na Fase 1 e **aprovadas no Desktop com dados reais**. O visual compilado hoje desenha certo, então nenhum teste acusa — `compiledVisual.e2e.test.ts` verifica que renderiza dados e a RN-04, não que clicar numa barra filtra o relatório. Descoberto ao planejar a Fase 4, não por falha. | **FECHADO no Sprint 6 (2026-07-31).** As seis voltaram, com o desenho da [ADR-16](#35-decisões-de-arquitetura-adr): serviços do host dentro do `DataFrame`, alto contraste por variável CSS. O gate de aceite deixou de perguntar só se o visual desenha e passou a verificar o que ele **pede ao host** — foi essa a lacuna que deixou o achado passar. `packages/runtime` e os componentes `BarChart`/`KpiCard` do `visual-kit` **já podem ser aposentados**: a portabilidade existe e foi aprovada no Desktop em 2026-07-31. |
+
+### A10 — Achados do Sprint 6: paridade de interatividade (2026-07-31)
+
+| # | Achado | Impacto | Correção |
+|---|---|---|---|
+| 54 | **No Tailwind v4 o prefixo vem ANTES da variante.** `focus-visible:pbi:ring-2` — escrito na Fase 1, em `visual-kit/src/BarChart.tsx` — não é reconhecido pelo CLI: nenhuma regra é gerada e nenhum aviso é emitido. O correto é `pbi:focus-visible:ring-2`. | O anel de foco do gráfico de barras da Fase 1 **nunca existiu**, e o código parecia acessível. É o mesmo mecanismo do erro de interpolação já documentado ([ADR-02](#35-decisões-de-arquitetura-adr)), numa forma nova: a classe é literal e completa, só está com a ordem errada — a regra "use strings literais" não protege contra isso. Descoberto por sondagem ao escrever a sobreposição de teclado, não por sintoma. | Corrigido em `BarChart.tsx`. A sobreposição nova (`pbi:sr-only`, `pbi:focus:not-sr-only`) foi validada **compilando o CSS e conferindo os seletores gerados** antes de escrever o componente. Regra: classe com variante é verificada no `dist/styles.css`, não no olho. |
+| 55 | **`var()` não é substituído em atributo de apresentação de SVG.** `<rect fill="var(--x, red)">` não pinta em navegador nenhum — a substituição só acontece em propriedade CSS. | Teria quebrado o alto contraste exatamente onde ele mais importa (as marcas de dados), e em silêncio: o atributo fica lá, o retângulo some. Como o Recharts emite `fill`/`stroke` como atributo, a variável CSS não serve para gráfico. | Regra explícita na [ADR-16](#35-decisões-de-arquitetura-adr) e no cabeçalho de `highContrast.ts`: **HTML usa a variável, SVG lê o quadro**. Os gráficos sempre têm o quadro, porque todo descritor de gráfico tem campo de papel. O gate verifica que o SVG compilado sai sem `fill="var(`. |
+| 56 | **Um teste de render do `visual-kit` não pode morar no `visual-kit`.** O pacote não declara `react` nem em `devDependencies` (achado 39), então o ESLint com informação de tipos resolve `react-dom/client` como `error` e reprova o arquivo inteiro — mesmo com o alias do vitest fazendo os testes passarem. | O `pnpm test` passava e o `pnpm lint` reprovava, com doze erros que apontavam para o teste e não para a causa. Tentar calar as regras seria reabrir a porta para alguém "resolver" adicionando `react` ao pacote — que é a dependência proibida. | O teste foi para `apps/web/src/components/kitInteraction.test.tsx`, junto do outro teste que monta os mesmos componentes. Mesmo raciocínio de "testes do runtime vivem em `packages/runtime/test/`": a restrição do pacote manda no endereço do teste. |

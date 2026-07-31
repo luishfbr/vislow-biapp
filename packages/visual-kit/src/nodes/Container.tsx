@@ -9,6 +9,7 @@ import {
   SPACING_CLASS,
   cx,
 } from '../tokens.js';
+import { hcLine, hcSurface } from '../highContrast.js';
 
 /**
  * O unico no que aceita filhos. E o esqueleto de toda composicao.
@@ -56,7 +57,9 @@ export function Container({
         BORDER_CLASS[border],
         SHADOW_CLASS[shadow],
       )}
-      style={{ backgroundColor: background, borderColor }}
+      // RF-21: em alto contraste a paleta do host sobrepoe a cor escolhida. A
+      // variavel e definida no elemento raiz do visual — ver `highContrast.ts`.
+      style={{ backgroundColor: hcSurface(background), borderColor: hcLine(borderColor) }}
     >
       {children}
     </div>

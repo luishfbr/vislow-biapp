@@ -82,10 +82,11 @@ export function generateVisualSource(spec: VisualSpec, buildId: string): string 
   const roles = usedRoles(spec);
   const withFrame = treeUsesFrame(spec);
 
-  // `DataFrame` so entra no import quando a arvore usa dados. Sem isso um visual
-  // so de texto carregaria um import de tipo sem uso — inofensivo, mas o fonte
-  // gerado e lido por gente quando um build falha.
-  const nodeImports = withFrame ? [...components, 'type DataFrame'] : components;
+  // `EMPTY_FRAME` e `DataFrame` entram SEMPRE, mesmo numa arvore so de texto: o
+  // quadro deixou de ser apenas dado no Sprint 6 — e por ele que a interacao
+  // com o host viaja, e um visual sem papel nenhum ainda precisa de menu de
+  // contexto e alto contraste.
+  const nodeImports = [...components, 'EMPTY_FRAME', 'type DataFrame'];
 
   const roleList = roles.map((role) => jsString(role.name)).join(', ');
 
@@ -101,9 +102,9 @@ export function generateVisualSource(spec: VisualSpec, buildId: string): string 
 import type powerbi from 'powerbi-visuals-api';
 import { StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { BuildStamp, ErrorBoundary } from '@vislow/visual-kit';
+import { BuildStamp, ErrorBoundary, TruncationNotice } from '@vislow/visual-kit';
 import { ${nodeImports.join(', ')} } from '@vislow/visual-kit/nodes';
-import { readDataFrame } from './dataFrame';
+import { Interaction } from './interaction';
 
 // O campo \`style\` do pbiviz.json e ignorado pela toolchain: o CSS entra por
 // AQUI. Sem este import o build reporta sucesso e o visual sai sem estilo.
@@ -127,16 +128,29 @@ ${indent(emitNode(spec.root), 2)}
 
 export class Visual implements IVisual {
   private readonly root: Root;
-  /** Guardado pelo \`locale\`: e o host que sabe a cultura do relatorio (RF-17). */
-  private readonly host: powerbi.extensibility.visual.IVisualHost;
+  /**
+   * Servicos do host (selecao, tooltip, alto contraste, menu de contexto).
+   * O codigo dela e ESTATICO, vem do template — o que muda por build e so a
+   * arvore. Ela re-renderiza sozinha quando a selecao muda, inclusive a que
+   * vem de outro visual do relatorio (RF-18).
+   */
+  private readonly interaction: Interaction;
+  private frame: DataFrame = EMPTY_FRAME;
 
   constructor(options: VisualConstructorOptions) {
-    this.host = options.host;
     this.root = createRoot(options.element);
+    this.interaction = new Interaction(options, () => {
+      this.render();
+    });
   }
 
   public update(options: VisualUpdateOptions): void {
-    const frame = readDataFrame(options, ROLES, this.host.locale);
+    this.frame = this.interaction.readFrame(options, ROLES);
+    this.render();
+  }
+
+  private render(): void {
+    const frame = this.frame;
 
     // RN-04: o visual NUNCA renderiza em branco. Um try/catch em volta do
     // render nao basta — no modo concorrente a fase de render e assincrona e a
@@ -147,6 +161,10 @@ export class Visual implements IVisual {
           <ErrorBoundary buildId={BUILD_ID}>
             <Tree ${withFrame ? 'frame={frame}' : ''}/>
           </ErrorBoundary>
+          {/* RF-25: o host trunca em silencio; o visual conta. */}
+          {frame.truncated && (
+            <TruncationNotice shown={frame.truncated.shown} limit={frame.truncated.limit} />
+          )}
           <BuildStamp id={BUILD_ID} />
         </div>
       </StrictMode>,

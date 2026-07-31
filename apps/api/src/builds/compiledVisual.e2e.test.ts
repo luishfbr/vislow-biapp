@@ -43,25 +43,70 @@ if (!STAGED) {
 
 const BUILD_ID = 'e2e00001';
 
+/** Paleta de alto contraste de teste. Valores distintos, para nao se confundirem. */
+const HC_PALETTE = {
+  foreground: '#ffffff',
+  background: '#000000',
+  foregroundSelected: '#00ff00',
+};
+
+/**
+ * O que o host recebeu do visual.
+ *
+ * O gate do Sprint 4 so perguntava se o visual DESENHAVA. Era o suficiente
+ * enquanto o achado 53 nao existia — o pacote desenhava certo e nao filtrava
+ * nada, e nenhum teste tinha como notar. Estas gravacoes sao o que fecha esse
+ * buraco: o que interessa nao e o que o visual mostra, e o que ele PEDE ao host.
+ */
+interface HostCalls {
+  selections: { identity: unknown; multi: boolean }[];
+  contextMenus: number;
+  tooltips: { dataItems: { displayName: string; value: string }[] }[];
+}
+
 /** Host do Power BI, reduzido ao que o visual gerado realmente usa. */
-function fakeHost() {
+function fakeHost(calls: HostCalls, highContrast: boolean) {
   return {
     locale: 'pt-BR',
     createSelectionManager: () => ({
-      select: () => Promise.resolve([]),
+      select: (identity: unknown, multi: boolean) => {
+        calls.selections.push({ identity, multi });
+        return Promise.resolve([identity]);
+      },
       getSelectionIds: () => [],
-      showContextMenu: () => undefined,
+      showContextMenu: () => {
+        calls.contextMenus += 1;
+      },
       registerOnSelectCallback: () => undefined,
     }),
     createSelectionIdBuilder: () => {
+      let row = -1;
       const builder = {
-        withCategory: () => builder,
-        createSelectionId: () => ({ key: 'id' }),
+        withCategory: (_category: unknown, index: number) => {
+          row = index;
+          return builder;
+        },
+        // Identidade distinta por linha: com um id unico para todas, um clique
+        // na terceira barra passaria por selecao da primeira e o teste
+        // aprovaria o bug que ele existe para pegar.
+        createSelectionId: () => ({ key: `row-${String(row)}` }),
       };
       return builder;
     },
-    colorPalette: { isHighContrast: false },
-    tooltipService: { show: () => undefined, hide: () => undefined },
+    colorPalette: highContrast
+      ? {
+          isHighContrast: true,
+          foreground: { value: HC_PALETTE.foreground },
+          background: { value: HC_PALETTE.background },
+          foregroundSelected: { value: HC_PALETTE.foregroundSelected },
+        }
+      : { isHighContrast: false },
+    tooltipService: {
+      show: (options: { dataItems: { displayName: string; value: string }[] }) => {
+        calls.tooltips.push({ dataItems: options.dataItems });
+      },
+      hide: () => undefined,
+    },
   };
 }
 
@@ -97,6 +142,12 @@ interface RenderOutcome {
   /** Serializado com `XMLSerializer`: a RN-11 proibe `innerHTML` no monorepo. */
   html: string;
   errors: string[];
+  /** O elemento do visual, ainda vivo: e nele que os testes interagem. */
+  element: Element;
+  window: JSDOM['window'];
+  calls: HostCalls;
+  /** Re-serializa depois de uma interacao. */
+  redraw: () => Promise<string>;
 }
 
 const VIEWPORT = { width: 800, height: 600 };
@@ -162,7 +213,12 @@ function installLayout(window: JSDOM['window']): void {
   };
 }
 
-async function renderCompiled(js: string, guid: string, withData: boolean): Promise<RenderOutcome> {
+async function renderCompiled(
+  js: string,
+  guid: string,
+  withData: boolean,
+  highContrast = false,
+): Promise<RenderOutcome> {
   const errors: string[] = [];
   const virtualConsole = new VirtualConsole();
   virtualConsole.on('jsdomError', (error: Error) => errors.push(error.message));
@@ -193,7 +249,8 @@ async function renderCompiled(js: string, guid: string, withData: boolean): Prom
   expect(plugin, `plugin ${guid} nao registrado no bundle`).toBeDefined();
 
   const element = window.document.getElementById('host')!;
-  const visual = plugin!.create({ element, host: fakeHost() }) as {
+  const calls: HostCalls = { selections: [], contextMenus: 0, tooltips: [] };
+  const visual = plugin!.create({ element, host: fakeHost(calls, highContrast) }) as {
     update: (options: unknown) => void;
   };
   visual.update({
@@ -203,9 +260,25 @@ async function renderCompiled(js: string, guid: string, withData: boolean): Prom
   });
 
   // No modo concorrente o React renderiza fora da pilha atual.
-  await new Promise((resolve) => setTimeout(resolve, 300));
+  const settle = async (): Promise<string> => {
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    return new window.XMLSerializer().serializeToString(element);
+  };
 
-  return { html: new window.XMLSerializer().serializeToString(element), errors };
+  return { html: await settle(), errors, element, window, calls, redraw: settle };
+}
+
+/**
+ * Os botoes da sobreposicao de teclado (RF-23), na ordem dos pontos.
+ *
+ * Sao a ponte que torna o cross-filter TESTAVEL num jsdom: acionar um deles
+ * percorre o mesmo caminho de um clique na barra — `FrameHost.select` ->
+ * `selectionManager.select` — sem depender do Recharts resolver coordenada de
+ * mouse num DOM sem motor de layout. O que sobra para o Desktop e so o gesto
+ * do mouse, que a matriz MT cobre.
+ */
+function keyboardKeys(element: Element): NodeListOf<Element> {
+  return element.querySelectorAll('[role="group"] button');
 }
 
 describe.skipIf(!STAGED)('spec compilada vira um .pbiviz que renderiza', () => {
@@ -287,6 +360,92 @@ describe.skipIf(!STAGED)('spec compilada vira um .pbiviz que renderiza', () => {
   it('o capabilities gerado declara os papeis que a arvore consome', () => {
     const capabilities = generateCapabilities(spec);
     expect(capabilities.dataRoles.map((role) => role.name).sort()).toEqual(['categoria', 'valor']);
+  });
+
+  /**
+   * PARIDADE DE INTERATIVIDADE (Sprint 6, achado 53).
+   *
+   * Ate aqui o gate provava que o pacote DESENHA. As assertivas abaixo provam
+   * que ele CONVERSA com o host — que e onde o pivo da ADR-08 tinha deixado seis
+   * capacidades para tras sem nenhum teste notar.
+   */
+  describe('paridade de interatividade', () => {
+    /** RF-23: sem isso o visual e inutilizavel sem mouse, e o AppSource recusa. */
+    it('cada ponto da serie e alcancavel por teclado, com rotulo legivel', async () => {
+      const { element } = await renderCompiled(js, guid, true);
+      const labels = [...keyboardKeys(element)].map((node) => node.textContent);
+
+      // Quatro categorias do DataView, uma por grafico que a spec monta.
+      expect(labels.length).toBeGreaterThanOrEqual(4);
+      // Categoria E valor, e o valor ja FORMATADO pelo `format` da coluna
+      // (`#,0.00`): um rotulo com o numero cru nao serve para leitor de tela.
+      expect(labels).toContain('Norte: 120.00');
+      expect([...keyboardKeys(element)][0]?.getAttribute('aria-pressed')).toBe('false');
+    }, 60_000);
+
+    /**
+     * RF-18, o coracao do sprint: acionar um ponto tem de chegar ao
+     * `selectionManager` com a identidade DAQUELA linha. E a assertiva que
+     * teria reprovado o pacote do Sprint 5.
+     */
+    it('acionar um ponto filtra o relatorio (cross-filter)', async () => {
+      const { element, calls, redraw } = await renderCompiled(js, guid, true);
+      const keys = [...keyboardKeys(element)];
+
+      (keys[1] as HTMLElement | undefined)?.click();
+      await redraw();
+
+      expect(calls.selections).toHaveLength(1);
+      expect(calls.selections[0]?.identity).toEqual({ key: 'row-1' });
+      expect(calls.selections[0]?.multi).toBe(false);
+    }, 60_000);
+
+    /** RF-19: o balao e o do host — e o que herda os campos do relatorio. */
+    it('o foco num ponto pede o tooltip NATIVO, com os valores formatados', async () => {
+      const { element, calls, redraw } = await renderCompiled(js, guid, true);
+
+      (([...keyboardKeys(element)][0] as HTMLElement | undefined))?.focus();
+      await redraw();
+
+      expect(calls.tooltips.length).toBeGreaterThan(0);
+      const items = calls.tooltips[0]?.dataItems ?? [];
+      expect(items.map((item) => item.displayName)).toEqual(['Regiao', 'Receita']);
+      // O `format` da coluna chega ao balao (RF-17): 120 vira "120.00", e nao
+      // o numero cru. Sem isso o tooltip mostraria `1234567.89` onde o Power BI
+      // mostra `R$ 1,23 mi` — um dos sinais de visual amador.
+      expect(items[1]?.value).toBe('120.00');
+    }, 60_000);
+
+    /** RF-24: sem isso o botao direito abre o menu do navegador no relatorio. */
+    it('o botao direito abre o menu de contexto do host', async () => {
+      const { element, window, calls, redraw } = await renderCompiled(js, guid, true);
+
+      element.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true }));
+      await redraw();
+
+      expect(calls.contextMenus).toBe(1);
+    }, 60_000);
+
+    /**
+     * RF-21. A variavel CSS no elemento raiz e o mecanismo inteiro para o HTML
+     * da arvore; o SVG do grafico le a paleta pelo quadro. As duas pontas sao
+     * verificadas aqui porque so o artefato compilado tem as duas juntas.
+     */
+    it('em alto contraste, a paleta do host vence as cores do usuario', async () => {
+      const { element, html } = await renderCompiled(js, guid, true, true);
+      const style = (element as HTMLElement).style;
+
+      expect(style.getPropertyValue('--vislow-hc-ink')).toBe(HC_PALETTE.foreground);
+      expect(style.getPropertyValue('--vislow-hc-surface')).toBe(HC_PALETTE.background);
+      // O SVG nao pode carregar `var()`: o valor tem de estar resolvido.
+      expect(html).not.toContain('fill="var(');
+      expect(html).toContain(`fill="${HC_PALETTE.foreground}"`);
+    }, 60_000);
+
+    it('fora do alto contraste, nenhuma variavel fica presa no elemento', async () => {
+      const { element } = await renderCompiled(js, guid, true);
+      expect((element as HTMLElement).style.getPropertyValue('--vislow-hc-ink')).toBe('');
+    }, 60_000);
   });
 });
 

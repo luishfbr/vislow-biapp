@@ -4,7 +4,12 @@
  * RN-04: o runtime SEMPRE renderiza um de tres estados — dados, vazio ou erro.
  * Tela branca dentro de um relatorio e indistinguivel de um bug do Power BI e
  * e tratada como defeito de severidade maxima.
+ *
+ * As cores passam por `hcInk`: em alto contraste (RF-21) o estado vazio e o
+ * selo de build precisam do `foreground` do host tanto quanto os dados. Sem
+ * isso, cinza sobre preto e exatamente o que o modo existe para evitar.
  */
+import { hcInk } from './highContrast.js';
 
 const SHELL =
   'pbi:w-full pbi:h-full pbi:flex pbi:flex-col pbi:items-center pbi:justify-center pbi:p-4 pbi:text-center';
@@ -12,7 +17,7 @@ const SHELL =
 /** RF-20 — roles obrigatorias nao preenchidas. Orienta, nao acusa. */
 export function EmptyState({ missing }: { missing: string[] }) {
   return (
-    <div className={SHELL} style={{ color: '#64748b' }}>
+    <div className={SHELL} style={{ color: hcInk('#64748b') }}>
       <div className="pbi:text-sm pbi:font-medium">Faltam campos para montar o visual</div>
       <div className="pbi:text-xs pbi:mt-2">
         Arraste um campo para:{' '}
@@ -43,14 +48,14 @@ export function ErrorCard({
   buildId?: string | undefined;
 }) {
   return (
-    <div className={SHELL} style={{ color: '#b91c1c' }}>
+    <div className={SHELL} style={{ color: hcInk('#b91c1c') }}>
       <div className="pbi:text-sm pbi:font-semibold">Nao foi possivel renderizar o visual</div>
       {detail !== undefined && detail !== '' && (
-        <div className="pbi:text-xs pbi:mt-2" style={{ color: '#7f1d1d' }}>
+        <div className="pbi:text-xs pbi:mt-2" style={{ color: hcInk('#7f1d1d') }}>
           {detail}
         </div>
       )}
-      <div className="pbi:text-xs pbi:mt-3" style={{ color: '#94a3b8' }}>
+      <div className="pbi:text-xs pbi:mt-3" style={{ color: hcInk('#94a3b8') }}>
         codigo: {code}
         {buildId !== undefined && buildId !== '' && ` · build ${buildId}`}
       </div>
@@ -68,7 +73,7 @@ export function BuildStamp({ id }: { id: string }) {
   return (
     <div
       className="pbi:absolute pbi:bottom-0 pbi:right-0 pbi:text-xs pbi:px-1 pbi:pointer-events-none"
-      style={{ color: '#94a3b8', opacity: 0.7 }}
+      style={{ color: hcInk('#94a3b8'), opacity: 0.7 }}
     >
       {id}
     </div>
@@ -78,7 +83,7 @@ export function BuildStamp({ id }: { id: string }) {
 /** RF-25 — o dataReductionAlgorithm truncou o conjunto. */
 export function TruncationNotice({ shown, limit }: { shown: number; limit: number }) {
   return (
-    <div className="pbi:text-xs pbi:pt-1 pbi:shrink-0" style={{ color: '#94a3b8' }}>
+    <div className="pbi:text-xs pbi:pt-1 pbi:shrink-0" style={{ color: hcInk('#94a3b8') }}>
       Exibindo {shown} de mais de {limit} categorias
     </div>
   );
