@@ -16,7 +16,8 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
   desenha com os mesmos `%` da spec, sem medir para desenhar.
 - **A prancheta (`project.artboard`) é do EDITOR e não vai para o pacote.** O visual compilado continua
   `w-full h-full` — quem escolhe o tamanho é o autor do relatório. Leia por `artboardOf(spec)`, nunca
-  `project.artboard` direto: o campo é opcional e o default vem de lá.
+  `project.artboard` direto: o campo é opcional e o default vem de lá. O controle vive nas propriedades da
+  **raiz**, irmão do `RectField` — nunca em container aninhado, que tem `rect` e não prancheta.
 - **A geometria (`rect`) é % do pai e mora fora de `props`** — `props` espelha o descritor, e o codegen despeja
   cada chave como atributo JSX; geometria é relação com o pai.
 - **A matemática do canvas fica em `lib/canvasGeometry.ts`**, sem React, e é lá que ela se testa. No componente

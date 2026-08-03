@@ -3,10 +3,10 @@ import type { Artboard } from '@vislow/component-registry';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ArtboardBar } from './ArtboardBar';
+import { ArtboardField } from './Field';
 
 /**
- * O trilho da prancheta, do lado do DOM.
+ * O controle de prancheta, do lado do DOM.
  *
  * A matematica da escala esta em `lib/artboard.test.ts`, sem React. Aqui fica o
  * que so o DOM responde: o que cada atalho anuncia, o que o campo faz com uma
@@ -28,24 +28,23 @@ afterEach(() => {
 });
 
 function render(
-  artboard: Artboard = { width: 1280, height: 720 },
-  scale = 1,
+  value: Artboard = { width: 1280, height: 720 },
   onChange: (size: Artboard) => void = () => undefined,
 ): HTMLElement {
   host = document.createElement('div');
   document.body.appendChild(host);
   root = createRoot(host);
   act(() => {
-    root?.render(<ArtboardBar artboard={artboard} scale={scale} onChange={onChange} />);
+    root?.render(<ArtboardField value={value} onChange={onChange} />);
   });
   return host;
 }
 
-function field(dom: HTMLElement, label: string): HTMLInputElement {
-  const found = [...dom.querySelectorAll('label')].find((l) => l.textContent === label);
-  const input = found?.htmlFor ? dom.querySelector<HTMLInputElement>(`#${found.htmlFor}`) : null;
-  if (!input) throw new Error(`nenhum campo rotulado "${label}"`);
-  return input;
+/** Os eixos se identificam pelo nome acessivel: na tela sao so "L" e "A". */
+function axis(dom: HTMLElement, label: string): HTMLInputElement {
+  const found = dom.querySelector<HTMLInputElement>(`input[aria-label^="${label} da prancheta"]`);
+  if (!found) throw new Error(`nenhum eixo rotulado "${label}"`);
+  return found;
 }
 
 /**
@@ -79,7 +78,7 @@ function blur(input: HTMLInputElement): void {
   });
 }
 
-describe('atalhos de tamanho', () => {
+describe('atalhos de proporcao', () => {
   it('o atalho anuncia o tamanho que aplica, e nao so a forma', () => {
     // "4:3" sozinho nao diz se aplica 1440x1080 ou 800x600, e quem usa leitor de
     // tela nao tem o preview para conferir depois.
@@ -105,7 +104,7 @@ describe('atalhos de tamanho', () => {
 
   it('aplica o tamanho do atalho', () => {
     const onChange = vi.fn();
-    const dom = render({ width: 1280, height: 720 }, 1, onChange);
+    const dom = render({ width: 1280, height: 720 }, onChange);
     const alvo = [...dom.querySelectorAll('button')].find((b) => b.textContent === '1:1');
     act(() => {
       alvo?.dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -114,13 +113,13 @@ describe('atalhos de tamanho', () => {
   });
 });
 
-describe('campos de tamanho', () => {
+describe('eixos da prancheta', () => {
   it('prende na faixa em vez de recusar a digitacao', () => {
     // Quem digita 5000 quis "o maior que der". Recusar deixaria o campo com um
     // numero que a prancheta nao tem.
     const onChange = vi.fn();
-    const dom = render({ width: 1280, height: 720 }, 1, onChange);
-    const largura = field(dom, 'Largura');
+    const dom = render({ width: 1280, height: 720 }, onChange);
+    const largura = axis(dom, 'Largura');
 
     type(largura, '5000');
     blur(largura);
@@ -131,17 +130,16 @@ describe('campos de tamanho', () => {
 
   it('deixa apagar para redigitar sem reescrever a prancheta a cada tecla', () => {
     // Sem rascunho proprio, o "1" de "1280" viraria 100 pelo piso e o campo
-    // ficaria impossivel de editar.
+    // ficaria impossivel de editar. E a diferenca deliberada com o `RectField`,
+    // que escreve a cada tecla porque la os valores tem dois digitos.
     const onChange = vi.fn();
-    const dom = render({ width: 1280, height: 720 }, 1, onChange);
-    const largura = field(dom, 'Largura');
+    const dom = render({ width: 1280, height: 720 }, onChange);
+    const largura = axis(dom, 'Largura');
 
     type(largura, '');
     type(largura, '9');
     type(largura, '96');
     type(largura, '960');
-    // Nenhum passo intermediario escreveu: "9" e "96" estao abaixo do piso e
-    // teriam virado 100, deixando o campo impossivel de terminar de digitar.
     expect(onChange).not.toHaveBeenCalled();
 
     blur(largura);
@@ -150,8 +148,8 @@ describe('campos de tamanho', () => {
 
   it('campo vazio volta ao valor atual, sem chamar mudanca', () => {
     const onChange = vi.fn();
-    const dom = render({ width: 1280, height: 720 }, 1, onChange);
-    const altura = field(dom, 'Altura');
+    const dom = render({ width: 1280, height: 720 }, onChange);
+    const altura = axis(dom, 'Altura');
 
     type(altura, '');
     blur(altura);
@@ -162,7 +160,7 @@ describe('campos de tamanho', () => {
 
   it('Escape desiste da digitacao', () => {
     const dom = render({ width: 1280, height: 720 });
-    const largura = field(dom, 'Largura');
+    const largura = axis(dom, 'Largura');
 
     type(largura, '400');
     act(() => {
@@ -174,7 +172,7 @@ describe('campos de tamanho', () => {
 
   it('valor impossivel diz a faixa em texto, nao so na cor da borda', () => {
     const dom = render({ width: 1280, height: 720 });
-    const largura = field(dom, 'Largura');
+    const largura = axis(dom, 'Largura');
 
     type(largura, '5000');
 
@@ -185,20 +183,18 @@ describe('campos de tamanho', () => {
 
   it('a faixa fica no campo mesmo sem erro, para quem chega nele pelo teclado', () => {
     const dom = render();
-    const altura = field(dom, 'Altura');
+    const altura = axis(dom, 'Altura');
     const described = altura.getAttribute('aria-describedby');
     expect(dom.querySelector(`#${String(described)}`)?.textContent).toBe(
       'Altura entre 100 e 1080 px.',
     );
   });
-});
 
-describe('leitura da escala', () => {
-  it('mostra a escala tambem em 1:1 — pixel real e informacao', () => {
-    expect(render({ width: 1280, height: 720 }, 1).textContent).toContain('escala 100%');
-  });
-
-  it('mostra a reducao aplicada', () => {
-    expect(render({ width: 1920, height: 1080 }, 0.375).textContent).toContain('escala 37%');
+  it('cada eixo tem a faixa do seu proprio limite', () => {
+    // 1920 de largura e 1080 de altura: um piso e um teto por eixo, e nao um par
+    // unico — trocar os dois deixaria a altura aceitando 1920.
+    const dom = render();
+    expect(axis(dom, 'Largura').getAttribute('max')).toBe('1920');
+    expect(axis(dom, 'Altura').getAttribute('max')).toBe('1080');
   });
 });

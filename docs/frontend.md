@@ -53,11 +53,13 @@ O `web-design-guidelines` cobre UI genérica da web. Ele **não sabe** o que o P
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │  [Vislow]   Nome do visual: [__________]   v1.0.0.0   [ Baixar .pbiviz ]      │
 ├──────────────────┬────────────────────────────────────┬───────────────────────┤
-│  COMPONENTES     │        PREVIEW (visual-kit)        │    PROPRIEDADES       │
-│  COMPOSIÇÃO ↑↓✕  │   render ao vivo com mockFrame     │    (do descritor)     │
-│  CAMPOS DO VISUAL│  Prancheta [16:9][4:3][1:1]        │                       │
-│  PROJETO         │  Largura[1280] × Altura[720] px    │                       │
-│                  │  escala 62%                        │                       │
+│  COMPONENTES     │        PREVIEW (visual-kit)        │  PROPRIEDADES         │
+│  COMPOSIÇÃO ↑↓✕  │   render ao vivo com mockFrame     │  ┌ na raiz ────────┐  │
+│  CAMPOS DO VISUAL│   prancheta em px, escalada        │  │ PRANCHETA       │  │
+│  PROJETO         │                                    │  │ L 1280 ┃ A 720  │  │
+│                  │   escala 62% · dados de exemplo    │  │ [16:9][4:3][1:1]│  │
+│                  │                                    │  └─────────────────┘  │
+│                  │                                    │  (do descritor)       │
 └──────────────────┴────────────────────────────────────┴───────────────────────┘
 ```
 
@@ -76,8 +78,15 @@ commit em que passa a existir. **Uma lista paralela é a quinta cópia do catál
 ### 2.1 A prancheta
 
 O preview desenha uma **prancheta de tamanho declarado** (`project.artboard`, 100×100 a 1920×1080, padrão
-1280×720), reduzida por escala uniforme para caber no painel. O trilho abaixo dela dá atalho, tamanho e a escala
-em uso.
+1280×720), reduzida por escala uniforme para caber no painel.
+
+**O controle mora nas propriedades da RAIZ** (`ArtboardField`), no mesmo lugar e pelo mesmo motivo que a
+geometria: não vem do descritor e não é propriedade do componente. Os dois nunca aparecem juntos — a raiz não
+tem pai, logo não tem caixa; quem tem caixa não é a raiz. **Só na raiz**: um container aninhado tem `rect`, e
+oferecer a prancheta em cada container mostraria um único valor em vários lugares.
+
+**A escala fica sob o preview, não no painel.** Ela descreve o painel e não o projeto — muda ao redimensionar a
+janela, sem ninguém ter editado nada. Quem *muda* o tamanho é a prancheta; a escala só relata o que coube.
 
 - **Ela não vai para o pacote.** Um visual do Power BI não escolhe o próprio tamanho — quem arrasta a moldura é
   o autor do relatório, e o `visual.tsx` gerado continua `w-full h-full`. `codegen.test.ts` reprova o build se

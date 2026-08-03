@@ -1,7 +1,8 @@
 'use client';
 
-import { RECT_MIN_SIZE } from '@vislow/component-registry';
-import { useId } from 'react';
+import { ARTBOARD_MAX, ARTBOARD_MIN, RECT_MIN_SIZE, type Artboard } from '@vislow/component-registry';
+import { useEffect, useId, useState } from 'react';
+import { ARTBOARD_PRESETS } from '@/lib/artboard';
 
 const LABEL = 'text-xs font-medium text-slate-600 dark:text-slate-300';
 const INPUT =
@@ -202,6 +203,231 @@ export function RectField({
         </div>
       )}
     </section>
+  );
+}
+
+/**
+ * Tamanho da prancheta: a moldura em que a composicao inteira e desenhada.
+ *
+ * Irma do `RectField`, e nao mais um `Row`, porque e o mesmo tipo de coisa — um
+ * valor com dois eixos que se ajusta olhando os dois juntos, no formato de
+ * instrumento de desenho. A diferenca com o `RectField` esta na unidade (pixel
+ * declarado, nao % do pai) e no fato de haver atalhos: proporcao e como se pensa
+ * enquadramento, e digitar 1080 duas vezes para chegar num quadrado e trabalho
+ * que a maquina faz.
+ *
+ * So aparece na RAIZ. Um container aninhado tem `rect`; prancheta e o tamanho do
+ * visual inteiro, e oferece-la em cada container mostraria um unico valor em
+ * varios lugares — a copia paralela que este painel existe para nao ter.
+ *
+ * Ela NAO vai para o pacote: o `.pbiviz` preenche a moldura que o autor do
+ * relatorio desenhar. E o alvo contra o qual a composicao e julgada aqui dentro.
+ */
+export function ArtboardField({
+  value,
+  onChange,
+}: {
+  value: Artboard;
+  onChange: (size: Artboard) => void;
+}) {
+  const [message, setMessage] = useState('');
+
+  const apply = (size: Artboard): void => {
+    setMessage('');
+    onChange(size);
+  };
+
+  return (
+    <section className="py-2">
+      <h3 className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        Prancheta
+      </h3>
+
+      <div className="grid grid-cols-2 gap-1.5">
+        <ArtboardAxis
+          mark="L"
+          label="Largura"
+          value={value.width}
+          min={ARTBOARD_MIN.width}
+          max={ARTBOARD_MAX.width}
+          onReport={setMessage}
+          onCommit={(width) => {
+            apply({ width, height: value.height });
+          }}
+        />
+        <ArtboardAxis
+          mark="A"
+          label="Altura"
+          value={value.height}
+          min={ARTBOARD_MIN.height}
+          max={ARTBOARD_MAX.height}
+          onReport={setMessage}
+          onCommit={(height) => {
+            apply({ width: value.width, height });
+          }}
+        />
+      </div>
+
+      <div role="group" aria-label="Proporcoes comuns" className="mt-1.5 flex items-center gap-1">
+        {ARTBOARD_PRESETS.map((preset) => {
+          const active = value.width === preset.size.width && value.height === preset.size.height;
+          return (
+            <button
+              key={preset.label}
+              type="button"
+              onClick={() => {
+                apply(preset.size);
+              }}
+              aria-pressed={active}
+              // O tamanho vai no nome acessivel porque o rotulo diz a forma: sem
+              // ele, "4:3" nao informa se aplica 1440x1080 ou 800x600.
+              aria-label={`${preset.label} — ${String(preset.size.width)} por ${String(preset.size.height)} pixels`}
+              className={`flex-1 rounded-md px-1.5 py-1 text-[11px] font-medium tabular-nums transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500 ${
+                active
+                  ? 'bg-slate-800 text-white hover:bg-slate-700 dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-white'
+                  : 'bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-600 dark:hover:bg-slate-700'
+              }`}
+              style={{ touchAction: 'manipulation' }}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Altura reservada: a mensagem entra e sai sem empurrar os campos abaixo
+          dela — um painel que se move enquanto se digita nele e o proprio
+          defeito. `polite` porque a correcao acompanha a digitacao; ela nao
+          interrompe o que o leitor de tela estiver dizendo. */}
+      <p
+        aria-live="polite"
+        className="mt-1 min-h-3.5 text-[10px] font-medium text-amber-600 dark:text-amber-400"
+      >
+        {message}
+      </p>
+    </section>
+  );
+}
+
+/**
+ * Um eixo da prancheta.
+ *
+ * Guarda o texto DIGITADO, e nao o numero — ao contrario do `RectField`, que
+ * escreve a cada tecla. La os valores tem dois digitos e o piso e 2; aqui o piso
+ * e 100, entao apagar "1280" para redigitar transformaria o "1" em 100 e o campo
+ * ficaria impossivel de terminar.
+ */
+function ArtboardAxis({
+  mark,
+  label,
+  value,
+  min,
+  max,
+  onCommit,
+  onReport,
+}: {
+  mark: string;
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onCommit: (value: number) => void;
+  /** Publica o que ha de errado com o rascunho, para a linha viva da secao. */
+  onReport: (message: string) => void;
+}) {
+  const id = useId();
+  const [draft, setDraft] = useState(String(value));
+
+  // Atalho, importacao e projeto novo mudam o tamanho por fora; sem isto o campo
+  // continuaria exibindo o que foi digitado da ultima vez.
+  useEffect(() => {
+    setDraft(String(value));
+  }, [value]);
+
+  const parsed = Number(draft.trim());
+  const invalid =
+    draft.trim() === '' || !Number.isFinite(parsed) || parsed < min || parsed > max;
+  const range = `${label} entre ${String(min)} e ${String(max)} px.`;
+
+  /**
+   * PRENDE na faixa, nao rejeita. Quem digitou 5000 quis "o maior que der" — a
+   * mesma divisao de trabalho do `clampRect`: o gesto do usuario prende, a spec
+   * que chega de fora e que reprova. O store prende de novo, com a mesma faixa.
+   */
+  const commit = (): void => {
+    const n = Number(draft.trim());
+    if (draft.trim() === '' || !Number.isFinite(n)) {
+      setDraft(String(value));
+      onReport('');
+      return;
+    }
+    const fitted = Math.min(Math.max(Math.round(n), min), max);
+    setDraft(String(fitted));
+    onReport('');
+    onCommit(fitted);
+  };
+
+  return (
+    <label
+      htmlFor={id}
+      className={`flex items-center gap-1.5 rounded-md border bg-white px-2 py-1 focus-within:ring-2 dark:bg-slate-800 ${
+        invalid
+          ? 'border-amber-400 focus-within:border-amber-500 focus-within:ring-amber-200 dark:focus-within:ring-amber-900'
+          : 'border-slate-300 focus-within:border-sky-500 focus-within:ring-sky-200 dark:border-slate-600 dark:focus-within:ring-sky-900'
+      }`}
+    >
+      <span aria-hidden="true" className="w-2.5 shrink-0 text-[10px] font-semibold text-slate-400">
+        {mark}
+      </span>
+      {/* O spinner nativo fica escondido pelo mesmo motivo do `RectField`: em
+          duas colunas estreitas ele come a largura do proprio numero. As setas do
+          teclado continuam funcionando. */}
+      <input
+        id={id}
+        type="number"
+        inputMode="numeric"
+        name={`artboard-${mark.toLowerCase()}`}
+        autoComplete="off"
+        step={1}
+        min={min}
+        max={max}
+        value={draft}
+        aria-label={`${label} da prancheta, em pixels`}
+        aria-invalid={invalid}
+        aria-describedby={`${id}-range`}
+        onChange={(event) => {
+          const next = event.target.value;
+          setDraft(next);
+          const n = Number(next.trim());
+          const bad = next.trim() === '' || !Number.isFinite(n) || n < min || n > max;
+          onReport(bad ? range : '');
+        }}
+        onBlur={commit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            commit();
+          }
+          if (event.key === 'Escape') {
+            setDraft(String(value));
+            onReport('');
+          }
+        }}
+        // Roda do mouse sobre campo numerico com foco troca o valor sem que
+        // ninguem tenha pedido — e o painel rola, entao aqui isso aconteceria de
+        // verdade, mudando a prancheta no meio de uma rolagem e sem sintoma.
+        onWheel={(event) => {
+          event.currentTarget.blur();
+        }}
+        className="min-w-0 flex-1 bg-transparent text-right text-sm tabular-nums text-slate-900 outline-none [appearance:textfield] dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+      />
+      <span aria-hidden="true" className="shrink-0 text-[10px] text-slate-400">
+        px
+      </span>
+      <span id={`${id}-range`} className="sr-only">
+        {range}
+      </span>
+    </label>
   );
 }
 

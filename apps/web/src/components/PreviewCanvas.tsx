@@ -2,8 +2,7 @@
 
 import { artboardOf } from '@vislow/component-registry';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ArtboardBar } from '@/components/ArtboardBar';
-import { fitScale, type Pane } from '@/lib/artboard';
+import { fitScale, scalePercent, type Pane } from '@/lib/artboard';
 import { issuesByNode } from '@/lib/issues';
 import { useEditorStore } from '@/store/useEditorStore';
 import { SpecPreview } from './SpecPreview';
@@ -45,7 +44,6 @@ export function PreviewCanvas() {
   const selectedId = useEditorStore((s) => s.selectedId);
   const select = useEditorStore((s) => s.select);
   const setRect = useEditorStore((s) => s.setRect);
-  const setArtboard = useEditorStore((s) => s.setArtboard);
 
   const paneRef = useRef<HTMLDivElement>(null);
   // `null` ate a primeira medicao. Distinto de zero de proposito: o painel de
@@ -90,10 +88,16 @@ export function PreviewCanvas() {
 
   return (
     <main className="flex h-full flex-1 flex-col gap-2 overflow-hidden bg-slate-100 p-6 dark:bg-slate-950">
-      {/* Legenda da figura, nao do controle: o que ela qualifica e o desenho
-          acima dela — os numeros dos graficos sao inventados aqui (RN-02, o app
-          nem tem acesso ao modelo). */}
-      <p className="shrink-0 text-right text-[11px] text-slate-400">dados de exemplo</p>
+      {/* Legenda da figura, e nao controle: as duas coisas que e preciso saber
+          para ler o desenho abaixo — em que escala ele esta e que os numeros dos
+          graficos sao inventados (RN-02, o app nem tem acesso ao modelo).
+          A escala fica AQUI e nao no painel de propriedades porque descreve o
+          painel, nao o projeto: ela muda ao redimensionar a janela, sem ninguem
+          ter editado coisa alguma. Quem MUDA o tamanho e a prancheta, e essa vive
+          nas propriedades da raiz. */}
+      <p className="shrink-0 text-right text-[11px] tabular-nums text-slate-400">
+        escala {String(scalePercent(scale))}% · dados de exemplo
+      </p>
 
       <div ref={paneRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
         <div
@@ -118,8 +122,6 @@ export function PreviewCanvas() {
           </div>
         </div>
       </div>
-
-      <ArtboardBar artboard={artboard} scale={scale} onChange={setArtboard} />
     </main>
   );
 }
