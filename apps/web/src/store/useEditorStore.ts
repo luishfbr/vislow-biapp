@@ -3,21 +3,29 @@
 import { create } from 'zustand';
 import {
   acceptsChildren,
+  addColumn,
+  addRow,
   clampArtboard,
   createEmptySpec,
   createNode,
-  createRole,
   findNode,
   insertChild,
+  isV2Spec,
+  migrateV2ToV3,
   moveNode,
   parentOf,
+  removeColumn,
   removeNode,
+  removeRow,
   reparentNode,
   selectionAfterRemoval,
+  setCell,
+  setColumnKind,
+  setColumnLabel,
+  setColumnType,
   setNodeProps,
   setNodeRect,
   suggestRoleBindings,
-  unbindRole,
   validateSpec,
   type Artboard,
   type NodeKind,
@@ -26,7 +34,12 @@ import {
   type SpecNode,
   type VisualSpec,
 } from '@vislow/component-registry';
-import { bumpPackageVersion, type ValidationIssue } from '@vislow/config-schema';
+import {
+  bumpPackageVersion,
+  type CellValue,
+  type ColumnType,
+  type ValidationIssue,
+} from '@vislow/config-schema';
 import { loadProject, saveProjectDebounced } from '@/lib/persistence';
 
 /**
@@ -59,9 +72,19 @@ export interface EditorState {
   /** Move ou redimensiona dentro de um pai que posiciona. Prende na borda. */
   setRect: (id: string, rect: NodeRect) => void;
 
-  addRole: (kind: RoleKind) => void;
-  setRoleLabel: (name: string, displayName: string) => void;
-  removeRole: (name: string) => void;
+  /**
+   * A tabela de exemplo. Cada coluna e, ao mesmo tempo, um campo do visual —
+   * nao ha duas listas. Toda operacao delega para `table.ts`, que e puro e
+   * testado sem React; aqui so passa pelo `commit`.
+   */
+  addColumn: (label: string, type: ColumnType) => void;
+  setColumnLabel: (name: string, label: string) => void;
+  setColumnType: (name: string, type: ColumnType) => void;
+  setColumnKind: (name: string, kind: RoleKind) => void;
+  removeColumn: (name: string) => void;
+  addRow: () => void;
+  removeRow: (index: number) => void;
+  setCell: (row: number, column: number, value: CellValue) => void;
 
   rename: (name: string) => void;
   /** Tamanho da prancheta do editor, em px. Prende na faixa valida. */
@@ -89,6 +112,18 @@ export const useEditorStore = create<EditorState>((set, get) => {
   const editTree = (next: SpecNode | null, selectedId?: string): void => {
     if (!next) return;
     commit({ ...get().spec, root: next }, selectedId);
+  };
+
+  /**
+   * Aplica uma edicao de tabela. Mesma convencao do `editTree`: `null` e
+   * operacao ilegal (teto atingido, ultima coluna, celula fora da grade) e nao
+   * mexe em nada. Note que a spec resultante pode ser INVALIDA de proposito —
+   * apagar uma coluna ligada deixa o no pendente —, e por isso ela passa pelo
+   * `commit`, que revalida e acende o painel.
+   */
+  const editTable = (next: VisualSpec | null): void => {
+    if (!next) return;
+    commit(next);
   };
 
   const initial = createEmptySpec(INITIAL_NAME);
@@ -127,7 +162,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
     addNode: (kind) => {
       const { spec, selectedId } = get();
       const selected = findNode(spec.root, selectedId) ?? spec.root;
-      const node = createNode(kind, suggestRoleBindings(kind, spec.dataRoles));
+      const node = createNode(kind, suggestRoleBindings(kind, spec.data.columns));
 
       if (acceptsChildren(selected)) {
         editTree(insertChild(spec.root, selected.id, node), node.id);
@@ -164,42 +199,46 @@ export const useEditorStore = create<EditorState>((set, get) => {
       editTree(setNodeRect(get().spec.root, id, rect));
     },
 
-    addRole: (kind) => {
-      const { spec } = get();
-      const sameKind = spec.dataRoles.filter((role) => role.kind === kind).length;
-      const base = kind === 'grouping' ? 'Categoria' : 'Medida';
-      const label = sameKind === 0 ? base : `${base} ${String(sameKind + 1)}`;
-
-      commit({
-        ...spec,
-        dataRoles: [...spec.dataRoles, createRole(label, kind, spec.dataRoles)],
-      });
+    addColumn: (label, type) => {
+      editTable(addColumn(get().spec, label, type));
     },
 
     /**
-     * So o rotulo muda. O `name` e estavel por desenho (ver `createRole`): e ele
-     * que aparece no `capabilities.json` e amarra as referencias da arvore.
+     * So o rotulo muda. O `name` e estavel por desenho (ver `createColumn`): e
+     * ele que aparece no `capabilities.json` e amarra as referencias da arvore.
      */
-    setRoleLabel: (name, displayName) => {
-      const { spec } = get();
-      commit({
-        ...spec,
-        dataRoles: spec.dataRoles.map((role) =>
-          role.name === name ? { ...role, displayName } : role,
-        ),
-      });
+    setColumnLabel: (name, label) => {
+      editTable(setColumnLabel(get().spec, name, label));
     },
 
-    removeRole: (name) => {
-      const { spec } = get();
-      // Desligar da arvore junto e obrigatorio: um no apontando para papel
-      // inexistente e exatamente o caso que `validateSpec` reprova, e o usuario
-      // ficaria com um erro cuja causa ele nao consegue ver na tela.
-      commit({
-        ...spec,
-        dataRoles: spec.dataRoles.filter((role) => role.name !== name),
-        root: unbindRole(spec.root, name),
-      });
+    /**
+     * Trocar tipo ou papel pode DESLIGAR nos — `table.ts` cuida disso no mesmo
+     * passo. O no volta a pendente, o export trava, e o painel mostra onde. E
+     * melhor que a alternativa: uma spec que reprova inteira por um erro que
+     * fala do no, e nao da coluna em que o usuario acabou de clicar.
+     */
+    setColumnType: (name, type) => {
+      editTable(setColumnType(get().spec, name, type));
+    },
+
+    setColumnKind: (name, kind) => {
+      editTable(setColumnKind(get().spec, name, kind));
+    },
+
+    removeColumn: (name) => {
+      editTable(removeColumn(get().spec, name));
+    },
+
+    addRow: () => {
+      editTable(addRow(get().spec));
+    },
+
+    removeRow: (index) => {
+      editTable(removeRow(get().spec, index));
+    },
+
+    setCell: (row, column, value) => {
+      editTable(setCell(get().spec, row, column, value));
     },
 
     rename: (name) => {
@@ -225,8 +264,17 @@ export const useEditorStore = create<EditorState>((set, get) => {
       commit(spec, spec.root.id);
     },
 
+    /**
+     * Importa um `.vislow.json`, migrando o formato antigo pelo mesmo caminho
+     * do `localStorage`.
+     *
+     * Sem a migracao aqui, um arquivo exportado antes da tabela de exemplo
+     * existir seria recusado como "invalido" — e o usuario nao teria como
+     * saber que o problema e a idade do arquivo, nem o que fazer a respeito.
+     */
     importSpec: (raw) => {
-      const result = validateSpec(raw);
+      const candidate = isV2Spec(raw) ? migrateV2ToV3(raw) : raw;
+      const result = validateSpec(candidate);
       if (result.kind === 'invalid') return { ok: false, issues: result.issues };
       commit(result.spec, result.spec.root.id);
       return { ok: true };

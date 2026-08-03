@@ -9,7 +9,7 @@ import {
   type VisualSpec,
 } from '@vislow/component-registry';
 import { ErrorBoundary } from '@vislow/visual-kit';
-import { CanvasSlot, mockFrame, type DataFrame } from '@vislow/visual-kit/nodes';
+import { CanvasSlot, sampleFrame, type DataFrame } from '@vislow/visual-kit/nodes';
 import { createElement, type ReactNode } from 'react';
 import { CanvasOverlay } from '@/components/CanvasOverlay';
 import type { NodeIssues } from '@/lib/issues';
@@ -151,7 +151,10 @@ export function SpecPreview({
   issues: ReadonlyMap<string, NodeIssues>;
   edit?: PreviewEdit | undefined;
 }) {
-  const frame = mockFrame(spec.dataRoles);
+  // O preview desenha o que o USUARIO digitou na tabela de exemplo. Antes o
+  // quadro era fabricado a partir do nome do papel, e ele compunha contra
+  // numeros que nao eram dele.
+  const frame = sampleFrame(spec.data);
 
   return (
     // A moldura e a MESMA que o codegen emite em volta da arvore. Sem ela o

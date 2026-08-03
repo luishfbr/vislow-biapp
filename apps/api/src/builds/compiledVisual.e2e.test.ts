@@ -379,6 +379,50 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   });
 
   /**
+   * O tipo declarado na tabela de exemplo vira restricao do host, e o campo
+   * passa a ser EXIGIDO.
+   *
+   * `requiredTypes` faz o Power BI recusar o arrasto de uma coluna do tipo
+   * errado; `min: 1` faz ele segurar o visual enquanto faltar campo. Sem os
+   * dois, o tipo que o usuario escolhe no editor seria so a formatacao do
+   * preview.
+   */
+  it('o capabilities gerado exige o campo, e exige do tipo certo', () => {
+    const capabilities = generateCapabilities(spec);
+
+    const porNome = new Map(capabilities.dataRoles.map((role) => [role.name, role]));
+    expect(porNome.get('categoria')?.requiredTypes).toEqual([{ text: true }]);
+    expect(porNome.get('valor')?.requiredTypes).toEqual([{ integer: true }]);
+
+    const [mapping] = capabilities.dataViewMappings as {
+      conditions: Record<string, { min: number; max: number }>[];
+    }[];
+    expect(mapping?.conditions[0]?.categoria).toEqual({ min: 1, max: 1 });
+    expect(mapping?.conditions[0]?.valor).toEqual({ min: 1, max: 1 });
+  });
+
+  /**
+   * OS VALORES DA TABELA DE EXEMPLO NAO ESTAO NO PACOTE.
+   *
+   * O teste do codegen ja garante isso no fonte gerado; este garante no BUNDLE
+   * MINIFICADO, que e o que o usuario distribui. Sao coisas diferentes: um
+   * `import` novo, um `default` de componente ou uma constante inlinada pelo
+   * webpack passariam pelo primeiro e apareceriam aqui.
+   *
+   * O que esta em jogo nao e so a estetica de "visual que mente sobre o proprio
+   * dado": os numeros que o usuario digita no editor sao dele, e o `.pbiviz` e
+   * um arquivo que ele distribui para outras pessoas.
+   */
+  it('os valores de exemplo nao viajam dentro do bundle compilado', () => {
+    for (const row of spec.data.rows) {
+      for (const cell of row) {
+        if (cell === null) continue;
+        expect(js, `o bundle carrega ${String(cell)}`).not.toContain(String(cell));
+      }
+    }
+  });
+
+  /**
    * PARIDADE DE INTERATIVIDADE (Sprint 6, achado 53).
    *
    * Ate aqui o gate provava que o pacote DESENHA. As assertivas abaixo provam

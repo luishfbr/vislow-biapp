@@ -1,6 +1,8 @@
 import {
   isV1Config,
-  migrateV1ToV2,
+  isV2Spec,
+  migrateV1,
+  migrateV2ToV3,
   validateSpec,
   type VisualSpec,
 } from '@vislow/component-registry';
@@ -10,10 +12,17 @@ import { validateConfig } from '@vislow/config-schema';
  * Persistencia local do projeto (RF-08).
  *
  * A chave carrega a versao do formato de ARMAZENAMENTO — distinta do
- * `schemaVersion` da spec. A v2 e a arvore do ADR-08; a v1 e o config plano do
- * editor antigo, que ainda esta no `localStorage` de quem ja usou o produto.
+ * `schemaVersion` da spec. A v1 e o config plano do editor antigo; a v2 e a
+ * arvore do ADR-08, com `dataRoles`; a v3 troca os papeis pela tabela de
+ * exemplo. As tres ainda podem estar no `localStorage` de quem ja usou o
+ * produto.
+ *
+ * A CHAVE DA v2 CONTINUA SENDO LIDA, e nao renomeada: quem tem projeto salvo
+ * la precisa que ele abra. A v3 escreve na chave propria, entao um downgrade do
+ * app nao encontra uma spec que ele nao entende.
  */
-const STORAGE_KEY = 'vislow:project:v2';
+const STORAGE_KEY = 'vislow:project:v3';
+const V2_KEY = 'vislow:project:v2';
 const LEGACY_KEY = 'vislow:project:v1';
 const SAVE_DEBOUNCE_MS = 300;
 
@@ -42,11 +51,13 @@ function readJson(key: string): unknown {
  *
  * Uma spec invalida — schema evoluiu, storage adulterado — e DESCARTADA em
  * silencio: e melhor comecar limpo do que abrir num estado que nao valida e
- * bloqueia o export.
+ * bloqueia o export. O preco disso e que uma migracao quebrada nao da erro na
+ * tela: ela APAGA o projeto de quem abriu o editor. E por isso que
+ * `migrate.test.ts` congela uma spec v2 real e a valida ponta a ponta.
  *
- * A migracao NAO apaga a chave v1. Se a arvore migrada tiver algum problema que
- * so aparece depois, o original ainda esta la para diagnosticar — e o custo e
- * alguns KB de `localStorage`.
+ * A migracao NAO apaga a chave antiga. Se a arvore migrada tiver algum problema
+ * que so aparece depois, o original ainda esta la para diagnosticar — e o custo
+ * e alguns KB de `localStorage`.
  */
 export function loadProject(): VisualSpec | null {
   if (typeof window === 'undefined') return null;
@@ -58,20 +69,28 @@ export function loadProject(): VisualSpec | null {
       return result.kind === 'valid' ? result.spec : null;
     }
 
+    // Migrar preserva o `project.id`, e com ele a capacidade de ATUALIZAR o
+    // visual no Power BI em vez de duplicar (RF-10). E a unica parte
+    // insubstituivel de um projeto antigo.
+    const v2 = readJson(V2_KEY);
+    if (v2 !== null) return migrated(isV2Spec(v2) ? migrateV2ToV3(v2) : null);
+
     const legacy = readJson(LEGACY_KEY);
     if (legacy === null || !isV1Config(legacy)) return null;
 
-    // Migrar preserva o `project.id`, e com ele a capacidade de ATUALIZAR o
-    // visual no Power BI em vez de duplicar (RF-10). E a unica parte
-    // insubstituivel do projeto antigo.
     const config = validateConfig(legacy);
     if (config.kind === 'invalid') return null;
 
-    const migrated = validateSpec(migrateV1ToV2(config.config));
-    return migrated.kind === 'valid' ? migrated.spec : null;
+    return migrated(migrateV1(config.config));
   } catch {
     return null;
   }
+}
+
+function migrated(spec: VisualSpec | null): VisualSpec | null {
+  if (!spec) return null;
+  const result = validateSpec(spec);
+  return result.kind === 'valid' ? result.spec : null;
 }
 
 export function downloadJson(spec: VisualSpec): void {

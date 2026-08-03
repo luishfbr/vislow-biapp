@@ -7,12 +7,14 @@ import {
   defaultPropsFor,
   insertChild,
   roleFieldsOf,
-  type DataRole,
+  KIND_FOR_TYPE,
+  type DataColumn,
+  type SampleTable,
   type SpecNode,
   type VisualSpec,
   type NodeKind,
 } from '@vislow/component-registry';
-import { INITIAL_PACKAGE_VERSION, createProjectId } from '@vislow/config-schema';
+import { INITIAL_PACKAGE_VERSION, createProjectId, type ColumnType } from '@vislow/config-schema';
 
 /**
  * Specs de teste, derivadas do REGISTRO — nunca escritas a mao.
@@ -24,10 +26,34 @@ import { INITIAL_PACKAGE_VERSION, createProjectId } from '@vislow/config-schema'
  * schema.
  */
 
-export const TEST_ROLES: DataRole[] = [
-  { name: 'categoria', displayName: 'Categoria', kind: 'grouping' },
-  { name: 'valor', displayName: 'Valor', kind: 'measure' },
-];
+/**
+ * A tabela de exemplo das fixtures.
+ *
+ * As LINHAS carregam sentinelas de proposito, porque e contra elas que a guarda
+ * de vazamento morde. Sem valores distintivos aqui, o teste "os valores de
+ * exemplo nao chegam ao pacote" passaria por AUSENCIA — o modo de falhar que
+ * este repo ja registrou no teste da prancheta.
+ *
+ * TODA celula precisa ser distintiva o bastante para nao aparecer por acaso no
+ * fonte gerado. Um `7` como valor de exemplo faz a guarda acusar vazamento em
+ * qualquer arquivo que tenha o digito — e a primeira versao desta fixture tinha
+ * um. Sentinela curta e guarda que grita sem motivo, que morre logo depois.
+ *
+ * Os tipos cobrem os dois extremos do `requiredTypes`: texto (o mais estreito
+ * do lado do agrupamento) e inteiro (o mais estreito do lado da medida).
+ */
+export const TEST_TABLE: SampleTable = {
+  columns: [
+    { name: 'categoria', displayName: 'Categoria', kind: 'grouping', type: 'text' },
+    { name: 'valor', displayName: 'Valor', kind: 'measure', type: 'integer' },
+  ],
+  rows: [
+    ['SENTINELA_DE_LINHA', 424242],
+    ['SENTINELA_SEGUNDA_LINHA', 987654],
+    // Celula vazia: o preview tem de aguentar, e a guarda tem de pular.
+    [null, null],
+  ],
+};
 
 /** Liga todo campo de papel do tipo ao papel de teste do mesmo `roleKind`. */
 export function nodeOf(kind: NodeKind): SpecNode {
@@ -48,7 +74,10 @@ export function specWith(root: SpecNode, name = 'Teste de Codegen'): VisualSpec 
       name,
       packageVersion: INITIAL_PACKAGE_VERSION,
     },
-    dataRoles: TEST_ROLES.map((role) => ({ ...role })),
+    data: {
+      columns: TEST_TABLE.columns.map((column) => ({ ...column })),
+      rows: TEST_TABLE.rows.map((row) => [...row]),
+    },
     root,
   };
 }
@@ -83,6 +112,37 @@ export function specWithEveryKind(name = 'Teste de Codegen'): VisualSpec {
       // default de proposito — se algum dia ele vazar para o pacote, vaza
       // visivel.
       artboard: { ...ARTBOARD_MAX },
+    },
+  };
+}
+
+/**
+ * Projeto cuja PRIMEIRA coluna e do tipo pedido, ligada num grafico.
+ *
+ * Duas colunas porque o grafico exige um agrupamento e uma medida: a testada e a
+ * companheira do outro papel. Toda celula e vazia — `null` vale em qualquer
+ * tipo, e aqui o que esta sob teste e o tipo declarado, nao o valor.
+ */
+export function specWithColumnType(type: ColumnType): VisualSpec {
+  const kind = KIND_FOR_TYPE[type];
+  const par: DataColumn =
+    kind === 'grouping'
+      ? { name: 'par', displayName: 'Par', kind: 'measure', type: 'decimal' }
+      : { name: 'par', displayName: 'Par', kind: 'grouping', type: 'text' };
+
+  const container = createNode('container');
+  container.children = [
+    createNode('barChart', {
+      categoryRole: kind === 'grouping' ? 'alvo' : 'par',
+      measureRole: kind === 'measure' ? 'alvo' : 'par',
+    }),
+  ];
+
+  return {
+    ...specWith(container),
+    data: {
+      columns: [{ name: 'alvo', displayName: 'Alvo', kind, type }, par],
+      rows: [[null, null]],
     },
   };
 }

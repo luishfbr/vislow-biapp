@@ -12,6 +12,8 @@
 import { Ajv2020, type ErrorObject, type ValidateFunction } from 'ajv/dist/2020.js';
 import {
   COLOR_PATTERN,
+  COLUMN_TYPES,
+  isValidCell,
   PACKAGE_VERSION_PATTERN,
   PROJECT_ID_PATTERN,
   TOKEN_CATALOG,
@@ -21,6 +23,8 @@ import { NODE_DESCRIPTORS, NODE_KINDS } from './registry.js';
 import {
   ARTBOARD_MAX,
   ARTBOARD_MIN,
+  MAX_COLUMNS,
+  MAX_ROWS,
   NODE_ID_PATTERN,
   RECT_MIN_SIZE,
   ROLE_NAME_PATTERN,
@@ -122,7 +126,7 @@ export const specSchema = {
   $id: `https://vislow.app/schemas/visual-spec/${SPEC_VERSION}.json`,
   type: 'object',
   additionalProperties: false,
-  required: ['schemaVersion', 'project', 'dataRoles', 'root'],
+  required: ['schemaVersion', 'project', 'data', 'root'],
   properties: {
     schemaVersion: { type: 'string', pattern: '^\\d+\\.\\d+\\.\\d+$' },
     project: {
@@ -136,18 +140,50 @@ export const specSchema = {
         artboard: artboardSchema,
       },
     },
-    dataRoles: {
-      type: 'array',
-      minItems: 1,
-      maxItems: 10,
-      items: {
-        type: 'object',
-        additionalProperties: false,
-        required: ['name', 'displayName', 'kind'],
-        properties: {
-          name: { type: 'string', pattern: ROLE_NAME_PATTERN },
-          displayName: { type: 'string', minLength: 1, maxLength: 50 },
-          kind: { enum: ['grouping', 'measure'] },
+    /**
+     * A tabela de exemplo. As COLUNAS sao o contrato do pacote; as LINHAS ficam
+     * no editor e um teste do codegen reprova o build se um valor delas vazar.
+     *
+     * O schema so consegue dizer que uma celula e string, numero, booleano ou
+     * nulo. Que ela case com o TIPO da coluna irma, e que a linha tenha o mesmo
+     * comprimento da lista de colunas, sao relacoes entre propriedades irmas —
+     * verificadas semanticamente em `validateSpec`.
+     */
+    data: {
+      type: 'object',
+      additionalProperties: false,
+      required: ['columns', 'rows'],
+      properties: {
+        columns: {
+          type: 'array',
+          minItems: 1,
+          maxItems: MAX_COLUMNS,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['name', 'displayName', 'kind', 'type'],
+            properties: {
+              name: { type: 'string', pattern: ROLE_NAME_PATTERN },
+              displayName: { type: 'string', minLength: 1, maxLength: 50 },
+              kind: { enum: ['grouping', 'measure'] },
+              type: { enum: [...COLUMN_TYPES] },
+            },
+          },
+        },
+        rows: {
+          type: 'array',
+          minItems: 1,
+          maxItems: MAX_ROWS,
+          items: {
+            type: 'array',
+            maxItems: MAX_COLUMNS,
+            // `anyOf` e nao `type: [...]`: o Ajv em modo estrito recusa uniao de
+            // tipos, e afrouxar o modo estrito para uma celula sairia caro no
+            // resto do schema, que depende dele para pegar erro de digitacao.
+            items: {
+              anyOf: [{ type: 'string' }, { type: 'number' }, { type: 'boolean' }, { type: 'null' }],
+            },
+          },
         },
       },
     },
@@ -276,6 +312,49 @@ function rectIssues(rect: NodeRect, path: string): ValidationIssue[] {
   return issues;
 }
 
+/**
+ * A tabela fecha com ela mesma?
+ *
+ * Duas relacoes que JSON Schema nao alcanca, porque as duas ligam uma
+ * propriedade a uma irma:
+ *
+ *   1. toda linha tem uma celula por coluna. Uma linha curta produz `undefined`
+ *      onde o preview espera valor, e `undefined` atravessa o grafico inteiro
+ *      sem erro — sai como barra de altura zero, indistinguivel de um zero real;
+ *   2. toda celula cabe no tipo da coluna. Sem isso um arquivo editado a mao poe
+ *      `"abc"` numa coluna de moeda e o eixo desenha `NaN`.
+ *
+ * Ambas so aparecem por importacao de arquivo: as operacoes de `table.ts` ja
+ * mantem as duas invariantes. E o mesmo par de guardas do `rect` — quem arrasta
+ * tem o valor prendido, quem importa tem o arquivo reprovado.
+ */
+function tableIssues(spec: VisualSpec): ValidationIssue[] {
+  const issues: ValidationIssue[] = [];
+  const { columns, rows } = spec.data;
+
+  rows.forEach((row, index) => {
+    if (row.length !== columns.length) {
+      issues.push({
+        path: `data.rows[${String(index)}]`,
+        message: `a linha tem ${String(row.length)} celulas, mas a tabela tem ${String(columns.length)} colunas`,
+      });
+      return;
+    }
+
+    row.forEach((cell, position) => {
+      const column = columns[position];
+      if (column && !isValidCell(cell, column.type)) {
+        issues.push({
+          path: `data.rows[${String(index)}][${String(position)}]`,
+          message: `valor nao e ${column.type}: ${JSON.stringify(cell)}`,
+        });
+      }
+    });
+  });
+
+  return issues;
+}
+
 export function validateSpec(value: unknown): SpecValidationResult {
   const validate = validator();
   if (!validate(value)) {
@@ -289,10 +368,12 @@ export function validateSpec(value: unknown): SpecValidationResult {
   const spec = value as VisualSpec;
   const issues: ValidationIssue[] = [];
 
-  const roles = new Map(spec.dataRoles.map((role) => [role.name, role]));
-  if (roles.size !== spec.dataRoles.length) {
-    issues.push({ path: 'dataRoles', message: 'nomes de papel duplicados' });
+  const roles = new Map(spec.data.columns.map((column) => [column.name, column]));
+  if (roles.size !== spec.data.columns.length) {
+    issues.push({ path: 'data.columns', message: 'nomes de coluna duplicados' });
   }
+
+  issues.push(...tableIssues(spec));
 
   const seenIds = new Set<string>();
   for (const { node, path } of walk(spec)) {
