@@ -35,7 +35,7 @@ Em ordem de precedência. Quando dois conflitarem, o de cima vence.
 
 | Camada | Escolha | Versão | Por quê |
 |---|---|---|---|
-| Runtime JS | Node | ≥ 22.12 | LTS |
+| Runtime JS | Node | **≥ 22.13** | Piso do pnpm 11.12, não nosso: em 22.12 o `pnpm install` aborta antes de instalar. O CI pinna o piso de propósito — se o pnpm subir o requisito de novo, quebra lá, não na máquina de quem clona. |
 | Gerenciador | pnpm | 11.12 | Workspaces com resolução estrita |
 | Orquestração | Turborepo | — | A ordem de build vive no `turbo.json` (ADR-17) |
 | Linguagem | TypeScript | **5.9.3** | Imposto pela toolchain: `powerbi-visuals-tools` depende de `typescript ^5.9.3` e o `visual-kit` é compilado pelo `ts-loader` dela. TS 7 criaria duas semânticas de tipo sobre código compartilhado. |

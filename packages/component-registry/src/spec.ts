@@ -1,24 +1,95 @@
-import type { ProjectIdentity } from '@vislow/config-schema';
+import type { CellValue, ColumnType, ProjectIdentity } from '@vislow/config-schema';
 import type { NodeKind, RoleKind } from './types.js';
 
 /** Versao do formato da arvore. Distinta do `schemaVersion` do config plano v1. */
-export const SPEC_VERSION = '2.0.0';
+export const SPEC_VERSION = '3.0.0';
 
 /**
- * Papel de dado declarado PELO USUARIO.
+ * Uma coluna da tabela de exemplo — que e, ao mesmo tempo, um CAMPO do visual.
+ *
+ * As duas coisas sao a mesma entidade vista de dois lados, e e de proposito que
+ * nao existam duas listas. Do lado do editor, a coluna tem tipo e valores, e e
+ * contra eles que o usuario compoe. Do lado do Power BI, ela vira um `dataRole`
+ * no `capabilities.json` gerado: um encaixe no painel de campos, com o nome que
+ * o usuario deu e o tipo que ele declarou.
  *
  * E isto que faz "comecar do zero" ser real: com compilacao por usuario, o
  * `capabilities.json` e gerado por visual, entao o usuario decide quais campos o
- * visual dele vai pedir no Power BI — em vez de herdar as roles fixas de um
- * runtime pre-compilado.
+ * visual dele vai pedir — em vez de herdar as roles fixas de um runtime
+ * pre-compilado.
+ *
+ * O codigo continua dizendo *role* onde o assunto e o encaixe no host
+ * (`unbindRole`, `roleFieldsOf`, `ROLE_NAME_PATTERN`) porque esse e o nome do
+ * conceito la; *column* e o nome deste lado. `column.name === role.name`.
  */
-export interface DataRole {
+export interface DataColumn {
   /** Vira o `name` no capabilities.json. Precisa ser identificador estavel. */
   name: string;
   /** Rotulo que o usuario ve no painel de campos do Power BI. */
   displayName: string;
   kind: RoleKind;
+  /**
+   * Decide a formatacao no preview, o `kind` default (`KIND_FOR_TYPE`) e o
+   * `requiredTypes` do capabilities — pelo qual o Power BI RECUSA arrastar uma
+   * coluna de texto para um campo que o visual declarou numerico.
+   */
+  type: ColumnType;
 }
+
+/**
+ * A tabela de exemplo do projeto.
+ *
+ * As LINHAS sao do editor e nao chegam ao pacote — mesma regra da prancheta, e
+ * pelo mesmo motivo: um visual do Power BI mostra o modelo de quem o usa, e um
+ * pacote que carregasse dado embutido mentiria sobre o que esta na tela. Um
+ * teste do codegen reprova o build se um valor daqui vazar para o fonte gerado.
+ *
+ * As COLUNAS, ao contrario, sao metade do contrato do pacote: cada uma que
+ * algum no consome vira campo declarado no `capabilities.json`.
+ */
+export interface SampleTable {
+  columns: DataColumn[];
+  /**
+   * Linhas alinhadas a `columns` por INDICE — `rows[linha][coluna]`.
+   *
+   * Por indice e nao por nome porque a grade da tela e por posicao: a celula
+   * que o usuario edita e `[linha][coluna]`, e um objeto por linha exigiria
+   * reconciliar chave e ordem a cada render. O preco e que apagar uma coluna
+   * tem de remover a celula de toda linha — feito num lugar so, em
+   * `removeColumn`, e cobrado por `validateSpec`, que reprova linha de
+   * comprimento diferente do numero de colunas.
+   */
+  rows: CellValue[][];
+}
+
+/**
+ * Papel default de uma coluna, pelo tipo dela.
+ *
+ * E so o DEFAULT: quem decide e o usuario. Um "Ano" e inteiro e agrupa; um
+ * "Codigo da loja" tambem. Sem a troca manual, os dois virariam soma no
+ * grafico, que e exatamente o erro que o tipo deveria evitar.
+ */
+export const KIND_FOR_TYPE: Record<ColumnType, RoleKind> = {
+  text: 'grouping',
+  date: 'grouping',
+  boolean: 'grouping',
+  integer: 'measure',
+  decimal: 'measure',
+  percent: 'measure',
+  currency: 'measure',
+};
+
+/** Teto de colunas. Era o `maxItems` de `dataRoles` e continua valendo. */
+export const MAX_COLUMNS = 10;
+
+/**
+ * Teto de linhas.
+ *
+ * Dado de EXEMPLO: serve para julgar o layout, nao para analisar nada. Cinquenta
+ * linhas ja expoem rotulo longo, valor zero e eixo apertado, e o projeto inteiro
+ * continua cabendo no `localStorage` com folga.
+ */
+export const MAX_ROWS = 50;
 
 /**
  * Onde um no fica dentro do pai. Percentual do pai, 0 a 100.
@@ -129,7 +200,7 @@ export interface SpecProject extends ProjectIdentity {
 export interface VisualSpec {
   schemaVersion: string;
   project: SpecProject;
-  dataRoles: DataRole[];
+  data: SampleTable;
   root: SpecNode;
 }
 

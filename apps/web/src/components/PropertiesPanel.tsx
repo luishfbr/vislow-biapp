@@ -5,10 +5,11 @@ import {
   artboardOf,
   parentOf,
   positionsChildren,
-  type DataRole,
+  type DataColumn,
   type FieldSpec,
   type SpecNode,
 } from '@vislow/component-registry';
+import { COLUMN_TYPE_LABEL } from '@vislow/config-schema';
 import { useMemo } from 'react';
 import {
   ArtboardField,
@@ -42,7 +43,7 @@ function Control({
 }: {
   field: FieldSpec;
   node: SpecNode;
-  roles: readonly DataRole[];
+  roles: readonly DataColumn[];
   error: string | undefined;
   onChange: (value: unknown) => void;
 }) {
@@ -89,7 +90,13 @@ function Control({
           error={error}
           value={typeof raw === 'string' ? raw : ''}
           placeholder="Escolha um campo..."
-          options={compatible.map((role) => ({ value: role.name, label: role.displayName }))}
+          // O TIPO entra no rotulo: e ele que decide o que o Power BI vai
+          // aceitar neste campo, e a lista e o unico lugar em que o usuario
+          // escolhe entre colunas sem enxergar a tabela.
+          options={compatible.map((role) => ({
+            value: role.name,
+            label: `${role.displayName} · ${COLUMN_TYPE_LABEL[role.type].toLowerCase()}`,
+          }))}
           onChange={onChange}
         />
       );
@@ -232,7 +239,7 @@ export function PropertiesPanel() {
             key={field.key}
             field={field}
             node={node}
-            roles={spec.dataRoles}
+            roles={spec.data.columns}
             error={errorFor(problems, field.key)}
             onChange={(value) => {
               setProp(node.id, field.key, value);

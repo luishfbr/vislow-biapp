@@ -1,13 +1,15 @@
-import { createProjectId, INITIAL_PACKAGE_VERSION } from '@vislow/config-schema';
+import { createProjectId, INITIAL_PACKAGE_VERSION, type ColumnType } from '@vislow/config-schema';
 import { CONTAINER_CANVAS, defaultPropsFor, roleFieldsOf } from './registry.js';
 import {
   ARTBOARD_DEFAULT,
+  KIND_FOR_TYPE,
   SPEC_VERSION,
-  type DataRole,
+  type DataColumn,
+  type SampleTable,
   type SpecNode,
   type VisualSpec,
 } from './spec.js';
-import type { NodeKind, RoleKind } from './types.js';
+import type { NodeKind } from './types.js';
 
 let counter = 0;
 
@@ -54,18 +56,18 @@ export function createNode(
  */
 export function suggestRoleBindings(
   kind: NodeKind,
-  roles: readonly DataRole[],
+  columns: readonly DataColumn[],
 ): Record<string, string> {
   const bindings: Record<string, string> = {};
   for (const field of roleFieldsOf(kind)) {
-    const match = roles.find((role) => role.kind === field.roleKind);
+    const match = columns.find((column) => column.kind === field.roleKind);
     if (match) bindings[field.key] = match.name;
   }
   return bindings;
 }
 
 /**
- * Nome tecnico de um papel, derivado do rotulo.
+ * Nome tecnico de uma coluna, derivado do rotulo.
  *
  * Precisa casar `ROLE_NAME_PATTERN` porque vira o `name` do `capabilities.json`.
  * Sem acento, sem separador: o Power BI le esse campo como identificador.
@@ -92,31 +94,57 @@ function slugifyRoleName(label: string): string {
 }
 
 /**
- * Cria um papel com nome unico e ESTAVEL.
+ * Cria uma coluna com nome unico e ESTAVEL.
  *
  * O `name` nasce do rotulo e nunca mais muda — mesma logica do `project.id`.
  * Deixar o usuario reescrever o `name` obrigaria a reescrever toda referencia na
  * arvore junto, e uma reescrita que falhasse pela metade produziria um visual
  * pedindo uma coluna que nenhum no le. O que o usuario edita e o `displayName`,
  * que e o que ele ve no Power BI.
+ *
+ * O papel sai do tipo (`KIND_FOR_TYPE`) e pode ser trocado depois, em
+ * `setColumnKind` — o tipo e a escolha mais forte, mas nao e a ultima palavra.
  */
-export function createRole(label: string, kind: RoleKind, existing: readonly DataRole[]): DataRole {
+export function createColumn(
+  label: string,
+  type: ColumnType,
+  existing: readonly DataColumn[],
+): DataColumn {
   const base = slugifyRoleName(label);
-  const taken = new Set(existing.map((role) => role.name));
+  const taken = new Set(existing.map((column) => column.name));
 
   let name = base;
   for (let suffix = 2; taken.has(name); suffix += 1) {
     name = `${base.slice(0, 28)}${String(suffix)}`;
   }
 
-  return { name, displayName: label, kind };
+  return { name, displayName: label, kind: KIND_FOR_TYPE[type], type };
 }
 
-/** Papeis iniciais de um projeto novo — o par minimo de um visual categorico. */
-export const DEFAULT_ROLES: DataRole[] = [
-  { name: 'categoria', displayName: 'Categoria', kind: 'grouping' },
-  { name: 'valor', displayName: 'Valor', kind: 'measure' },
-];
+/**
+ * A tabela de um projeto novo.
+ *
+ * As categorias e as magnitudes vinham do `mockFrame` do `visual-kit`, e foram
+ * escolhidas para EXPOR problema de layout, nao para ficar bonito: nome curto ao
+ * lado de nome longo (que e o que quebra eixo e legenda), magnitudes bem
+ * diferentes e um zero. Agora que o dado de exemplo e do usuario, elas mudam de
+ * casa e viram o ponto de partida que ele edita.
+ *
+ * O registry nao pode importar o kit — o kit e folha do grafo de pacotes.
+ */
+export const DEFAULT_TABLE: SampleTable = {
+  columns: [
+    { name: 'regiao', displayName: 'Região', kind: 'grouping', type: 'text' },
+    { name: 'receita', displayName: 'Receita', kind: 'measure', type: 'currency' },
+  ],
+  rows: [
+    ['Sul', 184320],
+    ['Sudeste', 921450],
+    ['Centro-Oeste e Norte', 47800],
+    ['Nordeste', 312990],
+    ['Exterior', 0],
+  ],
+};
 
 /**
  * Projeto novo: tela em branco de verdade — um container vazio e nada dentro.
@@ -145,7 +173,10 @@ export function createEmptySpec(name: string): VisualSpec {
       // reescreve em silencio o tamanho de quem ja estava desenhando.
       artboard: { ...ARTBOARD_DEFAULT },
     },
-    dataRoles: DEFAULT_ROLES.map((role) => ({ ...role })),
+    data: {
+      columns: DEFAULT_TABLE.columns.map((column) => ({ ...column })),
+      rows: DEFAULT_TABLE.rows.map((row) => [...row]),
+    },
     root,
   };
 }

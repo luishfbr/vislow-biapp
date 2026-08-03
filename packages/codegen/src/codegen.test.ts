@@ -7,12 +7,20 @@ import {
   createNode,
   type NodeKind,
 } from '@vislow/component-registry';
+import { COLUMN_TYPES } from '@vislow/config-schema';
 import { generateCapabilities } from './capabilities.js';
 import { generatePbiviz } from './pbiviz.js';
 import { generateVisualSource } from './visual.js';
 import { generateProject } from './index.js';
 import { jsString } from './literal.js';
-import { specWith, specWithEveryKind, specWithKind, nodeOf } from './fixtures.js';
+import {
+  TEST_TABLE,
+  specWith,
+  specWithColumnType,
+  specWithEveryKind,
+  specWithKind,
+  nodeOf,
+} from './fixtures.js';
 
 const BUILD_ID = 'b1c2d3e4';
 
@@ -225,17 +233,52 @@ describe('capabilities.json gerado', () => {
   it('mapeia grouping e measure para os kinds do Power BI', () => {
     const capabilities = generateCapabilities(assertValidSpec(specWithKind('barChart')));
     expect(capabilities.dataRoles).toEqual([
-      { displayName: 'Categoria', name: 'categoria', kind: 'Grouping' },
-      { displayName: 'Valor', name: 'valor', kind: 'Measure' },
+      {
+        displayName: 'Categoria',
+        name: 'categoria',
+        kind: 'Grouping',
+        requiredTypes: [{ text: true }],
+      },
+      { displayName: 'Valor', name: 'valor', kind: 'Measure', requiredTypes: [{ integer: true }] },
     ]);
   });
 
-  it('limita cada papel a um campo', () => {
+  it('o tipo da coluna vira restricao de arrasto no host', () => {
+    // Sem `requiredTypes`, o tipo declarado no editor nao valeria nada do lado
+    // do Power BI: o usuario arrastaria uma coluna de texto para um campo que o
+    // visual soma, e a soma sairia zero sem erro nenhum.
+    const esperado: Record<string, Record<string, boolean>[]> = {
+      text: [{ text: true }],
+      integer: [{ integer: true }],
+      // Percentual e moeda sao FORMATO, nao tipo: no modelo do Power BI os dois
+      // sao numero, e exigir outra coisa recusaria justamente a coluna certa.
+      decimal: [{ numeric: true }],
+      percent: [{ numeric: true }],
+      currency: [{ numeric: true }],
+      date: [{ dateTime: true }],
+      boolean: [{ bool: true }],
+    };
+
+    for (const type of COLUMN_TYPES) {
+      const spec = assertValidSpec(specWithColumnType(type));
+      const [role] = generateCapabilities(spec).dataRoles;
+      expect(role?.requiredTypes, type).toEqual(esperado[type]);
+    }
+  });
+
+  it('exige o campo preenchido, e limita a um', () => {
+    // `min: 1` e o "o visual EXIGE os campos": enquanto faltar um, o host nao
+    // entrega DataView e mostra o proprio aviso, em vez de deixar o visual
+    // desenhar meia composicao. `max: 1` impede tres campos no mesmo papel, com
+    // o visual lendo so o primeiro e sem dizer por que.
     const capabilities = generateCapabilities(assertValidSpec(specWithKind('lineChart')));
     const [mapping] = capabilities.dataViewMappings as {
-      conditions: Record<string, { max: number }>[];
+      conditions: Record<string, { min: number; max: number }>[];
     }[];
-    expect(mapping?.conditions[0]).toEqual({ categoria: { max: 1 }, valor: { max: 1 } });
+    expect(mapping?.conditions[0]).toEqual({
+      categoria: { min: 1, max: 1 },
+      valor: { min: 1, max: 1 },
+    });
   });
 
   it('nao declara mapeamento quando a arvore nao le dados', () => {
@@ -309,6 +352,28 @@ describe('generateProject', () => {
       expect(file.contents, file.path).not.toMatch(/artboard/i);
       expect(file.contents, file.path).not.toContain(String(ARTBOARD_MAX.width));
       expect(file.contents, file.path).not.toContain(String(ARTBOARD_MAX.height));
+    }
+  });
+
+  it('os valores da tabela de exemplo NAO chegam ao pacote', () => {
+    // Mesma regra da prancheta, e pelo mesmo motivo: um visual do Power BI
+    // mostra o modelo de quem o usa. Um pacote que carregasse os numeros que o
+    // usuario digitou no editor mentiria sobre o que esta na tela — e ainda
+    // levaria dado dele para dentro de um arquivo que ele distribui.
+    //
+    // O ESQUEMA da tabela vai (coluna, tipo, papel viram `capabilities.json`);
+    // os VALORES ficam. A fixture carrega sentinelas de proposito; sem elas,
+    // este teste passaria por ausencia.
+    const spec = assertValidSpec(specWithEveryKind());
+    expect(spec.data.rows).toEqual(TEST_TABLE.rows);
+
+    for (const file of generateProject(spec, BUILD_ID)) {
+      for (const row of spec.data.rows) {
+        for (const cell of row) {
+          if (cell === null) continue;
+          expect(file.contents, `${file.path} vazou ${String(cell)}`).not.toContain(String(cell));
+        }
+      }
     }
   });
 

@@ -130,8 +130,8 @@ describe('preview da arvore', () => {
     const spec = compose(
       'Painel completo',
       { ...texto, props: { ...texto.props, content: 'Vendas do trimestre' } },
-      createNode('kpi', { measureRole: 'valor' }),
-      createNode('barChart', { categoryRole: 'categoria', measureRole: 'valor' }),
+      createNode('kpi', { measureRole: 'receita' }),
+      createNode('barChart', { categoryRole: 'regiao', measureRole: 'receita' }),
     );
 
     const dom = render(spec);
@@ -149,7 +149,7 @@ describe('preview da arvore', () => {
     for (const kind of ['barChart', 'lineChart', 'areaChart', 'pieChart'] as const) {
       const spec = compose(
         `Grafico ${kind}`,
-        createNode(kind, { categoryRole: 'categoria', measureRole: 'valor' }),
+        createNode(kind, { categoryRole: 'regiao', measureRole: 'receita' }),
       );
       const dom = render(spec);
 
@@ -181,7 +181,7 @@ describe('preview da arvore', () => {
   });
 
   it('filho de canvas sai numa caixa absoluta com a geometria da spec', () => {
-    const spec = compose('Posicionado', createNode('kpi', { measureRole: 'valor' }));
+    const spec = compose('Posicionado', createNode('kpi', { measureRole: 'receita' }));
     const posicionado = setNodeRect(spec.root, spec.root.children![0]!.id, {
       x: 25,
       y: 10,
@@ -206,7 +206,7 @@ describe('preview da arvore', () => {
     // isso fosse falso, o grafico sairia sem barra nenhuma — e em silencio.
     const spec = compose(
       'Grafico posicionado',
-      createNode('barChart', { categoryRole: 'categoria', measureRole: 'valor' }),
+      createNode('barChart', { categoryRole: 'regiao', measureRole: 'receita' }),
     );
 
     const dom = render(spec);
@@ -218,7 +218,7 @@ describe('preview da arvore', () => {
   it('num container que empilha nao ha caixa nenhuma', () => {
     const spec = createEmptySpec('Empilhado');
     const empilhado = setNodeProps(spec.root, spec.root.id, { placement: 'stack' })!;
-    const comFilho = insertChild(empilhado, spec.root.id, createNode('kpi', { measureRole: 'valor' }))!;
+    const comFilho = insertChild(empilhado, spec.root.id, createNode('kpi', { measureRole: 'receita' }))!;
 
     const dom = render({ ...spec, root: comFilho });
 
@@ -230,7 +230,7 @@ describe('preview da arvore', () => {
     const interno = createNode('container');
     const spec = compose('Aninhado', {
       ...interno,
-      children: [createNode('kpi', { measureRole: 'valor' })],
+      children: [createNode('kpi', { measureRole: 'receita' })],
     });
 
     const dom = render(spec);

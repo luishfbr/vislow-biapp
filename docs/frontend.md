@@ -54,7 +54,7 @@ O `web-design-guidelines` cobre UI genérica da web. Ele **não sabe** o que o P
 │  [Vislow]   Nome do visual: [__________]   v1.0.0.0   [ Baixar .pbiviz ]      │
 ├──────────────────┬────────────────────────────────────┬───────────────────────┤
 │  COMPONENTES     │        PREVIEW (visual-kit)        │  PROPRIEDADES         │
-│  COMPOSIÇÃO ↑↓✕  │   render ao vivo com mockFrame     │  ┌ na raiz ────────┐  │
+│  COMPOSIÇÃO ↑↓✕  │  render ao vivo com sampleFrame    │  ┌ na raiz ────────┐  │
 │  CAMPOS DO VISUAL│   prancheta em px, escalada        │  │ PRANCHETA       │  │
 │  PROJETO         │                                    │  │ L 1280 ┃ A 720  │  │
 │                  │   escala 62% · dados de exemplo    │  │ [16:9][4:3][1:1]│  │
@@ -119,7 +119,7 @@ revalidar — é o que garante que o botão de export só fique ativo com uma sp
 ou objeto novo re-renderiza em loop e trava a aba. O que fica como seletor devolve **referência vinda do
 estado**; a derivação que cria objeto vive em `lib/issues.ts` e é memoizada no componente.
 
-**Nome de papel é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createRole` e amarra as
+**Nome de coluna é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createColumn` e amarra as
 referências da árvore e o `capabilities.json`.
 
 Um projeto v1 no `localStorage` é migrado na hidratação preservando o `project.id` — sem ele, reexportar

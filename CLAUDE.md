@@ -82,6 +82,16 @@ O preview desenha uma **prancheta de tamanho declarado** (`project.artboard`, 10
 1280×720), em pixel real e reduzida por escala para caber no painel. **Ela é do editor e não vai para o pacote**
 — um visual do Power BI não escolhe o próprio tamanho, e um teste do codegen reprova o build se ela vazar.
 
+O projeto tem uma **tabela de dados de exemplo** (`spec.data`, spec 3.0.0): até 10 colunas e 50 linhas, cada
+coluna com um tipo declarado (`text`, `integer`, `decimal`, `percent`, `currency`, `date`, `boolean`). **A
+coluna É o campo** — não existe lista paralela de papéis. Do lado do editor ela formata o preview; do lado do
+pacote ela vira um `dataRole` com `requiredTypes` (o Power BI recusa o arrasto do tipo errado) e
+`conditions.min: 1` (o host segura o visual enquanto faltar campo). O papel agrupar/somar sai do tipo e é
+trocável — um "Ano" é inteiro e ainda assim agrupa.
+
+**Os VALORES da tabela não entram no pacote**, pela mesma regra da prancheta: dois testes reprovam o vazamento,
+um no fonte gerado e outro no bundle compilado. O que viaja é só o esquema.
+
 **Próximo — Fase 4:** KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E Playwright
 do editor.
 

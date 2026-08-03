@@ -114,7 +114,8 @@ de terceiros.** O desenho leva isso a sério.
   dentro de um container de expressão JSX. O `npm ci` roda do lockfile do template, que o usuário não controla e
   não consegue influenciar.
 - **Nenhum dado do modelo do Power BI chega a nós** (C-06, RN-02). O editor não tem acesso ao modelo; o que
-  trafega é a spec, que descreve UI. O preview usa `mockFrame`.
+  trafega é a spec, que descreve UI. O preview usa a tabela de exemplo que o próprio usuário digitou
+  (`sampleFrame`), e os valores dela ficam no editor — não entram no pacote.
 - **Isolamento por build:** diretório temporário próprio, destruído no `finally` inclusive quando estoura o
   tempo; ambiente do processo reduzido a `PATH` e `HOME`, sem repassar segredo do servidor; timeout duro com
   `SIGKILL`; fila com concorrência limitada — um build ocupa uma CPU inteira por ~12 s, e sem teto dez pedidos
@@ -143,7 +144,7 @@ Um risco sem **sinal de detecção** não é gerenciável. Os fechados estão em
 |---|---|
 | **`.pbiviz`** | Arquivo (ZIP) de um visual customizado. Não confundir com **`.pbix`**, o arquivo de relatório. |
 | **`pbiviz` (CLI)** | Ferramenta oficial da Microsoft que compila e empacota visuais customizados. |
-| **Spec** | Documento JSON que descreve o visual do usuário: a árvore de nós, os papéis e a identidade do projeto. |
+| **Spec** | Documento JSON que descreve o visual do usuário: a árvore de nós, a tabela de exemplo (cujas colunas são os campos) e a identidade do projeto. |
 | **Nó** | Um componente da árvore. Sete tipos, todos declarados em `NODE_DESCRIPTORS`. |
 | **Papel (data role)** | "Poço" de campos declarado em `capabilities.json` para onde o usuário arrasta colunas dentro do Power BI. |
 | **Token** | Valor semântico de design (`padding: "md"`), independente da implementação em CSS. |
