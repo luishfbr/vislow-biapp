@@ -80,6 +80,22 @@
       "outputs": ["vendor/**"]
     },
 
+    // ------------------------------------------------------------- stage:deps
+    // Instala UMA VEZ as dependencias que toda build consome, para que o worker
+    // nao precise de `npm ci` — nem de rede. Sem `^build`: o script so le o
+    // `template/`, nao depende de pacote compilado nenhum.
+    //
+    // `cache: false` e `outputs: []` de proposito, ao contrario do stage:vendor:
+    // a store tem centenas de MB e cachea-la faria o turbo empacotar e restaurar
+    // isso a cada acerto — mais caro que o passo que substitui. A idempotencia e
+    // do proprio script, pelo stamp do `package-lock.json`: com a store em dia
+    // ele custa um hash e sai.
+    "@vislow/visual-template#stage:deps": {
+      "cache": false,
+      "inputs": ["package.json", "scripts/stage-deps.mjs", "template/package-lock.json"],
+      "outputs": []
+    },
+
     // -------------------------------------------------------------- typecheck
     // `tsc -p tsconfig.json` (noEmit, INCLUI os testes). Le os `.d.ts` dos
     // pacotes dependentes pelo campo `exports`, entao precisa de `^build`.
@@ -112,7 +128,11 @@
     // `cache: false` porque ele executa `npm ci` e `pbiviz` de verdade: um
     // acerto de cache aqui seria a volta do "passou sem ter rodado".
     "@vislow/api#test:build": {
-      "dependsOn": ["^build", "@vislow/visual-template#stage:vendor"],
+      "dependsOn": [
+        "^build",
+        "@vislow/visual-template#stage:vendor",
+        "@vislow/visual-template#stage:deps"
+      ],
       "cache": false,
       "outputs": []
     },
@@ -190,13 +210,19 @@
       "dependsOn": ["^build"]
     },
 
-    // A API precisa do template preparado para servir um build, e do proprio
+    // A API precisa do template preparado para servir um build — scaffold,
+    // pacotes internos vendorizados E a store de dependencias — e do proprio
     // `dist/main.js` existindo antes do `node --watch` subir. `"build"` sem
     // prefixo = a tarefa `build` DESTE pacote.
     "@vislow/api#dev": {
       "cache": false,
       "persistent": true,
-      "dependsOn": ["^build", "build", "@vislow/visual-template#stage:vendor"]
+      "dependsOn": [
+        "^build",
+        "build",
+        "@vislow/visual-template#stage:vendor",
+        "@vislow/visual-template#stage:deps"
+      ]
     },
 
     // ------------------------------------------------------------------ clean

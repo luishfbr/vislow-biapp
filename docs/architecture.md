@@ -13,7 +13,7 @@ editor (apps/web)                    API (apps/api)                          Pow
   compõe a árvore  ──POST /builds──▶  valida a spec
   polling do status                   copia o scaffold do template
                                       codegen: spec → visual.tsx + capabilities.json
-                                      npm ci  →  vendoriza @vislow/*
+                                      monta node_modules  →  vendoriza @vislow/*
                                       pbiviz package
                                       INSPECIONA o artefato  ── falhou ─▶ ARTIFACT_REJECTED
   baixa o .pbiviz  ◀──GET artifact──  entrega                              importa e renderiza
@@ -104,6 +104,8 @@ propor uma delas de novo, é preciso derrubar o motivo.
 | **ADR-17** | **A ordem de build é declarada no `turbo.json`**, não reconstruída em cada lugar que a executa. | A ordem vivia em três lugares que não conversavam — o solution file do `tsc`, os passos do CI e a memória de quem roda os comandos — e o CI já tinha divergido. Consequência direta: um teste que exige artefato compilado (`*.e2e.test.ts`) **não tem mais como se ignorar**. | `tsc -b` da raiz como tarefa única (cache tudo-ou-nada); Nx (peso desproporcional para 8 workspaces); `pnpm -r` em cascata (ordena o build, mas não sabe de lint, teste ou `stage:vendor`). |
 | **ADR-18** | **Posição e tamanho são proporcionais, e a manipulação direta vive dentro do próprio canvas.** O nó ganha `rect` em % do pai; a camada de alças é filha `absolute` do container, e não uma sobreposição sobre o preview. **Restringe a ADR-14 ao container que empilha.** | Percentual porque um visual do Power BI **não tem tamanho** — o autor do relatório arrasta a moldura, e a mesma composição precisa valer com 400 ou 1600 de largura. E a ADR-14 morreu por **medição**: filha absoluta está fora do fluxo, não entra em cadeia de flex nenhuma e herda o sistema de coordenadas do container, então as alças saem dos mesmos % que estão na spec — sem `ref`, sem `ResizeObserver`, sem medir para desenhar. Pixel só no gesto, lido uma vez no `pointerdown`. **Custo aceito:** dentro de um canvas a camada cobre os gráficos e o tooltip do Recharts some **do preview**; o do host, no visual compilado (RF-19), não é afetado. | Pixel fixo + `transform: scale()` (texto de 8px em moldura estreita, borrado em larga); grade de 12 colunas com linha em px (não permite sobrepor, e a altura não fecha com a moldura); sobreposição irmã do preview, posicionada por medição (traz de volta exatamente o `ResizeObserver` que a ADR-14 recusou). |
 
+| **ADR-19** | **As dependências do build são instaladas uma vez, no preparo, e cada build só monta o `node_modules` por hardlink.** O worker não roda `npm` e **não usa a rede**. | A árvore instalada é idêntica em toda build — nada nela depende da spec. Reinstalá-la por build custava a maior fatia do tempo e, pior, exigia rede **dentro** do worker, que roda com ambiente magro por segurança: sem `HTTP_PROXY` e sem `NODE_EXTRA_CA_CERTS`, uma máquina atrás de proxy corporativo ficava presa em `INSTALL_FAILED` enquanto o `pnpm install` do próprio repo funcionava nela. Instalando no preparo, o ambiente do desenvolvedor vale — e a build fica offline por construção. **Hardlink e não symlink** pelo achado 39: symlink daria ao webpack um segundo caminho para o mesmo pacote. | Afrouxar o `buildEnv` para repassar proxy e CA (aumenta a superfície do worker justamente onde ela foi apertada de propósito, e não resolve a lentidão); pré-aquecer só o cache do npm com `npm ci --offline` por build (mantém o npm no worker e ainda desempacota ~500 pacotes por build); versionar `node_modules` (centenas de MB no git). |
+
 ## 6. Segurança e privacidade
 
 A fronteira de confiança mudou com a ADR-08: **existe um servidor, e ele executa uma toolchain de build a pedido
@@ -111,8 +113,8 @@ de terceiros.** O desenho leva isso a sério.
 
 - **Nenhum código do usuário é executado nem compilado como código (RN-11).** A spec é **dados**. O
   `@vislow/codegen` emite JSX a partir de uma whitelist — o registro — e todo valor sai como literal de string
-  dentro de um container de expressão JSX. O `npm ci` roda do lockfile do template, que o usuário não controla e
-  não consegue influenciar.
+  dentro de um container de expressão JSX. As dependências saem do lockfile do template, que o usuário não
+  controla e não consegue influenciar — e desde a ADR-19 nem sequer são baixadas durante a build.
 - **Nenhum dado do modelo do Power BI chega a nós** (C-06, RN-02). O editor não tem acesso ao modelo; o que
   trafega é a spec, que descreve UI. O preview usa a tabela de exemplo que o próprio usuário digitou
   (`sampleFrame`), e os valores dela ficam no editor — não entram no pacote.

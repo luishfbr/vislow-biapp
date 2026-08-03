@@ -9,15 +9,16 @@
     "pnpm": ">=11.0.0"
   },
   "scripts": {
-    "// comandos": "Cada um faz uma coisa POR INTEIRO. A ordem (build antes de lint pelos .d.ts, build antes de stage:vendor, stage:vendor antes do gate) vive no turbo.json, e vale igual aqui e no CI.",
+    "// comandos": "Cada um faz uma coisa POR INTEIRO. A ordem (build antes de lint pelos .d.ts, build antes de stage:vendor, stage:vendor e stage:deps antes do gate) vive no turbo.json, e vale igual aqui e no CI.",
     "dev": "turbo run dev",
-    "build": "turbo run build stage:vendor",
+    "build": "turbo run build stage:vendor stage:deps",
     "verify": "turbo run build typecheck lint lint:docs test",
     "check": "turbo run build typecheck lint lint:docs test test:build",
 
     "typecheck": "turbo run typecheck",
     "test:build": "turbo run test:build",
     "stage:vendor": "turbo run stage:vendor",
+    "stage:deps": "turbo run stage:deps",
     "dev:api": "turbo run dev --filter @vislow/api",
     "clean": "turbo run clean && rm -rf .turbo",
 
