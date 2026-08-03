@@ -223,9 +223,19 @@ async function cloneTree(source: string, target: string): Promise<void> {
     if (entry.isDirectory()) {
       await cloneTree(from, to);
     } else if (entry.isSymbolicLink()) {
-      // `node_modules/.bin` e feito de symlinks RELATIVOS. Recriar o link
-      // preserva o alvo dentro da arvore nova; segui-lo apontaria para a store.
-      await symlink(await readlink(from), to);
+      // `node_modules/.bin` e feito de symlinks RELATIVOS em POSIX. Recriar o
+      // link preserva o alvo dentro da arvore nova; segui-lo apontaria para a
+      // store.
+      //
+      // No Windows o npm nao cria symlink (usa shim `.cmd`), entao este ramo
+      // quase nunca roda la — mas criar symlink no Windows exige privilegio, e
+      // cair para copia e melhor que falhar um build por causa de um shim.
+      try {
+        await symlink(await readlink(from), to);
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EPERM') throw error;
+        await cp(from, to, { dereference: true });
+      }
     } else {
       await linkOrCopy(from, to);
     }

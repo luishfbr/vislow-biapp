@@ -29,6 +29,20 @@ import { promisify } from 'node:util';
 
 const run = promisify(execFile);
 
+/**
+ * Como chamar o npm sem depender do sistema operacional.
+ *
+ * No Windows o npm e um `npm.cmd`, e desde a correcao do CVE-2024-27980 o
+ * `execFile` do Node RECUSA executar `.cmd` sem `shell: true` — o erro sai como
+ * `spawn npm ENOENT`, que nao menciona nem o Windows nem o `.cmd`. Em macOS e
+ * Linux nada disso aparece, entao a falha e invisivel para quem desenvolve fora
+ * do Windows. Os argumentos aqui sao todos literais nossos: nao ha entrada de
+ * usuario para o shell interpretar.
+ */
+const IS_WINDOWS = process.platform === 'win32';
+const NPM = IS_WINDOWS ? 'npm.cmd' : 'npm';
+const NPM_OPTIONS = IS_WINDOWS ? { shell: true } : {};
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const TEMPLATE_PKG = join(HERE, '..');
 const TEMPLATE = join(TEMPLATE_PKG, 'template');
@@ -57,7 +71,7 @@ async function exists(path) {
  */
 async function fingerprint() {
   const lock = await readFile(join(TEMPLATE, 'package-lock.json'));
-  const { stdout } = await run('npm', ['--version']);
+  const { stdout } = await run(NPM, ['--version'], NPM_OPTIONS);
   return {
     lock: createHash('sha256').update(lock).digest('hex'),
     npm: stdout.trim(),
@@ -103,7 +117,8 @@ async function main() {
     // `--include=dev` explicito: o `powerbi-visuals-tools` e devDependency do
     // template, e sem ele nao ha compilador (achado 42). O env NAO e filtrado
     // aqui — e justamente o ponto: proxy e CA do ambiente valem.
-    await run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], {
+    await run(NPM, ['ci', '--include=dev', '--no-audit', '--no-fund'], {
+      ...NPM_OPTIONS,
       cwd: DEPS,
       maxBuffer: 32 * 1024 * 1024,
     });
@@ -112,11 +127,17 @@ async function main() {
     // corporativo se revela, e a mensagem do npm e a unica que sabe qual dos
     // dois foi.
     console.error(`\n${error.stdout ?? ''}\n${error.stderr ?? ''}`);
-    throw new Error(
-      'Falha ao instalar as dependencias do template. O log do npm esta acima — ' +
-        'atras de proxy ou de TLS interceptado, configure `npm config set proxy/https-proxy/cafile`.',
-      { cause: error },
-    );
+
+    // Sem log nenhum e com ENOENT, o npm nem chegou a rodar: o problema e
+    // ACHAR o npm, nao instalar. Sao dois problemas diferentes e a mensagem
+    // precisa distinguir, senao a proxima pessoa vai caçar proxy por horas.
+    const detail =
+      error.code === 'ENOENT'
+        ? `Nao encontrei o executavel \`${NPM}\` no PATH.`
+        : 'O log do npm esta acima — atras de proxy ou de TLS interceptado, configure ' +
+          '`npm config set proxy/https-proxy/cafile`.';
+
+    throw new Error(`Falha ao preparar as dependencias do template. ${detail}`, { cause: error });
   }
 
   await writeFile(STAMP, `${JSON.stringify(wanted, null, 2)}\n`, 'utf8');
