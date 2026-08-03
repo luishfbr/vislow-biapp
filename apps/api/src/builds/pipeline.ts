@@ -146,22 +146,58 @@ function logsOf(error: unknown): string {
 }
 
 /**
+ * O compilador, chamado pelo MESMO node que roda a API — nunca por `npx`.
+ *
+ * No Windows o `npx` e um `npx.cmd`, e desde a correcao do CVE-2024-27980 o
+ * `execFile` do Node recusa executar `.cmd` sem `shell: true`. O sintoma e um
+ * `spawn npx ENOENT` que nao menciona nem o Windows nem o `.cmd` — e em macOS e
+ * Linux nada disso acontece, entao a falha e invisivel para quem desenvolve
+ * fora do Windows.
+ *
+ * Chamar o `bin/pbiviz.js` direto tambem e mais honesto: `npx` resolveria o
+ * binario por PATH e por node_modules, e nos sabemos exatamente onde ele esta —
+ * `linkDependencies` acabou de monta-lo ali.
+ */
+function pbivizCli(workdir: string): string {
+  return join(workdir, 'node_modules', 'powerbi-visuals-tools', 'bin', 'pbiviz.js');
+}
+
+/**
+ * Variaveis sem as quais o Node nao roda no Windows.
+ *
+ * `SystemRoot` e a critica — sem ela o proprio runtime falha em chamadas
+ * nativas, com erro que nao cita variavel nenhuma. As outras sao caminho de
+ * sistema, nao segredo: um ambiente magro demais no Windows quebra o compilador
+ * antes de ele comecar.
+ */
+const WINDOWS_ESSENTIALS = ['SystemRoot', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'USERPROFILE'];
+
+/**
  * Ambiente do processo de build.
  *
  * Deliberadamente magro. O que importa nao e economizar variaveis e sim NAO
  * repassar segredo do servidor para um processo que compila fonte gerada a
  * partir de entrada de usuario.
+ *
+ * NAO defina NODE_ENV=production aqui. O npm leria isso como `--omit=dev` e
+ * trataria o `powerbi-visuals-tools` — uma devDependency — como ausente. O
+ * sintoma nao aponta para nada disso: vira um 404 do registro tentando BAIXAR
+ * um pacote chamado `pbiviz` (achado 42).
  */
 function buildEnv(): NodeJS.ProcessEnv {
-  return {
+  const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH ?? '',
     HOME: process.env.HOME ?? '',
-    // NAO defina NODE_ENV=production aqui. O `npx pbiviz` resolve o binario
-    // dentro de `node_modules`, e `production` faz o npm tratar devDependencies
-    // como ausentes — o `powerbi-visuals-tools` e uma delas. O sintoma nao
-    // aponta para nada disso: vira um 404 do registro tentando BAIXAR um pacote
-    // chamado `pbiviz` (achado 42).
   };
+
+  if (process.platform === 'win32') {
+    for (const name of WINDOWS_ESSENTIALS) {
+      const value = process.env[name];
+      if (value !== undefined) env[name] = value;
+    }
+  }
+
+  return env;
 }
 
 export async function runBuildPipeline(
@@ -221,7 +257,7 @@ export async function runBuildPipeline(
 
     // 6. Compilacao de verdade.
     try {
-      await run('npx', ['pbiviz', 'package'], {
+      await run(process.execPath, [pbivizCli(workdir), 'package'], {
         cwd: workdir,
         timeoutMs: remaining(),
         env,
