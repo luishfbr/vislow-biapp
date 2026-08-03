@@ -125,6 +125,59 @@ describe('schema gerado a partir do registro', () => {
   });
 });
 
+describe('geometria do no', () => {
+  /** Spec com um texto posicionado, para exercitar o `rect`. */
+  function specWithRect(rect: unknown): VisualSpec {
+    const spec = createEmptySpec('Com geometria');
+    spec.root.children = [{ ...createNode('text'), rect } as never];
+    return spec;
+  }
+
+  it('no sem rect continua valido — a geometria e opcional', () => {
+    const spec = createEmptySpec('Sem geometria');
+    spec.root.children = [createNode('text')];
+    expect(validateSpec(spec).kind).toBe('valid');
+    expect(spec.root.children[0]?.rect).toBeUndefined();
+  });
+
+  it('aceita uma caixa dentro dos limites do pai', () => {
+    expect(validateSpec(specWithRect({ x: 25, y: 0, w: 50, h: 33.33 })).kind).toBe('valid');
+    // As bordas exatas sao validas: encostar no limite e o resultado normal de
+    // arrastar ate o canto.
+    expect(validateSpec(specWithRect({ x: 50, y: 50, w: 50, h: 50 })).kind).toBe('valid');
+  });
+
+  it('reprova caixa que passa da borda do pai, apontando o rect', () => {
+    // Passar da borda nao gera erro no navegador: o pedaco de fora e cortado em
+    // silencio, e o usuario ve metade de um grafico sem saber por que.
+    const result = validateSpec(specWithRect({ x: 60, y: 90, w: 50, h: 20 }));
+    if (result.kind !== 'invalid') throw new Error('esperava invalido');
+
+    expect(result.issues.map((issue) => issue.path)).toEqual([
+      'root.children[0].rect',
+      'root.children[0].rect',
+    ]);
+    expect(result.issues[0]?.message).toContain('direita');
+    expect(result.issues[1]?.message).toContain('inferior');
+  });
+
+  it('reprova tamanho abaixo do piso — no invisivel nao tem como ser reselecionado', () => {
+    expect(validateSpec(specWithRect({ x: 0, y: 0, w: 0, h: 50 })).kind).toBe('invalid');
+    expect(validateSpec(specWithRect({ x: 0, y: 0, w: 50, h: 1 })).kind).toBe('invalid');
+  });
+
+  it('reprova eixo negativo, fora da escala e campo desconhecido', () => {
+    expect(validateSpec(specWithRect({ x: -5, y: 0, w: 50, h: 50 })).kind).toBe('invalid');
+    expect(validateSpec(specWithRect({ x: 0, y: 0, w: 120, h: 50 })).kind).toBe('invalid');
+    expect(validateSpec(specWithRect({ x: 0, y: 0, w: 50, h: 50, z: 3 })).kind).toBe('invalid');
+    expect(validateSpec(specWithRect({ x: 0, y: 0, w: 50 })).kind).toBe('invalid');
+  });
+
+  it('reprova NaN — um campo numerico vazio no painel chega assim', () => {
+    expect(validateSpec(specWithRect({ x: Number.NaN, y: 0, w: 50, h: 50 })).kind).toBe('invalid');
+  });
+});
+
 describe('os problemas apontam o campo certo', () => {
   /** Um `barChart` sem papel ligado — o estado pendente que o editor mostra. */
   function pendingBar() {

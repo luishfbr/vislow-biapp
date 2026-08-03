@@ -1,5 +1,5 @@
 import { NODE_DESCRIPTORS } from './registry.js';
-import type { SpecNode } from './spec.js';
+import { RECT_MIN_SIZE, type NodeRect, type SpecNode } from './spec.js';
 
 /**
  * Edicao da arvore — funcoes PURAS que devolvem uma raiz nova.
@@ -201,6 +201,34 @@ export function setNodeProps(
 }
 
 /**
+ * Prende uma caixa dentro do pai e arredonda para duas casas.
+ *
+ * PRENDER e nao rejeitar, porque o chamador e um arrasto: passar da borda quer
+ * dizer "encosta na borda", nunca "cancela o movimento". A regra que REPROVA
+ * caixa fora do pai continua em `validateSpec`, para a spec que chega por
+ * importacao — la nao houve arrasto nenhum para prender.
+ *
+ * Arredondar nao e cosmetico: um arrasto produz `33.33333333333333`, e o codegen
+ * despeja o numero literal no fonte gerado. Duas casas mantem o fonte legivel e
+ * a diferenca visual e menor que um pixel em qualquer moldura plausivel.
+ */
+export function clampRect(rect: NodeRect): NodeRect {
+  const w = round2(clamp(rect.w, RECT_MIN_SIZE, 100));
+  const h = round2(clamp(rect.h, RECT_MIN_SIZE, 100));
+  return {
+    x: round2(clamp(rect.x, 0, 100 - w)),
+    y: round2(clamp(rect.y, 0, 100 - h)),
+    w,
+    h,
+  };
+}
+
+/** Move ou redimensiona um no dentro do pai. */
+export function setNodeRect(root: SpecNode, id: string, rect: NodeRect): SpecNode | null {
+  return replace(root, id, (target) => ({ ...target, rect: clampRect(rect) }));
+}
+
+/**
  * Onde a selecao deve cair depois de remover `id`.
  *
  * O irmao seguinte, senao o anterior, senao o pai. Deixar a selecao vazia faria
@@ -218,4 +246,8 @@ export function selectionAfterRemoval(root: SpecNode, id: string): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(Math.max(value, min), max);
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100;
 }
