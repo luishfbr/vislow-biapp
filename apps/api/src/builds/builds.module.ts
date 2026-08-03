@@ -21,7 +21,6 @@ function envNumber(name: string, fallback: number): number {
       useFactory: () =>
         new BuildsService(envNumber('VISLOW_BUILD_CONCURRENCY', 2), {
           timeoutMs: envNumber('VISLOW_BUILD_TIMEOUT_MS', DEFAULT_TIMEOUT_MS),
-          npmCacheDir: process.env.VISLOW_NPM_CACHE,
         }),
     },
   ],

@@ -161,7 +161,7 @@ entrou) · SVG compilado sem `fill="var(` · e os dois orçamentos rígidos.
 que o usuário quer garantir: que o `.pbiviz` entregue funciona.
 
 Faz o ciclo inteiro numa passada: monta uma spec com **todos** os tipos de nó, chama `runBuildPipeline`
-(codegen → `npm ci` → `pbiviz package`), abre o pacote com `inspectPbiviz` e **executa o `content.js` minificado
+(codegen → monta o `node_modules` → `pbiviz package`), abre o pacote com `inspectPbiviz` e **executa o `content.js` minificado
 dentro de um jsdom**, com o `powerbi` global e um `DataView` falso, exatamente como o Power BI faz.
 
 Executar o bundle é o ponto: **é a única verificação que enxerga o que o webpack fez.** Herdou do

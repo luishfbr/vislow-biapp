@@ -19,7 +19,7 @@ editor (apps/web)                    API (apps/api)                          Pow
   compõe a árvore  ──POST /builds──▶  valida a spec
   polling do status                   copia o scaffold do template
                                       codegen: spec → visual.tsx + capabilities.json
-                                      npm ci  →  vendoriza @vislow/*
+                                      monta node_modules  →  vendoriza @vislow/*
                                       pbiviz package
                                       INSPECIONA o artefato  ── falhou ─▶ ARTIFACT_REJECTED
   baixa o .pbiviz  ◀──GET artifact──  entrega                              importa e renderiza
@@ -71,9 +71,10 @@ Nenhum `.env` é obrigatório: o editor cai em `http://localhost:3001` e a API s
 
 ### Duas coisas que pegam na primeira máquina
 
-1. **Compilar um `.pbiviz` exige rede.** O pipeline roda `npm ci` dentro de um diretório temporário para baixar
-   a toolchain. Offline ou atrás de proxy corporativo, o editor abre normalmente mas o build falha. Defina
-   `VISLOW_NPM_CACHE` para os builds seguintes reaproveitarem o download.
+1. **O primeiro `pnpm build` (ou `pnpm dev`) baixa a toolchain do `pbiviz`** — ~190 MB, uma vez só, para
+   `packages/visual-template/deps/`. **As builds em si não usam a rede** (ADR-19): cada uma monta o
+   `node_modules` por hardlink a partir dessa store. Atrás de proxy corporativo, é este passo — e só ele — que
+   precisa do `npm config set proxy/https-proxy/cafile` configurado.
 2. **Editar um pacote não faz hot reload.** Só os apps estão em watch. Depois de mexer em `packages/`, rode
    `pnpm build` ou reinicie o `pnpm dev`.
 
@@ -109,7 +110,6 @@ Todas opcionais.
 | `VISLOW_CORS_ORIGIN` | API | `*` | origem permitida no CORS |
 | `VISLOW_BUILD_CONCURRENCY` | API | `2` | builds simultâneas |
 | `VISLOW_BUILD_TIMEOUT_MS` | API | `180000` | teto de tempo de uma build |
-| `VISLOW_NPM_CACHE` | API | — | cache de npm compartilhado entre builds |
 
 ## A API de build
 
