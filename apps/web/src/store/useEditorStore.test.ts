@@ -1,4 +1,12 @@
-import { findNode, validateSpec, type SpecNode } from '@vislow/component-registry';
+import {
+  ARTBOARD_DEFAULT,
+  ARTBOARD_MAX,
+  ARTBOARD_MIN,
+  artboardOf,
+  findNode,
+  validateSpec,
+  type SpecNode,
+} from '@vislow/component-registry';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { selectCanExport, useEditorStore } from './useEditorStore';
 
@@ -138,6 +146,40 @@ describe('papeis de dados', () => {
     expect(kpi?.props.measureRole).toBeUndefined();
     // Pendente, nao quebrado: o editor mostra o campo vazio e trava o export.
     expect(selectCanExport(useEditorStore.getState())).toBe(false);
+  });
+});
+
+describe('prancheta do editor', () => {
+  it('projeto novo comeca no tamanho padrao', () => {
+    expect(artboardOf(store().spec)).toEqual(ARTBOARD_DEFAULT);
+  });
+
+  it('muda de tamanho sem invalidar a spec', () => {
+    store().setArtboard({ width: 1920, height: 1080 });
+    expect(artboardOf(store().spec)).toEqual({ width: 1920, height: 1080 });
+    expect(store().issues).toEqual([]);
+  });
+
+  it('prende na faixa em vez de recusar — o campo aceita qualquer digitacao', () => {
+    store().setArtboard({ width: 99999, height: 1 });
+    expect(artboardOf(store().spec)).toEqual({
+      width: ARTBOARD_MAX.width,
+      height: ARTBOARD_MIN.height,
+    });
+    // O que sai do store tem de ser aceitavel pela API: e a mesma RN-03 dos
+    // outros caminhos de escrita.
+    expect(validateSpec(store().spec).kind).toBe('valid');
+  });
+
+  it('nao toca na arvore nem na selecao', () => {
+    store().addNode('barChart');
+    const before = store().spec.root;
+    const selected = store().selectedId;
+
+    store().setArtboard({ width: 800, height: 600 });
+
+    expect(store().spec.root).toBe(before);
+    expect(store().selectedId).toBe(selected);
   });
 });
 

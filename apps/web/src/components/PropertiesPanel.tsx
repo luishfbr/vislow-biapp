@@ -2,6 +2,7 @@
 
 import {
   NODE_DESCRIPTORS,
+  artboardOf,
   parentOf,
   positionsChildren,
   type DataRole,
@@ -10,6 +11,7 @@ import {
 } from '@vislow/component-registry';
 import { useMemo } from 'react';
 import {
+  ArtboardField,
   ColorField,
   NumberField,
   RectField,
@@ -177,6 +179,7 @@ export function PropertiesPanel() {
   const node = useEditorStore(selectSelectedNode);
   const setProp = useEditorStore((s) => s.setProp);
   const setRect = useEditorStore((s) => s.setRect);
+  const setArtboard = useEditorStore((s) => s.setArtboard);
 
   const byNode = useMemo(() => issuesByNode(spec, issues), [spec, issues]);
   const descriptor = NODE_DESCRIPTORS[node.kind];
@@ -200,6 +203,16 @@ export function PropertiesPanel() {
         </p>
         <p className="text-[11px] leading-tight text-slate-500">{descriptor.hint}</p>
       </header>
+
+      {/* A prancheta ocupa o mesmo lugar que a geometria, e pelo mesmo motivo:
+          nao vem do descritor e nao e propriedade do componente. Os dois nunca
+          aparecem juntos — a raiz nao tem pai, entao nao tem caixa; quem tem
+          caixa nao e a raiz. */}
+      {node.id === spec.root.id && (
+        <div className="mb-2 border-b border-slate-100 pb-1 dark:border-slate-800">
+          <ArtboardField value={artboardOf(spec)} onChange={setArtboard} />
+        </div>
+      )}
 
       {placed && (
         <div className="mb-2 border-b border-slate-100 pb-1 dark:border-slate-800">

@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import {
   acceptsChildren,
+  clampArtboard,
   createEmptySpec,
   createNode,
   createRole,
@@ -18,6 +19,7 @@ import {
   suggestRoleBindings,
   unbindRole,
   validateSpec,
+  type Artboard,
   type NodeKind,
   type NodeRect,
   type RoleKind,
@@ -62,6 +64,8 @@ export interface EditorState {
   removeRole: (name: string) => void;
 
   rename: (name: string) => void;
+  /** Tamanho da prancheta do editor, em px. Prende na faixa valida. */
+  setArtboard: (size: Artboard) => void;
   newProject: (name: string) => void;
   importSpec: (raw: unknown) => { ok: true } | { ok: false; issues: ValidationIssue[] };
   markExported: () => void;
@@ -201,6 +205,17 @@ export const useEditorStore = create<EditorState>((set, get) => {
     rename: (name) => {
       const { spec } = get();
       commit({ ...spec, project: { ...spec.project, name } });
+    },
+
+    /**
+     * A prancheta e do PROJETO, nao preferencia da maquina: quem exporta o
+     * `.vislow.json` e abre noutro lugar continua desenhando no mesmo alvo. Ela
+     * nao chega ao pacote — o `.pbiviz` segue preenchendo a moldura que o autor
+     * do relatorio desenhar.
+     */
+    setArtboard: (size) => {
+      const { spec } = get();
+      commit({ ...spec, project: { ...spec.project, artboard: clampArtboard(size) } });
     },
 
     newProject: (name) => {

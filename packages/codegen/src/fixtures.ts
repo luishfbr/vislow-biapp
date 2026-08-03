@@ -1,4 +1,5 @@
 import {
+  ARTBOARD_MAX,
   CONTAINER_CANVAS,
   NODE_KINDS,
   SPEC_VERSION,
@@ -76,6 +77,12 @@ export function specWithEveryKind(name = 'Teste de Codegen'): VisualSpec {
       id: createProjectId(name),
       name,
       packageVersion: INITIAL_PACKAGE_VERSION,
+      // COM prancheta, pelo mesmo motivo do `placement` acima: o portao compila
+      // esta fixture de verdade, e sem o campo aqui nada no pipeline real
+      // exercitaria uma spec que o editor de hoje produz. Um tamanho fora do
+      // default de proposito — se algum dia ele vazar para o pacote, vaza
+      // visivel.
+      artboard: { ...ARTBOARD_MAX },
     },
   };
 }

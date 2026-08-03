@@ -53,10 +53,13 @@ O `web-design-guidelines` cobre UI genérica da web. Ele **não sabe** o que o P
 ┌───────────────────────────────────────────────────────────────────────────────┐
 │  [Vislow]   Nome do visual: [__________]   v1.0.0.0   [ Baixar .pbiviz ]      │
 ├──────────────────┬────────────────────────────────────┬───────────────────────┤
-│  COMPONENTES     │        PREVIEW (visual-kit)        │    PROPRIEDADES       │
-│  COMPOSIÇÃO ↑↓✕  │   render ao vivo com mockFrame     │    (do descritor)     │
-│  CAMPOS DO VISUAL│        [16:9] [4:3] [1:1]          │                       │
-│  PROJETO         │                                    │                       │
+│  COMPONENTES     │        PREVIEW (visual-kit)        │  PROPRIEDADES         │
+│  COMPOSIÇÃO ↑↓✕  │   render ao vivo com mockFrame     │  ┌ na raiz ────────┐  │
+│  CAMPOS DO VISUAL│   prancheta em px, escalada        │  │ PRANCHETA       │  │
+│  PROJETO         │                                    │  │ L 1280 ┃ A 720  │  │
+│                  │   escala 62% · dados de exemplo    │  │ [16:9][4:3][1:1]│  │
+│                  │                                    │  └─────────────────┘  │
+│                  │                                    │  (do descritor)       │
 └──────────────────┴────────────────────────────────────┴───────────────────────┘
 ```
 
@@ -72,7 +75,41 @@ commit em que passa a existir. **Uma lista paralela é a quinta cópia do catál
   `nodeComponents.test.ts` compara o nome da função com `descriptor.component` — é a única coisa ligando os dois
   caminhos.
 
-### 2.1 Estado
+### 2.1 A prancheta
+
+O preview desenha uma **prancheta de tamanho declarado** (`project.artboard`, 100×100 a 1920×1080, padrão
+1280×720), reduzida por escala uniforme para caber no painel.
+
+**O controle mora nas propriedades da RAIZ** (`ArtboardField`), no mesmo lugar e pelo mesmo motivo que a
+geometria: não vem do descritor e não é propriedade do componente. Os dois nunca aparecem juntos — a raiz não
+tem pai, logo não tem caixa; quem tem caixa não é a raiz. **Só na raiz**: um container aninhado tem `rect`, e
+oferecer a prancheta em cada container mostraria um único valor em vários lugares.
+
+**A escala fica sob o preview, não no painel.** Ela descreve o painel e não o projeto — muda ao redimensionar a
+janela, sem ninguém ter editado nada. Quem *muda* o tamanho é a prancheta; a escala só relata o que coube.
+
+- **Ela não vai para o pacote.** Um visual do Power BI não escolhe o próprio tamanho — quem arrasta a moldura é
+  o autor do relatório, e o `visual.tsx` gerado continua `w-full h-full`. `codegen.test.ts` reprova o build se
+  qualquer arquivo emitido mencionar a prancheta, e a fixture do gate carrega uma de propósito para que o teste
+  não passe por ausência.
+- **Por que declarar um tamanho, então.** A geometria dos nós é proporcional (`NodeRect`), mas a tipografia não:
+  um texto de 12px ocupa metade de uma caixa de 25% numa prancheta de 640 e um oitavo dela numa de 1920. Sem
+  tamanho, o preview desenhava uma proporção e o usuário adivinhava a escala — 1920×1080 e 640×360 saíam
+  idênticos e produziam composições diferentes.
+- **Px real, com escala por `transform`** — que **não** altera o tamanho de layout. Os gráficos continuam
+  medindo a prancheta em pixel declarado, então o que o Recharts calcula no editor é o que ele calcularia numa
+  moldura daquele tamanho.
+- **O arrasto sobrevive à escala sem saber dela.** O `CanvasOverlay` divide o deslocamento do ponteiro pela caixa
+  lida no `pointerdown`, e `getBoundingClientRect` já devolve a caixa **transformada**: as duas medidas vivem no
+  mesmo espaço e a razão não muda.
+- **Nunca amplia.** Prancheta menor que o painel fica pequena — ampliar 100×100 até preencher faria um texto de
+  12px parecer título, que é a mentira que declarar o tamanho existe para evitar.
+- **O campo é opcional no schema.** Projeto salvo antes dele continua válido e recebe o default por
+  `artboardOf(spec)` — nunca leia `project.artboard` direto, pelo mesmo motivo do `hostOf(frame)`.
+- **`clampArtboard` prende, `validateSpec` reprova** — a mesma divisão do `clampRect`: quem chama o primeiro é
+  um campo de formulário, e digitar 5000 quer dizer "o maior que der".
+
+### 2.2 Estado
 
 Store Zustand única com `spec`, `issues` e `selectedId`. Toda escrita passa por `commit`, que revalida com o
 **mesmo `validateSpec` que a API aplica** e persiste com debounce. Não existe caminho que altere a árvore sem
@@ -88,7 +125,7 @@ referências da árvore e o `capabilities.json`.
 Um projeto v1 no `localStorage` é migrado na hidratação preservando o `project.id` — sem ele, reexportar
 duplicaria o visual em vez de atualizá-lo.
 
-### 2.2 Export
+### 2.3 Export
 
 ```
 clique → valida (inválido: aponta os campos na árvore e no painel, e para)
@@ -107,7 +144,7 @@ Cada `BuildErrorCode` vira uma frase que diz o que fazer, num `switch` exaustivo
 desconhecido" na tela. `ARTIFACT_REJECTED` é redigido como *reprovado na inspeção*, não como *falhou* — o
 primeiro sugere reportar, o segundo sugere tentar de novo, e a ADR-11 significa que tentar de novo não ajuda.
 
-### 2.3 Armadilhas do ambiente do editor
+### 2.4 Armadilhas do ambiente do editor
 
 - **`react-is` é peer do Recharts** e o repo usa `autoInstallPeers: false`, então `apps/web` o declara
   explicitamente (achado 49). O `npm ci` do template instala peers sozinho — por isso o visual compilado esconde

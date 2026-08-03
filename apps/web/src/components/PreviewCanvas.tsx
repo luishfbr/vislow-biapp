@@ -1,6 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { artboardOf } from '@vislow/component-registry';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { fitScale, scalePercent, type Pane } from '@/lib/artboard';
 import { issuesByNode } from '@/lib/issues';
 import { useEditorStore } from '@/store/useEditorStore';
 import { SpecPreview } from './SpecPreview';
@@ -8,10 +10,18 @@ import { SpecPreview } from './SpecPreview';
 /**
  * Area de preview (RF-05).
  *
- * O canvas cuida do ENQUADRAMENTO — proporcao, moldura, fundo. Quem desenha a
- * arvore e o `SpecPreview`, que e o gemeo do codegen. Separar os dois e o que
- * permite mexer na aparencia do editor sem risco de mexer no que o Power BI vai
- * mostrar.
+ * O canvas cuida do ENQUADRAMENTO — prancheta, moldura, fundo, escala. Quem
+ * desenha a arvore e o `SpecPreview`, que e o gemeo do codegen. Separar os dois e
+ * o que permite mexer na aparencia do editor sem risco de mexer no que o Power BI
+ * vai mostrar.
+ *
+ * A PRANCHETA E DESENHADA EM PIXEL DE VERDADE e reduzida por escala uniforme para
+ * caber no painel. E a unica forma de o tamanho declarado significar algo: a
+ * geometria dos nos e proporcional (`NodeRect`), mas a tipografia nao, entao
+ * desenhar so a proporcao faria 1920x1080 e 640x360 produzirem o mesmo preview e
+ * composicoes diferentes. A escala e `transform`, que NAO altera o tamanho de
+ * layout: os graficos continuam medindo a prancheta em px reais, e o que o
+ * Recharts calcula aqui e o que ele calcularia numa moldura daquele tamanho.
  *
  * Num container que POSICIONA, o preview tem selecao e arrasto: a camada de
  * manipulacao e filha absoluta do container, fora do fluxo, e nao toca na cadeia
@@ -19,15 +29,14 @@ import { SpecPreview } from './SpecPreview';
  * continua sem — la nao ha geometria de onde derivar a camada, e a objecao da
  * ADR-14 segue de pe. A selecao pelo painel de arvore funciona nos dois casos.
  *
+ * O arrasto sobrevive a escala sem saber dela: o `CanvasOverlay` converte
+ * deslocamento de ponteiro em percentual dividindo pela caixa lida no
+ * `pointerdown`, e `getBoundingClientRect` ja devolve a caixa TRANSFORMADA — as
+ * duas medidas vivem no mesmo espaco, e a razao entre elas nao muda.
+ *
  * RN-02: nenhum dado do modelo do Power BI passa por aqui — o app nem tem acesso
  * a ele.
  */
-
-const RATIOS = [
-  { label: '16:9', value: 16 / 9 },
-  { label: '4:3', value: 4 / 3 },
-  { label: '1:1', value: 1 },
-] as const;
 
 export function PreviewCanvas() {
   const spec = useEditorStore((s) => s.spec);
@@ -35,11 +44,35 @@ export function PreviewCanvas() {
   const selectedId = useEditorStore((s) => s.selectedId);
   const select = useEditorStore((s) => s.select);
   const setRect = useEditorStore((s) => s.setRect);
-  const [ratio, setRatio] = useState<number>(16 / 9);
+
+  const paneRef = useRef<HTMLDivElement>(null);
+  // `null` ate a primeira medicao. Distinto de zero de proposito: o painel de
+  // largura zero e um estado real (janela minima) e nao deve virar "ainda nao
+  // sei", que e o que segura o desenho da moldura.
+  const [pane, setPane] = useState<Pane | null>(null);
+
+  useEffect(() => {
+    const element = paneRef.current;
+    // Sem `ResizeObserver` — jsdom, por exemplo — a prancheta fica sem medida e
+    // nao e desenhada. Preferivel a desenha-la numa escala inventada.
+    if (!element || typeof ResizeObserver === 'undefined') return;
+
+    const read = (): void => {
+      const { clientWidth, clientHeight } = element;
+      if (clientWidth > 0 && clientHeight > 0) setPane({ width: clientWidth, height: clientHeight });
+    };
+
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
 
   // Memoizado porque `issuesByNode` constroi Maps novos: sem isso o
-  // `SpecPreview` re-renderiza a cada render do canvas, inclusive ao trocar a
-  // proporcao, e os graficos remontam sem motivo.
+  // `SpecPreview` re-renderiza a cada render do canvas, inclusive ao redimensionar
+  // a janela, e os graficos remontam sem motivo.
   const byNode = useMemo(() => issuesByNode(spec, issues), [spec, issues]);
 
   // Memoizado pelo mesmo motivo do `byNode`: um objeto novo a cada render faria
@@ -50,34 +83,44 @@ export function PreviewCanvas() {
     [selectedId, select, setRect],
   );
 
-  return (
-    <main className="flex h-full flex-1 flex-col items-center justify-center gap-4 overflow-auto bg-slate-100 p-8 dark:bg-slate-950">
-      <div
-        className="w-full max-w-3xl overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-slate-200 dark:ring-slate-700"
-        style={{ aspectRatio: String(ratio) }}
-      >
-        <SpecPreview spec={spec} issues={byNode} edit={edit} />
-      </div>
+  const artboard = artboardOf(spec);
+  const scale = fitScale(artboard, pane);
 
-      <div className="flex items-center gap-2">
-        {RATIOS.map((r) => (
-          <button
-            key={r.label}
-            type="button"
-            onClick={() => {
-              setRatio(r.value);
-            }}
-            aria-pressed={ratio === r.value}
-            className={`rounded px-2.5 py-1 text-xs font-medium transition-colors ${
-              ratio === r.value
-                ? 'bg-slate-800 text-white dark:bg-slate-200 dark:text-slate-900'
-                : 'bg-white text-slate-600 ring-1 ring-slate-300 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-300 dark:ring-slate-600'
-            }`}
+  return (
+    <main className="flex h-full flex-1 flex-col gap-2 overflow-hidden bg-slate-100 p-6 dark:bg-slate-950">
+      {/* Legenda da figura, e nao controle: as duas coisas que e preciso saber
+          para ler o desenho abaixo — em que escala ele esta e que os numeros dos
+          graficos sao inventados (RN-02, o app nem tem acesso ao modelo).
+          A escala fica AQUI e nao no painel de propriedades porque descreve o
+          painel, nao o projeto: ela muda ao redimensionar a janela, sem ninguem
+          ter editado coisa alguma. Quem MUDA o tamanho e a prancheta, e essa vive
+          nas propriedades da raiz. */}
+      <p className="shrink-0 text-right text-[11px] tabular-nums text-slate-400">
+        escala {String(scalePercent(scale))}% · dados de exemplo
+      </p>
+
+      <div ref={paneRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden">
+        <div
+          className="overflow-hidden rounded-lg bg-white shadow-lg ring-1 ring-slate-200 dark:ring-slate-700"
+          style={{
+            // A moldura tem o tamanho JA REDUZIDO; o conteudo dentro dela e que
+            // guarda o tamanho declarado. Arredondado porque meio pixel de
+            // moldura desenha um fio do fundo na borda.
+            width: Math.round(artboard.width * scale),
+            height: Math.round(artboard.height * scale),
+            // Antes da medicao a moldura teria o tamanho cheio dentro de um
+            // painel menor. Um frame de prancheta cortada e pior que um frame
+            // sem prancheta.
+            visibility: pane ? 'visible' : 'hidden',
+          }}
+        >
+          <div
+            className="origin-top-left"
+            style={{ width: artboard.width, height: artboard.height, transform: `scale(${String(scale)})` }}
           >
-            {r.label}
-          </button>
-        ))}
-        <span className="ml-2 text-xs text-slate-400">dados de exemplo</span>
+            <SpecPreview spec={spec} issues={byNode} edit={edit} />
+          </div>
+        </div>
       </div>
     </main>
   );

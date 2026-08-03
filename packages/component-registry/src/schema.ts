@@ -19,6 +19,8 @@ import {
 } from '@vislow/config-schema';
 import { NODE_DESCRIPTORS, NODE_KINDS } from './registry.js';
 import {
+  ARTBOARD_MAX,
+  ARTBOARD_MIN,
   NODE_ID_PATTERN,
   RECT_MIN_SIZE,
   ROLE_NAME_PATTERN,
@@ -69,6 +71,24 @@ const rectSchema = {
   properties: { x: AXIS_SCHEMA, y: AXIS_SCHEMA, w: SIZE_SCHEMA, h: SIZE_SCHEMA },
 };
 
+/**
+ * Prancheta do editor. OPCIONAL: projeto salvo antes deste campo existir
+ * continua valido e recebe o default por `artboardOf` — migracao seria custo sem
+ * ganho para um valor que tem resposta certa quando falta.
+ *
+ * Pixel INTEIRO. Meio pixel de prancheta nao significa nada e ainda produziria
+ * uma escala com sobra de arredondamento na moldura.
+ */
+const artboardSchema = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['width', 'height'],
+  properties: {
+    width: { type: 'integer', minimum: ARTBOARD_MIN.width, maximum: ARTBOARD_MAX.width },
+    height: { type: 'integer', minimum: ARTBOARD_MIN.height, maximum: ARTBOARD_MAX.height },
+  },
+};
+
 function nodeSchemaFor(kind: (typeof NODE_KINDS)[number]): Record<string, unknown> {
   const descriptor = NODE_DESCRIPTORS[kind];
   const properties: Record<string, unknown> = {};
@@ -113,6 +133,7 @@ export const specSchema = {
         id: { type: 'string', pattern: PROJECT_ID_PATTERN },
         name: { type: 'string', minLength: 3, maxLength: 50 },
         packageVersion: { type: 'string', pattern: PACKAGE_VERSION_PATTERN },
+        artboard: artboardSchema,
       },
     },
     dataRoles: {
