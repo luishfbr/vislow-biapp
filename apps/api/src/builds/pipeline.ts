@@ -2,8 +2,9 @@ import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
 import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { validateSpec, type VisualSpec } from '@vislow/component-registry';
-import { generateProject } from '@vislow/codegen';
+import { generateCapabilities, generateProject } from '@vislow/codegen';
 import { inspectPbiviz } from '@vislow/config-schema/packaging';
 import {
   assertTemplateStaged,
@@ -308,6 +309,23 @@ async function readArtifact(workdir: string): Promise<Buffer> {
 }
 
 /**
+ * Os mapeamentos do capabilities lido do zip, sem confiar no formato.
+ *
+ * O portao inspeciona de FORA (ADR-11): o que vier do pacote e `unknown` de
+ * verdade, e um formato inesperado nao pode explodir o worker — ele so nao tem
+ * condicao para conferir.
+ */
+function asMappings(capabilities: unknown): { conditions?: Record<string, unknown>[] }[] {
+  if (typeof capabilities !== 'object' || capabilities === null) return [];
+  const mappings = (capabilities as { dataViewMappings?: unknown }).dataViewMappings;
+  if (!Array.isArray(mappings)) return [];
+  return mappings.filter(
+    (mapping): mapping is { conditions?: Record<string, unknown>[] } =>
+      typeof mapping === 'object' && mapping !== null,
+  );
+}
+
+/**
  * Confere o artefato contra a spec que o pediu.
  *
  * Cada assertiva aqui corresponde a uma falha que este projeto ja pagou: GUID
@@ -325,6 +343,7 @@ async function inspectArtifact(
   };
 
   const { packageIdentity, resourceIdentity } = inspection;
+  const expected = generateCapabilities(spec);
 
   if (packageIdentity.guid !== spec.project.id) {
     reject(
@@ -351,6 +370,26 @@ async function inspectArtifact(
   // estilo nenhum. O `pbiviz` reporta sucesso do mesmo jeito.
   if (!inspection.js.includes('pbi:')) {
     reject('O bundle nao contem as classes do visual-kit — o CSS nao entrou.');
+  }
+  // O capabilities do PACOTE, nao o que o codegen diz ter gerado. Sem esta
+  // assertiva um pacote importa, renderiza e mesmo assim recusa todo arrasto de
+  // campo — foi exatamente o que aconteceu, e nenhuma das guardas anteriores
+  // olhava para dentro do zip. O plugin do `pbiviz` so reescreve capabilities de
+  // visual de script (`dataViewMappings[0].scriptResult`), que nunca e o caso
+  // aqui, entao a igualdade estrita e a comparacao certa.
+  if (!isDeepStrictEqual(inspection.capabilities, JSON.parse(JSON.stringify(expected)))) {
+    reject('O capabilities.json dentro do pacote nao e o que o codegen gerou para esta spec.');
+  }
+  // Uma condicao com `min` trava os pocos de campo: o host recusa todo estado
+  // intermediario do arrasto, em silencio, e o visual nunca recebe dado nenhum.
+  for (const mapping of asMappings(inspection.capabilities)) {
+    for (const condition of mapping.conditions ?? []) {
+      for (const [role, range] of Object.entries(condition)) {
+        if (range !== null && typeof range === 'object' && 'min' in range) {
+          reject(`A condicao do papel "${role}" declara "min" — isso trava o arrasto no host.`);
+        }
+      }
+    }
   }
   if (inspection.packageBytes > MAX_PACKAGE_BYTES) {
     reject(

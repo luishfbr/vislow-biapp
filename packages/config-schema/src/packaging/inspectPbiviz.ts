@@ -41,6 +41,13 @@ export interface PbivizInspection {
   files: string[];
   /** Bundle do visual. Exposto cru para as assertivas de conteudo. */
   js: string;
+  /**
+   * O `capabilities.json` COMO ELE EXISTE DENTRO DO PACOTE — nao o que o
+   * codegen diz que gerou. A distincao custou uma sessao: os testes chamavam
+   * `generateCapabilities` de novo em memoria e por isso concordavam consigo
+   * mesmos enquanto o pacote entregue pedia campos que o host recusava.
+   */
+  capabilities: unknown;
   /** Tamanho total do pacote em bytes (RNF-05). */
   packageBytes: number;
   /** Tamanho do `content.js` em bytes (RNF-04). */
@@ -98,7 +105,11 @@ export async function inspectPbiviz(bytes: ArrayBuffer | Uint8Array): Promise<Pb
     throw new PbivizInspectionError('O zip nao contem nenhum .pbiviz.json.');
   }
 
-  const res = await readJson<{ visual: VisualMeta; content: { js: string } }>(zip, actual);
+  const res = await readJson<{
+    visual: VisualMeta;
+    content: { js: string };
+    capabilities?: unknown;
+  }>(zip, actual);
   const js = res.content.js;
 
   return {
@@ -108,6 +119,7 @@ export async function inspectPbiviz(bytes: ArrayBuffer | Uint8Array): Promise<Pb
     declaredResourcePath: declared.file,
     files,
     js,
+    capabilities: res.capabilities,
     packageBytes,
     jsBytes: new TextEncoder().encode(js).byteLength,
   };

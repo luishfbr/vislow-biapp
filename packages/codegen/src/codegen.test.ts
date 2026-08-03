@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import Ajv from 'ajv';
+import capabilitiesSchema from 'powerbi-visuals-api/schema.capabilities.json';
 import {
   ARTBOARD_MAX,
   NODE_DESCRIPTORS,
@@ -247,7 +249,7 @@ describe('capabilities.json gerado', () => {
     // Sem `requiredTypes`, o tipo declarado no editor nao valeria nada do lado
     // do Power BI: o usuario arrastaria uma coluna de texto para um campo que o
     // visual soma, e a soma sairia zero sem erro nenhum.
-    const esperado: Record<string, Record<string, boolean>[]> = {
+    const esperado: Record<string, Record<string, boolean>[] | undefined> = {
       text: [{ text: true }],
       integer: [{ integer: true }],
       // Percentual e moeda sao FORMATO, nao tipo: no modelo do Power BI os dois
@@ -255,7 +257,10 @@ describe('capabilities.json gerado', () => {
       decimal: [{ numeric: true }],
       percent: [{ numeric: true }],
       currency: [{ numeric: true }],
-      date: [{ dateTime: true }],
+      // `date` fica SEM restricao, e nao e esquecimento: o `valueType` do schema
+      // oficial nao tem nenhum tipo temporal, e a chave inventada reprova a
+      // validacao do proprio `pbiviz package`. Ver o teste de schema abaixo.
+      date: undefined,
       boolean: [{ bool: true }],
     };
 
@@ -266,19 +271,28 @@ describe('capabilities.json gerado', () => {
     }
   });
 
-  it('exige o campo preenchido, e limita a um', () => {
-    // `min: 1` e o "o visual EXIGE os campos": enquanto faltar um, o host nao
-    // entrega DataView e mostra o proprio aviso, em vez de deixar o visual
-    // desenhar meia composicao. `max: 1` impede tres campos no mesmo papel, com
-    // o visual lendo so o primeiro e sem dizer por que.
+  it('a condicao limita a um campo, e NAO exige minimo', () => {
+    // Regressao de 2026-08-03, e a razao de `min` nao poder voltar: o host
+    // valida contra as condicoes o estado que os pocos TERIAM depois do
+    // arrasto. Uma condicao unica com `min: 1` em todos os papeis descreve so o
+    // estado final — o estado com um campo posto e o resto vazio nao satisfaz
+    // nada, e o drop e descartado em silencio. Resultado no Desktop: os pocos
+    // aparecem com o nome certo e simplesmente nao aceitam coluna nenhuma,
+    // para sempre. Quem responde por "falta campo" e o `EmptyState`.
     const capabilities = generateCapabilities(assertValidSpec(specWithKind('lineChart')));
     const [mapping] = capabilities.dataViewMappings as {
-      conditions: Record<string, { min: number; max: number }>[];
+      conditions: Record<string, { min?: number; max: number }>[];
     }[];
     expect(mapping?.conditions[0]).toEqual({
-      categoria: { min: 1, max: 1 },
-      valor: { min: 1, max: 1 },
+      categoria: { max: 1 },
+      valor: { max: 1 },
     });
+
+    for (const condition of mapping?.conditions ?? []) {
+      for (const [role, range] of Object.entries(condition)) {
+        expect(range, role).not.toHaveProperty('min');
+      }
+    }
   });
 
   it('nao declara mapeamento quando a arvore nao le dados', () => {
@@ -288,6 +302,66 @@ describe('capabilities.json gerado', () => {
 
     expect(capabilities.dataRoles).toEqual([]);
     expect(capabilities.dataViewMappings).toEqual([]);
+  });
+});
+
+/**
+ * O capabilities gerado contra o schema OFICIAL do host.
+ *
+ * Esta guarda existe porque a anterior nao existia, e por isso `requiredTypes:
+ * [{ dateTime: true }]` ficou meses no codigo: o `valueType` do schema roda com
+ * `additionalProperties: false` e nao tem NENHUM tipo temporal, entao toda build
+ * de projeto com coluna de data morria em `Invalid capabilities` — a validacao e
+ * do proprio `pbiviz package`, no `powerbi-visuals-webpack-plugin`.
+ *
+ * As opcoes do Ajv sao copiadas de `src/extractor/capabilities.js` do plugin. Se
+ * divergirem, esta suite passa e a build real reprova — o pior dos dois mundos.
+ */
+describe('capabilities.json contra o schema oficial do powerbi-visuals-api', () => {
+  const ajv = new Ajv({
+    strict: false,
+    allErrors: false,
+    validateSchema: true,
+    strictTuples: 'log',
+  });
+  const validate = ajv.compile(capabilitiesSchema);
+
+  const explique = (): string =>
+    (validate.errors ?? [])
+      .map((error) => `${error.instancePath || '/'} ${error.message ?? ''}`)
+      .join('; ');
+
+  it.each(COLUMN_TYPES)('o tipo de coluna "%s" gera capabilities validos', (type) => {
+    const capabilities = generateCapabilities(assertValidSpec(specWithColumnType(type)));
+    expect(validate(capabilities), explique()).toBe(true);
+  });
+
+  it('uma arvore com todos os tipos de no gera capabilities validos', () => {
+    const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
+    expect(validate(capabilities), explique()).toBe(true);
+  });
+
+  it('a arvore que nao le dados gera capabilities validos', () => {
+    const container = createNode('container');
+    container.children = [createNode('text')];
+    const capabilities = generateCapabilities(assertValidSpec(specWith(container)));
+    expect(validate(capabilities), explique()).toBe(true);
+  });
+
+  it('o schema realmente recusa um tipo temporal — a guarda morde', () => {
+    // Sem esta assercao, "os capabilities sao validos" poderia significar so que
+    // o schema nao confere nada. Aqui esta a prova de que ele confere.
+    const capabilities = generateCapabilities(assertValidSpec(specWithColumnType('date')));
+    const [role] = capabilities.dataRoles;
+    expect(role).toBeDefined();
+
+    for (const inventado of [{ dateTime: true }, { date: true }, { temporal: true }]) {
+      const quebrado = {
+        ...capabilities,
+        dataRoles: [{ ...role, requiredTypes: [inventado] }],
+      };
+      expect(validate(quebrado), JSON.stringify(inventado)).toBe(false);
+    }
   });
 });
 
