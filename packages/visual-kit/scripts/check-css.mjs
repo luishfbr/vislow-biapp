@@ -36,8 +36,8 @@ const CSS = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'styles.
  * `pbi\:` sozinho nao e utilidade nenhuma.
  *
  * Escolha utilidades com UMA origem no fonte. `absolute`, por exemplo, nao serve
- * para conferir o `CanvasSlot`: o carimbo de build e a sobreposicao de teclado
- * dos graficos tambem a produzem, e a regra sobreviveria a perda dela no slot.
+ * para conferir o `CanvasSlot`: a sobreposicao de teclado dos graficos tambem a
+ * produz, e a regra sobreviveria a perda dela no slot.
  */
 const PREFIX = 'pbi\\:';
 const UTILITIES = ['p-4', 'rounded-xl', 'text-lg', 'shadow-sm', 'overflow-hidden'];

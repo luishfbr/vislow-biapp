@@ -356,10 +356,20 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
     expect(html).toContain('pbi:relative');
   }, 60_000);
 
-  /** O selo de build e o que torna um relato de erro identificavel (achado 40). */
-  it('carimba a impressao digital do build na tela', async () => {
+  /**
+   * O contrario do que este teste afirmava ate 2026-08-03.
+   *
+   * O selo de build no canto saiu a pedido: o visual nao deve escrever um hash
+   * sobre o relatorio de quem o usa. A assertiva vira o inverso para o selo nao
+   * voltar por descuido — e para registrar que o `buildId` deixou de ser
+   * legivel da tela no caminho de sucesso. Ele continua no bundle e no card de
+   * erro de renderizacao (achado 40).
+   */
+  it('nao carimba a impressao digital do build na tela', async () => {
     const { html } = await renderCompiled(js, guid, true);
-    expect(html).toContain(BUILD_ID);
+    expect(html).not.toContain(BUILD_ID);
+    // No bundle ele continua, e e de la que se identifica um pacote.
+    expect(js).toContain(BUILD_ID);
   }, 60_000);
 
   /**

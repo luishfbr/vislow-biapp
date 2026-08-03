@@ -130,7 +130,7 @@ export function generateVisualSource(spec: VisualSpec, buildId: string): string 
 import type powerbi from 'powerbi-visuals-api';
 import { StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { BuildStamp, ErrorBoundary, TruncationNotice } from '@vislow/visual-kit';
+import { ErrorBoundary, TruncationNotice } from '@vislow/visual-kit';
 import { ${nodeImports.join(', ')} } from '@vislow/visual-kit/nodes';
 import { Interaction } from './interaction';
 
@@ -142,7 +142,18 @@ type IVisual = powerbi.extensibility.visual.IVisual;
 type VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
 type VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 
-/** Impressao digital do pacote. Aparece no canto do visual e no card de erro. */
+/**
+ * Impressao digital do pacote.
+ *
+ * NAO aparece no caminho de sucesso: o selo do canto foi removido a pedido, para
+ * o visual nao carregar um hash sobre o relatorio de quem o usa. Sobra o card de
+ * erro de renderizacao e o cabecalho deste arquivo, que viaja no bundle.
+ *
+ * O custo e de diagnostico: com o visual renderizando normalmente, nao ha como
+ * ler da tela QUAL pacote esta ali. Ao investigar comportamento no Desktop,
+ * confirme a procedencia do arquivo antes de concluir qualquer coisa — "importou
+ * o pacote antigo" e "a correcao nao funcionou" ficaram indistinguiveis.
+ */
 const BUILD_ID = ${jsString(buildId)};
 
 /** Papeis que a arvore consome. Bate com os declarados no capabilities.json. */
@@ -193,7 +204,6 @@ export class Visual implements IVisual {
           {frame.truncated && (
             <TruncationNotice shown={frame.truncated.shown} limit={frame.truncated.limit} />
           )}
-          <BuildStamp id={BUILD_ID} />
         </div>
       </StrictMode>,
     );

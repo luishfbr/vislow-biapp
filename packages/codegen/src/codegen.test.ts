@@ -119,11 +119,17 @@ describe('emissao do visual.tsx', () => {
     expect(source).toContain("import '@vislow/visual-kit/styles.css'");
   });
 
-  it('envolve a arvore no ErrorBoundary e carimba o build (RN-04)', () => {
+  it('envolve a arvore no ErrorBoundary, que carrega o buildId (RN-04)', () => {
     const source = generateVisualSource(assertValidSpec(specWithEveryKind()), BUILD_ID);
     expect(source).toContain('<ErrorBoundary buildId={BUILD_ID}>');
-    expect(source).toContain('<BuildStamp id={BUILD_ID} />');
     expect(source).toContain(jsString(BUILD_ID));
+  });
+
+  it('nao carimba o buildId no caminho de sucesso', () => {
+    // O selo do canto foi removido a pedido: o visual nao deve escrever um hash
+    // sobre o relatorio de quem o usa. O buildId sobra so no card de erro.
+    const source = generateVisualSource(assertValidSpec(specWithEveryKind()), BUILD_ID);
+    expect(source).not.toContain('BuildStamp');
   });
 });
 

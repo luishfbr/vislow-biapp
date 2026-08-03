@@ -63,22 +63,14 @@ export function ErrorCard({
   );
 }
 
-/**
- * Selo de build no canto do visual.
+/*
+ * Aqui existia o `BuildStamp`, o selo de build no canto inferior direito.
  *
- * Aparece tambem no caminho de sucesso, de proposito: sem isso, "renderizou" nao
- * diz QUAL pacote renderizou, e a comparacao entre dois candidatos nao fecha.
+ * Removido em 2026-08-03: um hash sobre o relatorio de quem usa o visual e ruido
+ * que o usuario final nao pediu. O `buildId` continua no `ErrorCard` acima e no
+ * cabecalho do `visual.tsx` gerado, que viaja no bundle — mas nao ha mais como
+ * le-lo da tela com o visual renderizando normalmente.
  */
-export function BuildStamp({ id }: { id: string }) {
-  return (
-    <div
-      className="pbi:absolute pbi:bottom-0 pbi:right-0 pbi:text-xs pbi:px-1 pbi:pointer-events-none"
-      style={{ color: hcInk('#94a3b8'), opacity: 0.7 }}
-    >
-      {id}
-    </div>
-  );
-}
 
 /** RF-25 — o dataReductionAlgorithm truncou o conjunto. */
 export function TruncationNotice({ shown, limit }: { shown: number; limit: number }) {
