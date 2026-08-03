@@ -25,7 +25,7 @@ perguntar justamente quando deveria continuar esperando.
 | Código | Significado |
 |---|---|
 | `SPEC_INVALID` | Falhou no schema ou nas regras semânticas. Vem com `issues[]` apontando o campo. |
-| `INSTALL_FAILED` | `npm ci` falhou — cache frio, rede, lockfile fora de sincronia. |
+| `INSTALL_FAILED` | Falhou ao montar o `node_modules` a partir da store. Disco cheio ou store corrompida — **não** rede. |
 | `COMPILE_FAILED` | `pbiviz package` falhou. Quase sempre erro de tipo no fonte gerado. |
 | `ARTIFACT_REJECTED` | Compilou, mas o artefato não passou na inspeção. **Nunca é entregue.** |
 | `TIMEOUT` | Estourou o tempo duro. |
@@ -34,9 +34,16 @@ perguntar justamente quando deveria continuar esperando.
 ## 2. Pipeline
 
 ```
-validar spec  ->  copiar scaffold  ->  codegen  ->  npm ci  ->  vendorizar @vislow/*
+validar spec  ->  copiar scaffold  ->  codegen  ->  montar node_modules  ->  vendorizar @vislow/*
               ->  pbiviz package   ->  INSPECIONAR  ->  entregar
 ```
+
+**Nenhum passo do pipeline usa a rede** (ADR-19). As dependências do template são instaladas uma vez, no
+preparo (`stage:deps`), e cada build só monta o `node_modules` por hardlink a partir dessa store — passo de
+milissegundos, contra o `npm ci` por build que ele substituiu. O que quebrou o caminho antigo foi o próprio
+`buildEnv`: magro por segurança, ele não repassa `HTTP_PROXY` nem `NODE_EXTRA_CA_CERTS`, então numa rede com
+proxy ou TLS interceptado o `npm ci` do worker não alcançava o registro — numa máquina onde o `pnpm install` do
+repo funcionava sem problema.
 
 **A inspeção não é um teste, é um portão** (ADR-11). Este projeto já documentou três vezes que `pbiviz package`
 reporta sucesso produzindo pacote quebrado. Um artefato que não passa vira `ARTIFACT_REJECTED` com o número que
@@ -54,29 +61,34 @@ falha rejeitaria **todo** build bem-sucedido.
 | `PORT` | `3001` | Porta HTTP. |
 | `VISLOW_BUILD_CONCURRENCY` | `2` | Builds simultâneos. |
 | `VISLOW_BUILD_TIMEOUT_MS` | `180000` | Tempo duro por build. |
-| `VISLOW_NPM_CACHE` | — | Cache do npm. Com cache quente o `npm ci` cai para ~2 s. |
 | `VISLOW_CORS_ORIGIN` | `*` | Origem do editor. |
 
 A API **falha no bootstrap** se o template não estiver preparado. Falhar ali, e não na primeira build, é o que
-distingue erro de implantação de erro do usuário.
+distingue erro de implantação de erro do usuário. "Preparado" são três coisas: scaffold, `@vislow/*`
+vendorizados e a store de dependências **em dia com o `package-lock.json` de hoje** — store velha compilaria
+contra as dependências de outro commit, e o erro sairia como falha de tipo em código gerado que está correto.
 
 ## 3. Armadilhas do worker
 
 Todas descobertas empiricamente, todas caras.
 
-- **Nunca defina `NODE_ENV=production` no ambiente do worker** (achado 42). O `npm ci` lê isso como
-  `--omit=dev` e pula o `powerbi-visuals-tools`, que é uma devDependency. O `npm ci` termina **com sucesso** e a
-  falha aparece só no passo seguinte, como um `404 Not Found - GET .../pbiviz` — a mensagem sugere um pacote
-  inexistente no registro, não um compilador que não foi instalado. O `buildEnv` não define `NODE_ENV`, com o
-  motivo comentado, e o `npm ci` passa `--include=dev` explícito. A redundância é deliberada.
+- **Nunca defina `NODE_ENV=production` no ambiente do worker** (achado 42). O npm lê isso como `--omit=dev` e
+  ignora o `powerbi-visuals-tools`, que é uma devDependency. A falha aparece só no passo seguinte, como um
+  `404 Not Found - GET .../pbiviz` — a mensagem sugere um pacote inexistente no registro, não um compilador que
+  não foi instalado. O `buildEnv` não define `NODE_ENV`, com o motivo comentado, e o `stage:deps` passa
+  `--include=dev` explícito. A redundância é deliberada.
 - **O `tsconfig.json` do template não aceita comentário** (achado 43). O `powerbi-visuals-tools` o lê com
   `JSON.parse` cru; um `//` derruba o build com `SyntaxError` apontando para a linha do comentário. Toda
   explicação vai no `packages/visual-template/template/README.md`.
 - **O template usa `moduleResolution: "bundler"`** (achado 44). A resolução `node` ignora o campo `exports` e
   não acharia `@vislow/visual-kit/nodes` — falha só do lado dos tipos, num projeto que compila por webpack.
-- **Os `@vislow/*` entram em `node_modules` DEPOIS do `npm ci`** (achado 45), que apaga o diretório inteiro
-  antes de instalar. **Cópia de diretório, nunca symlink nem `file:`**: symlink reintroduz o achado 39, e `file:`
-  faria o `npm ci` recusar o lockfile a cada byte alterado no kit.
+- **Os `@vislow/*` entram em `node_modules` DEPOIS de montá-lo** (achado 45) — antes disso o diretório nem
+  existe. **Cópia de diretório, nunca symlink nem `file:`**: symlink reintroduz o achado 39, e `file:` faria o
+  `npm ci` do preparo recusar o lockfile a cada byte alterado no kit.
+- **A store é montada por hardlink, nunca por symlink** — pelo mesmo achado 39. Hardlink não cria um segundo
+  caminho para o pacote, cria um segundo nome para o mesmo arquivo, e o webpack (que roda com
+  `resolve.symlinks: false`) enxerga uma árvore comum. Em compensação, escrever **por cima** de um arquivo
+  montado escreveria dentro da store; nenhum passo do pipeline faz isso, e o `rm -rf` do fim só desfaz nomes.
 - **O jsdom não tem motor de layout nem `ResizeObserver`**, e o `ResponsiveContainer` depende dos dois (achado
   46). O harness do gate instala um `ResizeObserver` de medida fixa e sobrescreve `offsetWidth`/`clientWidth`/
   `getBoundingClientRect`. **Equipar o harness, não afrouxar a asserção** — o que se prova é que o gráfico

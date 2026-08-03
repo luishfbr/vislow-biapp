@@ -24,7 +24,7 @@ Não leia tudo. Leia o da tarefa:
 
 ```bash
 pnpm dev         # sobe TUDO: compila o que falta, prepara o template, API :3001 + editor :3000
-pnpm build       # pacotes + apps + stage:vendor
+pnpm build       # pacotes + apps + stage:vendor + stage:deps
 pnpm verify      # build + typecheck + lint + suíte rápida — rode antes de qualquer PR
 pnpm check       # o verify MAIS o gate de aceite (compila um .pbiviz de verdade)
 pnpm clean       # apaga dist/, vendor/, .next/ e o cache do turbo
@@ -35,6 +35,10 @@ A ordem vive no `turbo.json` e vale igual aqui e no CI (ADR-17). Os scripts `lin
 
 **Editar um pacote não faz hot reload:** só os apps estão em watch. Depois de mexer em `packages/`, rode
 `pnpm build` ou reinicie o `pnpm dev`.
+
+**A build não usa a rede** (ADR-19). As dependências do visual gerado são instaladas uma vez por `stage:deps`,
+em `packages/visual-template/deps/`, e cada build monta o `node_modules` por **hardlink** — nunca symlink, que
+reintroduziria o achado 39. Passo novo que precise de rede está no lugar errado: vai para o preparo.
 
 ## Frontend: as duas skills são obrigatórias
 

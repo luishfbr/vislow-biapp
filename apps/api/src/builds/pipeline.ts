@@ -1,7 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { validateSpec, type VisualSpec } from '@vislow/component-registry';
 import { generateProject } from '@vislow/codegen';
@@ -9,6 +8,8 @@ import { inspectPbiviz } from '@vislow/config-schema/packaging';
 import {
   assertTemplateStaged,
   copyTemplate,
+  createBuildWorkdir,
+  linkDependencies,
   vendorInternalPackages,
 } from '@vislow/visual-template';
 import { MAX_JS_BYTES, MAX_PACKAGE_BYTES, describeBytes } from './budgets.js';
@@ -17,8 +18,13 @@ import { BuildFailure } from './types.js';
 /**
  * O pipeline de build. Uma spec entra, um `.pbiviz` verificado sai.
  *
- * Validar -> copiar scaffold -> codegen -> `npm ci` -> vendorizar -> `pbiviz
- * package` -> INSPECIONAR -> entregar.
+ * Validar -> copiar scaffold -> codegen -> montar `node_modules` da store ->
+ * vendorizar -> `pbiviz package` -> INSPECIONAR -> entregar.
+ *
+ * **Nenhum passo daqui usa a rede.** As dependencias sao instaladas uma vez, no
+ * preparo (`stage:deps`), e a build so as monta por hardlink. Foi o que tirou o
+ * `npm ci` de dentro do worker: la ele rodava com ambiente magro, sem proxy nem
+ * CA corporativo, e falhava em maquina que instalava o repo sem problema.
  *
  * O passo de inspecao nao e opcional e nao e um teste: e um portao. Este projeto
  * ja documentou tres vezes que `pbiviz package` reporta sucesso produzindo
@@ -28,7 +34,8 @@ import { BuildFailure } from './types.js';
  * **RN-11 do lado do servidor:** nenhum codigo do usuario e executado nem
  * compilado como codigo. A spec e DADO; o `@vislow/codegen` emite JSX a partir
  * de uma whitelist (o registro de componentes), com todo valor saindo como
- * literal. O `npm ci` roda do lockfile do template, que o usuario nao controla.
+ * literal. As dependencias saem do lockfile do template, que o usuario nao
+ * controla.
  */
 
 export interface BuildOutcome {
@@ -41,12 +48,6 @@ export interface BuildOutcome {
 export interface PipelineOptions {
   /** Tempo duro do build inteiro. Estourou, o diretorio morre junto. */
   timeoutMs: number;
-  /**
-   * Cache do npm. Um diretorio compartilhado entre builds faz o `npm ci` cair
-   * de dezenas de segundos para ~2 s (medido no gate do Sprint 2), e mantem o
-   * build offline: o cache e populado uma vez, na implantacao.
-   */
-  npmCacheDir?: string | undefined;
 }
 
 export const DEFAULT_TIMEOUT_MS = 180_000;
@@ -151,21 +152,16 @@ function logsOf(error: unknown): string {
  * repassar segredo do servidor para um processo que compila fonte gerada a
  * partir de entrada de usuario.
  */
-function buildEnv(cacheDir: string | undefined): NodeJS.ProcessEnv {
-  const env: NodeJS.ProcessEnv = {
+function buildEnv(): NodeJS.ProcessEnv {
+  return {
     PATH: process.env.PATH ?? '',
     HOME: process.env.HOME ?? '',
-    // NAO defina NODE_ENV=production aqui. O `npm ci` interpreta isso como
-    // `--omit=dev` e pula as devDependencies — entre elas o
-    // `powerbi-visuals-tools`. O sintoma nao aponta para nada disso: o `npm ci`
-    // termina com sucesso e a falha aparece depois, no `npx pbiviz`, como um
-    // 404 do registro tentando BAIXAR um pacote chamado `pbiviz`.
-    NPM_CONFIG_AUDIT: 'false',
-    NPM_CONFIG_FUND: 'false',
-    NPM_CONFIG_UPDATE_NOTIFIER: 'false',
+    // NAO defina NODE_ENV=production aqui. O `npx pbiviz` resolve o binario
+    // dentro de `node_modules`, e `production` faz o npm tratar devDependencies
+    // como ausentes — o `powerbi-visuals-tools` e uma delas. O sintoma nao
+    // aponta para nada disso: vira um 404 do registro tentando BAIXAR um pacote
+    // chamado `pbiviz` (achado 42).
   };
-  if (cacheDir !== undefined) env.NPM_CONFIG_CACHE = cacheDir;
-  return env;
 }
 
 export async function runBuildPipeline(
@@ -193,12 +189,12 @@ export async function runBuildPipeline(
 
   const deadline = Date.now() + options.timeoutMs;
   const remaining = (): number => Math.max(1, deadline - Date.now());
-  const env = buildEnv(options.npmCacheDir);
+  const env = buildEnv();
 
   // Diretorio proprio por build, destruido no `finally` — inclusive quando
   // estoura o tempo. E o isolamento minimo: dois builds simultaneos nunca veem
   // o `node_modules` um do outro.
-  const workdir = await mkdtemp(join(tmpdir(), 'vislow-build-'));
+  const workdir = await createBuildWorkdir();
 
   try {
     // 2. Scaffold estatico.
@@ -210,24 +206,17 @@ export async function runBuildPipeline(
       await writeFile(join(workdir, file.path), file.contents, 'utf8');
     }
 
-    // 4. Dependencias, do lockfile do template — nunca da spec do usuario.
+    // 4. Dependencias: hardlink da store, sem rede e sem npm. A arvore vem do
+    //    lockfile do template — nunca da spec do usuario.
     try {
-      // `--include=dev` explicito: o `powerbi-visuals-tools` e devDependency do
-      // template, e sem ele nao ha compilador. Redundante com o env acima de
-      // proposito — a proxima pessoa a mexer no ambiente esbarra nos dois.
-      await run('npm', ['ci', '--include=dev', '--no-audit', '--no-fund'], {
-        cwd: workdir,
-        timeoutMs: remaining(),
-        env,
-      });
+      await linkDependencies(workdir);
     } catch (error) {
-      if (isTimeout(error)) throw new BuildFailure('TIMEOUT', 'O `npm ci` estourou o tempo.');
-      throw new BuildFailure('INSTALL_FAILED', 'Falha ao instalar as dependencias do build.', {
-        detail: logsOf(error),
+      throw new BuildFailure('INSTALL_FAILED', 'Falha ao montar as dependencias do build.', {
+        detail: error instanceof Error ? error.message : '',
       });
     }
 
-    // 5. Pacotes internos — DEPOIS do `npm ci`, que apaga `node_modules`.
+    // 5. Pacotes internos — DEPOIS do passo 4, que e quem cria `node_modules`.
     await vendorInternalPackages(workdir);
 
     // 6. Compilacao de verdade.

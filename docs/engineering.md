@@ -160,8 +160,11 @@ chamá-las direto pula a ordenação, e o lint com informação de tipos precisa
 - **`dist/.tsbuildinfo` está listado à parte do `dist/**`** nos `outputs`. O estado perigoso é "tsbuildinfo
   restaurado, outputs ausentes": o `tsc` se acha atualizado, não emite nada, e a falha aparece três tarefas
   depois como module-not-found. Caminho literal sempre casa; glob com dotfile não se confia sem prova.
-- **`test:build` é `cache: false`.** Ele executa `npm ci` e `pbiviz` de verdade, contra estado que o hash não
-  captura — um acerto de cache seria a volta do "passou sem ter rodado" (achado 58).
+- **`test:build` é `cache: false`.** Ele executa o `pbiviz` de verdade, contra estado que o hash não captura —
+  um acerto de cache seria a volta do "passou sem ter rodado" (achado 58).
+- **`stage:deps` também é `cache: false`, mas pelo motivo oposto.** A store tem ~190 MB: empacotá-la e
+  restaurá-la a cada acerto custaria mais que o passo que ela substitui. A idempotência é do próprio script,
+  pelo stamp do `package-lock.json` — com a store em dia ele custa um hash e sai.
 - **`@vislow/visual-template` declara `visual-kit` e `config-schema` em `devDependencies` sem importar nenhum
   dos dois.** Não remova por parecerem não usados: o `stage-vendor.mjs` lê o `dist/` das duas, e é essa aresta
   que faz o `^build` ordenar. Ficam em `devDependencies` porque o que chega ao visual é a cópia em `vendor/`.
