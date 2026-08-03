@@ -62,8 +62,11 @@ As específicas de área estão nos docs acima. Estas seis quebram código em qu
 - **Discriminante de união é string (`kind`), nunca booleano.** A toolchain do `pbiviz` compila sem
   `strictNullChecks`, e sem ela o TypeScript não estreita união por discriminante booleano.
 - **Props opcionais de React declaram `prop?: T | undefined`** — `exactOptionalPropertyTypes` está ligado.
-- **Ao diagnosticar qualquer coisa no Power BI Desktop, peça o `buildId` primeiro.** Sem ele, "importou o
-  arquivo antigo" é indistinguível de "a correção não funcionou" — isso já custou uma sessão inteira.
+- **Ao diagnosticar qualquer coisa no Power BI Desktop, estabeleça a procedência do pacote primeiro.** "Importou
+  o arquivo antigo" é indistinguível de "a correção não funcionou" — isso já custou uma sessão inteira. Desde
+  2026-08-03 **o `buildId` não é mais legível da tela**: o selo do canto foi removido a pedido, e ele só
+  reaparece no card de erro de renderização. Confirme por fora — reexportar na hora, conferir a data do arquivo
+  ou o `buildId` no `content.js` do zip — antes de concluir qualquer coisa.
 
 **O padrão de falha desta toolchain é o silêncio.** `pbiviz package` já reportou sucesso produzindo pacote
 quebrado três vezes. Quando escrever uma guarda, quebre o que ela protege de propósito e confirme que ela morde:
