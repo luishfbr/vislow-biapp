@@ -91,8 +91,10 @@ Nome obrigatório; origina o nome do arquivo, o `displayName` e o slug do GUID.
 mensagem explicando a regra (RN-06).
 
 **RF-26 `[P0]` — Declarar os campos de dados do visual**
-O usuário declara os papéis (categoria, medida) que o visual dele vai pedir no Power BI, e liga cada nó de
-gráfico a esses papéis.
+O usuário monta uma **tabela de exemplo**: quantas colunas quiser, cada uma com um tipo declarado (texto,
+inteiro, decimal, percentual, moeda, data, sim/não) e as linhas de valores que ele quiser. Cada coluna é, ao
+mesmo tempo, o dado contra o qual ele compõe e o campo que o visual vai **exigir** no Power BI — o tipo vira
+`requiredTypes` e o campo vira obrigatório (`min: 1`) no `capabilities.json` gerado.
 *Dado* um papel declarado e não ligado a nó nenhum, *quando* o visual é compilado, *então* ele **não** aparece
 no `capabilities.json` — campo pedido e campo usado são a mesma coisa (ADR-12).
 *Dado* um papel renomeado, *quando* o usuário edita o rótulo, *então* só o `displayName` muda; o `name` técnico
@@ -106,7 +108,7 @@ O preview renderiza com os **mesmos componentes** do `visual-kit` que o visual c
 *então* a renderização é visualmente idêntica salvo pelos dados.
 
 **RF-06 `[P0]` — Dados de exemplo**
-O preview usa um `mockFrame` fixo e realista (nomes longos e curtos, negativos, zero, ordens de grandeza
+O preview usa a tabela do usuário (`sampleFrame`). O projeto novo nasce com uma semente realista (nomes longos e curtos, zero, ordens de grandeza
 diferentes).
 *Dado* o preview, *quando* renderizado, *então* nenhum dado do modelo do usuário é envolvido (RN-02).
 
@@ -198,7 +200,8 @@ um gráfico vazio, não um erro.
 | ID | Regra | Justificativa |
 |---|---|---|
 | **RN-01** | Cada **novo** projeto recebe GUID único. Reexportar o **mesmo** projeto reusa o GUID e incrementa a versão. | C-03. Projetos distintos precisam coexistir; reexports devem atualizar, não duplicar. |
-| **RN-02** | Nenhum dado do modelo do Power BI trafega para o editor nem para a API. O preview usa exclusivamente `mockFrame`. | C-06 e privacidade. O editor não tem como acessar o modelo, e não deveria. |
+| **RN-02** | Nenhum dado do modelo do Power BI trafega para o editor nem para a API. O preview usa exclusivamente a tabela de exemplo que o usuário digitou. | C-06 e privacidade. O editor não tem como acessar o modelo, e não deveria. |
+| **RN-26** | Os **valores** da tabela de exemplo nunca entram no `.pbiviz`. Só o esquema (coluna, tipo, papel) vira `capabilities.json`. | Mesma regra da prancheta: um visual que carrega dado embutido mente sobre o que mostra — e o pacote é um arquivo que o usuário distribui. |
 | **RN-03** | Uma spec que falhe na validação **não pode ser compilada**. O editor valida antes de enviar e a API **revalida** antes de compilar. | Não é redundância: o editor é código do cliente e a API não pode confiar nele. |
 | **RN-04** | O visual sempre renderiza um de três estados: **dados**, **vazio** ou **erro**. Tela branca é defeito de severidade máxima. | Um visual em branco é indistinguível de um bug do Power BI e destrói a confiança no produto. |
 | **RN-05** | Só valores do catálogo de tokens são aceitos; os enums do schema são fechados. | ADR-02. É o que garante que toda classe exista no CSS compilado. |

@@ -7,7 +7,7 @@
  * nos pede o subcaminho.
  */
 export * from './frame.js';
-export * from './mockFrame.js';
+export * from './sampleFrame.js';
 export * from './Container.js';
 export * from './CanvasSlot.js';
 export * from './TextNode.js';

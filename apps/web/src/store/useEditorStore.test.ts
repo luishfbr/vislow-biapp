@@ -82,11 +82,11 @@ describe('adicionar componentes', () => {
     expect(store().issues).toEqual([]);
 
     const bar = findNode(store().spec.root, store().selectedId);
-    expect(bar?.props).toMatchObject({ categoryRole: 'categoria', measureRole: 'valor' });
+    expect(bar?.props).toMatchObject({ categoryRole: 'regiao', measureRole: 'receita' });
   });
 
-  it('sem papel do tipo certo, o campo fica pendente e o export trava', () => {
-    store().removeRole('categoria');
+  it('sem coluna do tipo certo, o campo fica pendente e o export trava', () => {
+    store().removeColumn('regiao');
     store().addNode('barChart');
 
     expect(store().issues.length).toBeGreaterThan(0);
@@ -117,11 +117,11 @@ describe('reordenar e remover', () => {
   });
 });
 
-describe('papeis de dados', () => {
+describe('tabela de exemplo', () => {
   it('nome tecnico e derivado do rotulo e nao colide', () => {
-    store().addRole('measure');
-    store().addRole('measure');
-    const nomes = store().spec.dataRoles.map((role) => role.name);
+    store().addColumn('Meta', 'decimal');
+    store().addColumn('Meta', 'decimal');
+    const nomes = store().spec.data.columns.map((column) => column.name);
     expect(new Set(nomes).size).toBe(nomes.length);
   });
 
@@ -129,23 +129,47 @@ describe('papeis de dados', () => {
     // O nome amarra as referencias da arvore e vai para o capabilities.json.
     // Se ele mudasse junto, cada renomeio quebraria todo no que o usa.
     store().addNode('barChart');
-    store().setRoleLabel('valor', 'Receita liquida');
+    store().setColumnLabel('receita', 'Receita liquida');
 
-    const role = store().spec.dataRoles.find((r) => r.name === 'valor');
-    expect(role?.displayName).toBe('Receita liquida');
+    const column = store().spec.data.columns.find((c) => c.name === 'receita');
+    expect(column?.displayName).toBe('Receita liquida');
     expect(store().issues).toEqual([]);
   });
 
-  it('remover um papel DESLIGA os nos que o usavam', () => {
+  it('remover uma coluna DESLIGA os nos que a usavam', () => {
     store().addNode('kpi');
     expect(store().issues).toEqual([]);
 
-    store().removeRole('valor');
+    store().removeColumn('receita');
 
     const kpi = findNode(store().spec.root, store().selectedId);
     expect(kpi?.props.measureRole).toBeUndefined();
     // Pendente, nao quebrado: o editor mostra o campo vazio e trava o export.
     expect(selectCanExport(useEditorStore.getState())).toBe(false);
+  });
+
+  it('linha e celula chegam ao preview pelo store', () => {
+    store().addRow();
+    store().setCell(store().spec.data.rows.length - 1, 0, 'Centro');
+
+    const linha = store().spec.data.rows.at(-1);
+    expect(linha?.[0]).toBe('Centro');
+    expect(store().issues).toEqual([]);
+  });
+
+  it('trocar o tipo re-deriva o papel e converte os valores', () => {
+    store().setColumnType('receita', 'text');
+
+    const column = store().spec.data.columns.find((c) => c.name === 'receita');
+    expect(column?.kind).toBe('grouping');
+    expect(store().spec.data.rows[0]?.[1]).toBe('184.320');
+  });
+
+  it('operacao ilegal nao mexe em nada — a ultima coluna nao sai', () => {
+    store().removeColumn('receita');
+    const antes = store().spec;
+    store().removeColumn('regiao');
+    expect(store().spec).toBe(antes);
   });
 });
 

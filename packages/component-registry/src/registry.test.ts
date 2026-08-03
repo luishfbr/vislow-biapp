@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultConfig, TOKEN_CATALOG } from '@vislow/config-schema';
-import { createEmptySpec, createNode, DEFAULT_ROLES, nextNodeId } from './factory.js';
-import { isV1Config, migrateV1ToV2 } from './migrate.js';
+import { createEmptySpec, createNode, DEFAULT_TABLE, nextNodeId } from './factory.js';
+import { isV1Config, migrateV1 } from './migrate.js';
 import { defaultPropsFor, NODE_DESCRIPTORS, NODE_KINDS, roleFieldsOf } from './registry.js';
 import { assertValidSpec, validateSpec, walk } from './schema.js';
 import {
@@ -29,8 +29,8 @@ function specWithEveryNode(): VisualSpec {
   let root = spec.root;
   for (const kind of NODE_KINDS.filter((kind) => kind !== 'container')) {
     root = insertChild(root, root.id, createNode(kind, {
-      categoryRole: 'categoria',
-      measureRole: 'valor',
+      categoryRole: 'regiao',
+      measureRole: 'receita',
     }))!;
   }
   return { ...spec, root };
@@ -328,7 +328,7 @@ describe('os problemas apontam o campo certo', () => {
     // Schema e regras semanticas alimentam a mesma lista. Formatos diferentes
     // impediriam qualquer consumidor de ligar um problema a um no.
     const spec = specWithChild(
-      createNode('barChart', { categoryRole: 'categoria', measureRole: 'inexistente' }),
+      createNode('barChart', { categoryRole: 'regiao', measureRole: 'inexistente' }),
       'Papel fantasma',
     );
     const semantico = validateSpec(spec);
@@ -347,7 +347,7 @@ describe('os problemas apontam o campo certo', () => {
 describe('validacao semantica de papeis', () => {
   it('rejeita no que referencia papel nao declarado', () => {
     const spec = specWithChild(
-      createNode('barChart', { categoryRole: 'categoria', measureRole: 'inexistente' }),
+      createNode('barChart', { categoryRole: 'regiao', measureRole: 'inexistente' }),
       'Papel fantasma',
     );
 
@@ -362,7 +362,7 @@ describe('validacao semantica de papeis', () => {
     const spec = createEmptySpec('Tipo trocado');
     spec.root.children = [
       // `categoria` e grouping; o campo measureRole exige measure.
-      createNode('barChart', { categoryRole: 'categoria', measureRole: 'categoria' }),
+      createNode('barChart', { categoryRole: 'regiao', measureRole: 'regiao' }),
     ];
 
     const result = validateSpec(spec);
@@ -392,9 +392,10 @@ describe('validacao semantica de papeis', () => {
     }
   });
 
-  it('rejeita nomes de papel duplicados', () => {
-    const spec = createEmptySpec('Papeis repetidos');
-    spec.dataRoles = [DEFAULT_ROLES[0]!, { ...DEFAULT_ROLES[0]! }];
+  it('rejeita nomes de coluna duplicados', () => {
+    const spec = createEmptySpec('Colunas repetidas');
+    spec.data.columns = [DEFAULT_TABLE.columns[0]!, { ...DEFAULT_TABLE.columns[0]! }];
+    spec.data.rows = spec.data.rows.map((row) => [row[0]!, row[0]!]);
     const result = validateSpec(spec);
     expect(result.kind).toBe('invalid');
   });
@@ -416,17 +417,17 @@ describe('identificadores', () => {
     }
   });
 
-  it('papeis default casam com o padrao de nome', () => {
-    for (const role of DEFAULT_ROLES) {
-      expect(role.name).toMatch(new RegExp(ROLE_NAME_PATTERN));
+  it('colunas default casam com o padrao de nome', () => {
+    for (const column of DEFAULT_TABLE.columns) {
+      expect(column.name).toMatch(new RegExp(ROLE_NAME_PATTERN));
     }
   });
 });
 
-describe('migracao v1 -> v2', () => {
+describe('migracao v1 -> spec atual', () => {
   it('preserva a identidade do projeto — e o ponto da migracao (RF-10)', () => {
     const v1 = createDefaultConfig('Projeto Antigo', 'bar');
-    const v2 = migrateV1ToV2(v1);
+    const v2 = migrateV1(v1);
 
     expect(v2.project.id).toBe(v1.project.id);
     expect(v2.project.name).toBe(v1.project.name);
@@ -434,13 +435,13 @@ describe('migracao v1 -> v2', () => {
   });
 
   it('produz arvore valida a partir de um config de barras', () => {
-    const v2 = migrateV1ToV2(createDefaultConfig('Barras v1', 'bar'));
+    const v2 = migrateV1(createDefaultConfig('Barras v1', 'bar'));
     expect(() => assertValidSpec(v2)).not.toThrow();
     expect(walk(v2).some(({ node }) => node.kind === 'barChart')).toBe(true);
   });
 
   it('produz arvore valida a partir de um config de KPI', () => {
-    const v2 = migrateV1ToV2(createDefaultConfig('KPI v1', 'kpi'));
+    const v2 = migrateV1(createDefaultConfig('KPI v1', 'kpi'));
     expect(() => assertValidSpec(v2)).not.toThrow();
     expect(walk(v2).some(({ node }) => node.kind === 'kpi')).toBe(true);
   });
@@ -450,7 +451,7 @@ describe('migracao v1 -> v2', () => {
     v1.layout.padding = 'xl';
     v1.layout.surfaceColor = '#0f172a';
 
-    const v2 = migrateV1ToV2(v1);
+    const v2 = migrateV1(v1);
     expect(v2.root.props.padding).toBe('xl');
     expect(v2.root.props.background).toBe('#0f172a');
   });
@@ -459,7 +460,7 @@ describe('migracao v1 -> v2', () => {
     const v1 = createDefaultConfig('Sem titulo', 'bar');
     v1.header.show = false;
 
-    const v2 = migrateV1ToV2(v1);
+    const v2 = migrateV1(v1);
     expect(walk(v2).some(({ node }) => node.kind === 'text')).toBe(false);
   });
 

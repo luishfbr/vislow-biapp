@@ -89,6 +89,8 @@ Todas descobertas empiricamente, todas caras.
 
 - **Emite imports nomeados dos mesmos componentes do `visual-kit`** que o preview usa, nunca JSX de Recharts cru
   (ADR-10). É o que preserva o WYSIWYG depois do pivô, e o que dá tree-shaking.
+- **O tipo da coluna vira `requiredTypes`, e todo campo declarado é obrigatório (`min: 1`)**. É o que faz o
+  Power BI recusar uma coluna de texto num campo numérico e segurar o visual enquanto faltar campo.
 - **O `capabilities.json` declara apenas os papéis que a árvore consome** (ADR-12). A regra é `consumesData()`
   no registro, consultada pelo codegen **e** pelo preview — não reimplemente `fields.some(f => f.kind === 'role')`
   num dos dois lados.

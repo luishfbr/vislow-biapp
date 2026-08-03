@@ -28,10 +28,10 @@ import {
  */
 function fixture(): SpecNode {
   const titulo = { ...createNode('text'), id: 'titulo' };
-  const kpi = { ...createNode('kpi', { measureRole: 'valor' }), id: 'kpi' };
+  const kpi = { ...createNode('kpi', { measureRole: 'receita' }), id: 'kpi' };
   const linha = { ...createNode('container'), id: 'linha', children: [kpi] };
   const barras = {
-    ...createNode('barChart', { categoryRole: 'categoria', measureRole: 'valor' }),
+    ...createNode('barChart', { categoryRole: 'regiao', measureRole: 'receita' }),
     id: 'barras',
   };
   return { ...createNode('container'), id: 'root', children: [titulo, linha, barras] };
@@ -205,7 +205,7 @@ describe('as operacoes preservam a validade da spec', () => {
     const comBarras = insertChild(
       comTexto!,
       rootId,
-      createNode('barChart', { categoryRole: 'categoria', measureRole: 'valor' }),
+      createNode('barChart', { categoryRole: 'regiao', measureRole: 'receita' }),
     );
     const reordenado = moveNode(comBarras!, comBarras?.children?.[1]?.id ?? '', -1);
 

@@ -22,8 +22,13 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
   cada chave como atributo JSX; geometria é relação com o pai.
 - **A matemática do canvas fica em `lib/canvasGeometry.ts`**, sem React, e é lá que ela se testa. No componente
   sobra o gesto, que jsdom não exercita.
-- **Nome de papel é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createRole` e amarra
-  as referências da árvore e o `capabilities.json`.
+- **A tabela de exemplo é a fonte única dos campos.** Cada coluna de `spec.data.columns` é, ao mesmo tempo, o
+  dado do preview e um `dataRole` do `capabilities.json` — não existe uma segunda lista. Edição de coluna,
+  linha e célula passa por `table.ts` no registro; o store só delega.
+- **Nome de coluna é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createColumn` e
+  amarra as referências da árvore e o `capabilities.json`.
+- **Os valores da tabela não vão para o pacote**, como a prancheta. O que viaja é o esquema: coluna, tipo e
+  papel. Dois testes reprovam o vazamento — um no fonte gerado, outro no bundle compilado.
 - **`react-is` é declarado explicitamente** — é peer do Recharts e o repo usa `autoInstallPeers: false`. O
   visual compilado esconde esse problema porque o `npm ci` do template instala peers sozinho.
 - **Testes `.tsx` precisam do `oxc.jsx` no `vitest.config.ts`**: o `tsconfig.json` daqui usa `jsx: "preserve"`
