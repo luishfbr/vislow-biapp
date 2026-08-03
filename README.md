@@ -38,7 +38,7 @@ um `dataRole` tipado, com o host segurando o visual enquanto faltar campo.
 
 | Item | Versão | Observação |
 |---|---|---|
-| Node | **≥ 22.12** | LTS |
+| Node | **≥ 22.13** | piso do pnpm 11.12, não nosso — em 22.12 o `pnpm install` recusa a rodar |
 | pnpm | **11.12.0** | fixado em `packageManager`; use o corepack |
 | Git | qualquer | |
 

@@ -21,9 +21,13 @@ jobs:
 
       - uses: pnpm/action-setup@v4
 
+      # O PISO do `engines`, de proposito: se o pnpm subir o requisito de Node
+      # outra vez, o CI e quem descobre — nao a maquina de quem acabou de clonar.
+      # Foi assim que 22.12 ficou declarado depois de o pnpm 11.12 passar a
+      # exigir 22.13, e o `pnpm install` abortar antes de instalar qualquer coisa.
       - uses: actions/setup-node@v5
         with:
-          node-version: '22.12.0'
+          node-version: '22.13.0'
           cache: pnpm
 
       - name: Instalar dependencias
