@@ -71,11 +71,98 @@ export interface SpecNode {
   children?: SpecNode[];
 }
 
+/**
+ * Tamanho da PRANCHETA em que o usuario desenha, em pixels de CSS.
+ *
+ * NAO vai para o pacote. Um visual do Power BI nao escolhe o proprio tamanho — o
+ * autor do relatorio arrasta a moldura, e o `visual.tsx` gerado continua sendo
+ * `w-full h-full` dentro do que ele desenhar. Isto e a prancheta do EDITOR: o
+ * alvo concreto contra o qual a composicao e julgada.
+ *
+ * Ela precisa existir porque a geometria e proporcional (ver `NodeRect`) mas a
+ * tipografia nao: um texto de 12px ocupa metade de uma caixa de 25% numa
+ * prancheta de 640 e um oitavo dela numa de 1920. Sem tamanho declarado, o
+ * preview desenha uma proporcao e o usuario adivinha a escala.
+ *
+ * Fica no `project` e nao no no raiz de proposito. Nao e propriedade de nenhum
+ * componente — o codegen despeja `props` como atributo JSX, e `width` viraria
+ * atributo do `Container`. E tambem nao entra em `ProjectIdentity`, que e
+ * compartilhada com o config plano v1 e tem `additionalProperties: false` no
+ * schema dele.
+ */
+export interface Artboard {
+  /** Largura em px. */
+  width: number;
+  /** Altura em px. */
+  height: number;
+}
+
+/**
+ * Piso da prancheta. Abaixo disso nao ha o que julgar — e e mais estreita que
+ * qualquer visual que alguem colocaria num relatorio de verdade.
+ */
+export const ARTBOARD_MIN: Artboard = { width: 100, height: 100 };
+
+/** Teto da prancheta: Full HD, o maior relatorio que se desenha na pratica. */
+export const ARTBOARD_MAX: Artboard = { width: 1920, height: 1080 };
+
+/**
+ * Prancheta de quem nao escolheu.
+ *
+ * 16:9 — a mesma proporcao que o preview ja usava por padrao — num tamanho que
+ * cabe na area do editor com pouca reducao. Vale para projeto novo E para
+ * projeto salvo antes deste campo existir: o campo e opcional, e `artboardOf` e
+ * quem responde por ele.
+ */
+export const ARTBOARD_DEFAULT: Artboard = { width: 1280, height: 720 };
+
+/**
+ * Identidade do projeto MAIS o que so o editor usa.
+ *
+ * `ProjectIdentity` vive em `config-schema` e alimenta o `pbiviz.json`. A
+ * prancheta nao alimenta nada do pacote, entao entra aqui e nao la.
+ */
+export interface SpecProject extends ProjectIdentity {
+  artboard?: Artboard | undefined;
+}
+
 export interface VisualSpec {
   schemaVersion: string;
-  project: ProjectIdentity;
+  project: SpecProject;
   dataRoles: DataRole[];
   root: SpecNode;
+}
+
+/**
+ * A prancheta da spec, com o default de quem nao tem uma.
+ *
+ * Mesmo motivo do `hostOf(frame)` no kit: um `?? ARTBOARD_DEFAULT` por chamada e
+ * uma chance por chamada de esquecer, e o esquecimento aqui desenha a prancheta
+ * com `NaN` de largura — moldura de tamanho zero, sem erro nenhum.
+ */
+export function artboardOf(spec: VisualSpec): Artboard {
+  return spec.project.artboard ?? ARTBOARD_DEFAULT;
+}
+
+/**
+ * Prende um tamanho digitado na faixa valida, em pixel inteiro.
+ *
+ * Mesma divisao de trabalho do `clampRect`/`validateSpec`: aqui PRENDE, porque
+ * quem chama e um campo de formulario e digitar 5000 quer dizer "o maior que
+ * der"; o schema REPROVA, porque quem chega por importacao ja deveria ter um
+ * valor valido e um numero fora da faixa ali e sinal de arquivo adulterado.
+ */
+export function clampArtboard(size: Artboard): Artboard {
+  // `NaN` cai no default em vez de propagar: um `Math.round(NaN)` atravessa
+  // clamp inteiro sem reclamar e sai como largura de moldura — prancheta de
+  // tamanho zero, invisivel e sem erro. E o padrao de falha desta casa.
+  const fit = (value: number, min: number, max: number, fallback: number): number =>
+    Number.isFinite(value) ? Math.min(Math.max(Math.round(value), min), max) : fallback;
+
+  return {
+    width: fit(size.width, ARTBOARD_MIN.width, ARTBOARD_MAX.width, ARTBOARD_DEFAULT.width),
+    height: fit(size.height, ARTBOARD_MIN.height, ARTBOARD_MAX.height, ARTBOARD_DEFAULT.height),
+  };
 }
 
 /** Padrao do nome de papel: identificador valido para o capabilities.json. */

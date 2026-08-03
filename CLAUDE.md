@@ -78,6 +78,10 @@ o **canvas de posicionamento livre** (ADR-18). Pacote **221,1 KB**, `content.js`
 O container tem duas disposições: `stack` empilha como sempre, `canvas` dá a cada filho uma caixa em `%` do pai,
 arrastável e redimensionável no preview. Raiz de projeto novo nasce canvas; spec já salva continua empilhando.
 
+O preview desenha uma **prancheta de tamanho declarado** (`project.artboard`, 100×100 a 1920×1080, padrão
+1280×720), em pixel real e reduzida por escala para caber no painel. **Ela é do editor e não vai para o pacote**
+— um visual do Power BI não escolhe o próprio tamanho, e um teste do codegen reprova o build se ela vazar.
+
 **Próximo — Fase 4:** KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E Playwright
 do editor.
 

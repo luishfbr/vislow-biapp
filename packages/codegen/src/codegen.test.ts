@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ARTBOARD_MAX,
   NODE_DESCRIPTORS,
   NODE_KINDS,
   assertValidSpec,
@@ -293,6 +294,22 @@ describe('generateProject', () => {
     container.children = [chart];
 
     expect(() => generateProject(specWith(container), BUILD_ID)).toThrow(/inexistente/);
+  });
+
+  it('a prancheta do editor NAO chega ao pacote', () => {
+    // A prancheta e o alvo contra o qual a composicao e julgada no editor. Um
+    // visual do Power BI nao escolhe o proprio tamanho — quem arrasta a moldura
+    // e o autor do relatorio —, entao o dia em que 1920 aparecer no fonte
+    // gerado, o visual passou a mentir sobre onde cabe. A fixture carrega a
+    // prancheta de proposito; sem ela, este teste passaria por ausencia.
+    const spec = assertValidSpec(specWithEveryKind());
+    expect(spec.project.artboard).toEqual(ARTBOARD_MAX);
+
+    for (const file of generateProject(spec, BUILD_ID)) {
+      expect(file.contents, file.path).not.toMatch(/artboard/i);
+      expect(file.contents, file.path).not.toContain(String(ARTBOARD_MAX.width));
+      expect(file.contents, file.path).not.toContain(String(ARTBOARD_MAX.height));
+    }
   });
 
   it('o JSON emitido termina em quebra de linha', () => {

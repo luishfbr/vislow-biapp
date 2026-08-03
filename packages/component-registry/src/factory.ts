@@ -1,6 +1,12 @@
 import { createProjectId, INITIAL_PACKAGE_VERSION } from '@vislow/config-schema';
 import { CONTAINER_CANVAS, defaultPropsFor, roleFieldsOf } from './registry.js';
-import { SPEC_VERSION, type DataRole, type SpecNode, type VisualSpec } from './spec.js';
+import {
+  ARTBOARD_DEFAULT,
+  SPEC_VERSION,
+  type DataRole,
+  type SpecNode,
+  type VisualSpec,
+} from './spec.js';
 import type { NodeKind, RoleKind } from './types.js';
 
 let counter = 0;
@@ -134,6 +140,10 @@ export function createEmptySpec(name: string): VisualSpec {
       id: createProjectId(name),
       name,
       packageVersion: INITIAL_PACKAGE_VERSION,
+      // Escrito por extenso, e nao deixado em branco para cair no default:
+      // projeto novo tem uma prancheta declarada, e mudar o default depois nao
+      // reescreve em silencio o tamanho de quem ja estava desenhando.
+      artboard: { ...ARTBOARD_DEFAULT },
     },
     dataRoles: DEFAULT_ROLES.map((role) => ({ ...role })),
     root,

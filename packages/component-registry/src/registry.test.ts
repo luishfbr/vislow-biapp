@@ -4,7 +4,17 @@ import { createEmptySpec, createNode, DEFAULT_ROLES, nextNodeId } from './factor
 import { isV1Config, migrateV1ToV2 } from './migrate.js';
 import { defaultPropsFor, NODE_DESCRIPTORS, NODE_KINDS, roleFieldsOf } from './registry.js';
 import { assertValidSpec, validateSpec, walk } from './schema.js';
-import { NODE_ID_PATTERN, ROLE_NAME_PATTERN, type SpecNode, type VisualSpec } from './spec.js';
+import {
+  ARTBOARD_DEFAULT,
+  ARTBOARD_MAX,
+  ARTBOARD_MIN,
+  artboardOf,
+  clampArtboard,
+  NODE_ID_PATTERN,
+  ROLE_NAME_PATTERN,
+  type SpecNode,
+  type VisualSpec,
+} from './spec.js';
 import { insertChild } from './tree.js';
 
 /**
@@ -207,6 +217,79 @@ describe('geometria do no', () => {
 
   it('reprova NaN — um campo numerico vazio no painel chega assim', () => {
     expect(validateSpec(specWithRect({ x: Number.NaN, y: 0, w: 50, h: 50 })).kind).toBe('invalid');
+  });
+});
+
+describe('prancheta do editor', () => {
+  /** Spec com uma prancheta arbitraria, para exercitar o schema do campo. */
+  function specWithArtboard(artboard: unknown): VisualSpec {
+    const spec = createEmptySpec('Com prancheta');
+    return { ...spec, project: { ...spec.project, artboard } as never };
+  }
+
+  it('projeto novo nasce com a prancheta declarada por extenso', () => {
+    const spec = createEmptySpec('Novo');
+    expect(spec.project.artboard).toEqual(ARTBOARD_DEFAULT);
+    expect(validateSpec(spec).kind).toBe('valid');
+  });
+
+  it('projeto salvo antes do campo continua valido e recebe o default', () => {
+    // O caso real: o `localStorage` de quem ja usava o editor. Uma migracao
+    // obrigatoria aqui reprovaria a spec de todo mundo na primeira abertura.
+    const spec = createEmptySpec('Antigo');
+    delete spec.project.artboard;
+
+    expect(validateSpec(spec).kind).toBe('valid');
+    expect(artboardOf(spec)).toEqual(ARTBOARD_DEFAULT);
+  });
+
+  it('aceita os extremos da faixa', () => {
+    expect(validateSpec(specWithArtboard(ARTBOARD_MIN)).kind).toBe('valid');
+    expect(validateSpec(specWithArtboard(ARTBOARD_MAX)).kind).toBe('valid');
+  });
+
+  it('reprova fora da faixa, meio pixel e campo desconhecido', () => {
+    expect(validateSpec(specWithArtboard({ width: 99, height: 720 })).kind).toBe('invalid');
+    expect(validateSpec(specWithArtboard({ width: 1921, height: 720 })).kind).toBe('invalid');
+    expect(validateSpec(specWithArtboard({ width: 1280, height: 1081 })).kind).toBe('invalid');
+    expect(validateSpec(specWithArtboard({ width: 1280.5, height: 720 })).kind).toBe('invalid');
+    expect(validateSpec(specWithArtboard({ width: 1280, height: 720, depth: 3 })).kind).toBe(
+      'invalid',
+    );
+    expect(validateSpec(specWithArtboard({ width: 1280 })).kind).toBe('invalid');
+  });
+
+  it('o problema aponta o campo da prancheta, e nao a raiz', () => {
+    const result = validateSpec(specWithArtboard({ width: 5000, height: 720 }));
+    if (result.kind !== 'invalid') throw new Error('esperava invalido');
+    expect(result.issues[0]?.path).toBe('project.artboard.width');
+  });
+
+  it('clampArtboard prende nos dois extremos e arredonda para pixel inteiro', () => {
+    expect(clampArtboard({ width: 5000, height: 5000 })).toEqual(ARTBOARD_MAX);
+    expect(clampArtboard({ width: -40, height: 0 })).toEqual(ARTBOARD_MIN);
+    expect(clampArtboard({ width: 1280.4, height: 719.6 })).toEqual({ width: 1280, height: 720 });
+  });
+
+  it('clampArtboard troca NaN pelo default em vez de propagar', () => {
+    // Um campo numerico vazio chega assim. `Math.round(NaN)` atravessa o clamp
+    // inteiro sem reclamar e sairia como largura de moldura: prancheta de
+    // tamanho zero, invisivel e sem erro.
+    expect(clampArtboard({ width: Number.NaN, height: 400 })).toEqual({
+      width: ARTBOARD_DEFAULT.width,
+      height: 400,
+    });
+  });
+
+  it('o resultado de clampArtboard sempre passa no schema', () => {
+    for (const size of [
+      { width: 0, height: 0 },
+      { width: 99.4, height: 1080.6 },
+      { width: 99999, height: -1 },
+      { width: Number.NaN, height: Number.NaN },
+    ]) {
+      expect(validateSpec(specWithArtboard(clampArtboard(size))).kind).toBe('valid');
+    }
   });
 });
 
