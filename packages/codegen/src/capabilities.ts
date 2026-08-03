@@ -15,7 +15,7 @@ interface CapabilityRole {
   displayName: string;
   name: string;
   kind: 'Grouping' | 'Measure';
-  requiredTypes: Record<string, boolean>[];
+  requiredTypes?: Record<string, boolean>[] | undefined;
 }
 
 /**
@@ -31,16 +31,24 @@ interface CapabilityRole {
  * Percentual e moeda sao FORMATO, nao tipo — no modelo do Power BI os dois sao
  * numero, e exigir outra coisa recusaria a coluna certa.
  *
+ * `date` fica de fora, e nao ha jeito de contornar: o `valueType` do
+ * `schema.capabilities.json` oficial declara `additionalProperties: false` e so
+ * aceita `bool | enumeration | fill | fillRule | formatting | integer | numeric
+ * | filter | operations | text | scripting | geography`. Nao existe tipo
+ * temporal na lista — `dateTime`, `date` e `temporal` reprovam os tres. E o
+ * proprio `pbiviz package` que valida com Ajv e faz `throw new Error("Invalid
+ * capabilities")`, entao emitir a chave quebrava a build inteira de quem ligava
+ * uma coluna de data. `requiredTypes` e opcional no schema; omitir e a saida.
+ *
  * O escape, quando o tipo aperta demais, e trocar o tipo da coluna no editor —
  * e o painel diz isso ao lado do seletor.
  */
-const REQUIRED_TYPES: Record<ColumnType, Record<string, boolean>[]> = {
+const REQUIRED_TYPES: Partial<Record<ColumnType, Record<string, boolean>[]>> = {
   text: [{ text: true }],
   integer: [{ integer: true }],
   decimal: [{ numeric: true }],
   percent: [{ numeric: true }],
   currency: [{ numeric: true }],
-  date: [{ dateTime: true }],
   boolean: [{ bool: true }],
 };
 
@@ -62,12 +70,18 @@ export function generateCapabilities(spec: VisualSpec): Capabilities {
   const groupings = roles.filter((role) => role.kind === 'grouping');
   const measures = roles.filter((role) => role.kind === 'measure');
 
-  const dataRoles: CapabilityRole[] = roles.map((role) => ({
-    displayName: role.displayName,
-    name: role.name,
-    kind: role.kind === 'grouping' ? 'Grouping' : 'Measure',
-    requiredTypes: REQUIRED_TYPES[role.type],
-  }));
+  const dataRoles: CapabilityRole[] = roles.map((role) => {
+    const base: CapabilityRole = {
+      displayName: role.displayName,
+      name: role.name,
+      kind: role.kind === 'grouping' ? 'Grouping' : 'Measure',
+    };
+    const required = REQUIRED_TYPES[role.type];
+    // A chave precisa estar AUSENTE, nao presente com `undefined`: o schema
+    // oficial roda com `additionalProperties: false` e o portao compara o
+    // objeto gerado com o que saiu de dentro do .pbiviz, ja passado por JSON.
+    return required === undefined ? base : { ...base, requiredTypes: required };
+  });
 
   // Uma arvore so de texto nao le o modelo. Emitir um mapeamento vazio seria
   // pedir ao host um DataView que ninguem consome; melhor nao declarar nenhum.
@@ -96,12 +110,18 @@ export function generateCapabilities(spec: VisualSpec): Capabilities {
         // a condicao, o usuario arrasta tres campos para "Valor" e o visual le
         // so o primeiro, sem dizer por que.
         //
-        // `min: 1` e o "o visual EXIGE os campos": enquanto faltar um, o host
-        // nao entrega DataView e mostra o proprio aviso de campos pendentes, em
-        // vez de deixar o visual desenhar meia composicao. O `EmptyState` do kit
-        // continua onde esta como segunda linha de defesa — e ele que responde
-        // pelo caso diferente de "o filtro nao retornou linha nenhuma".
-        conditions: [Object.fromEntries(roles.map((role) => [role.name, { min: 1, max: 1 }]))],
+        // NAO acrescente `min` aqui. Ja tentamos: o host valida o estado que os
+        // pocos TERIAM depois do arrasto contra a lista de condicoes, e uma
+        // condicao unica exigindo `min: 1` em todos os papeis descreve so o
+        // estado final. O estado apos o primeiro campo — um papel preenchido, o
+        // resto vazio — nao satisfaz condicao nenhuma, entao o host descarta o
+        // drop. Em silencio: nao ha erro, nao ha aviso, o campo so continua
+        // vazio. O visual nunca sai de zero campos, e nada renderiza jamais.
+        //
+        // Quem responde por "falta campo" e o `EmptyState` do visual-kit, que
+        // ja existe e ja e alimentado por `matchRoles`: papel declarado e nao
+        // preenchido simplesmente nao entra no DataFrame.
+        conditions: [Object.fromEntries(roles.map((role) => [role.name, { max: 1 }]))],
         categorical,
       },
     ],

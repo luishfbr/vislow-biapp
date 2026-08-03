@@ -279,6 +279,11 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   let outcome: BuildOutcome;
   let js: string;
   let guid: string;
+  /** O capabilities LIDO DO ZIP — nao o regerado em memoria. */
+  let embutido: {
+    dataRoles: { name: string; kind: string; requiredTypes?: unknown }[];
+    dataViewMappings: { conditions?: Record<string, unknown>[] }[];
+  };
 
   beforeAll(async () => {
     spec = assertValidSpec(specWithEveryKind('Vendas por Região 🚀'));
@@ -286,6 +291,7 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
     const inspection = await inspectPbiviz(outcome.artifact);
     js = inspection.js;
     guid = inspection.packageIdentity.guid;
+    embutido = inspection.capabilities as typeof embutido;
   }, 300_000);
 
   it('a identidade nasce do projeto, sem reescrita (ADR-08)', () => {
@@ -369,36 +375,58 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   }, 60_000);
 
   /**
-   * O `capabilities.json` gerado e o que o Power BI le para montar o painel de
-   * campos. Se ele nao declarar os papeis que a arvore consome, o usuario nao
-   * tem onde arrastar a coluna — e o visual fica eternamente vazio.
+   * O `capabilities.json` DE DENTRO DO PACOTE e o que o Power BI le para montar
+   * o painel de campos. Se ele nao declarar os papeis que a arvore consome, o
+   * usuario nao tem onde arrastar a coluna — e o visual fica eternamente vazio.
+   *
+   * Ler do zip, e nao chamar `generateCapabilities` de novo, e o ponto: a versao
+   * anterior deste teste comparava o codegen consigo mesmo e por isso passava
+   * verde enquanto o pacote entregue recusava todo arrasto no Desktop.
    */
-  it('o capabilities gerado declara os papeis que a arvore consome', () => {
-    const capabilities = generateCapabilities(spec);
-    expect(capabilities.dataRoles.map((role) => role.name).sort()).toEqual(['categoria', 'valor']);
+  it('o capabilities do PACOTE declara os papeis que a arvore consome', () => {
+    expect(embutido.dataRoles.map((role) => role.name).sort()).toEqual(['categoria', 'valor']);
+  });
+
+  it('o capabilities do PACOTE e exatamente o que o codegen gerou', () => {
+    // O `pbiviz` so reescreve capabilities de visual de script. Qualquer outra
+    // diferenca aqui e a toolchain mexendo no que nao devia.
+    expect(embutido).toEqual(JSON.parse(JSON.stringify(generateCapabilities(spec))));
   });
 
   /**
-   * O tipo declarado na tabela de exemplo vira restricao do host, e o campo
-   * passa a ser EXIGIDO.
+   * O tipo declarado na tabela de exemplo vira restricao do host.
    *
    * `requiredTypes` faz o Power BI recusar o arrasto de uma coluna do tipo
-   * errado; `min: 1` faz ele segurar o visual enquanto faltar campo. Sem os
-   * dois, o tipo que o usuario escolhe no editor seria so a formatacao do
-   * preview.
+   * errado. Sem ele, o tipo que o usuario escolhe no editor seria so a
+   * formatacao do preview.
    */
-  it('o capabilities gerado exige o campo, e exige do tipo certo', () => {
-    const capabilities = generateCapabilities(spec);
-
-    const porNome = new Map(capabilities.dataRoles.map((role) => [role.name, role]));
+  it('o capabilities do PACOTE exige o campo do tipo certo', () => {
+    const porNome = new Map(embutido.dataRoles.map((role) => [role.name, role]));
     expect(porNome.get('categoria')?.requiredTypes).toEqual([{ text: true }]);
     expect(porNome.get('valor')?.requiredTypes).toEqual([{ integer: true }]);
+  });
 
-    const [mapping] = capabilities.dataViewMappings as {
-      conditions: Record<string, { min: number; max: number }>[];
-    }[];
-    expect(mapping?.conditions[0]?.categoria).toEqual({ min: 1, max: 1 });
-    expect(mapping?.conditions[0]?.valor).toEqual({ min: 1, max: 1 });
+  /**
+   * Regressao de 2026-08-03, e a assertiva que faltava para pegar o bug no lugar
+   * onde ele importa.
+   *
+   * Uma condicao com `min` faz o host recusar todo estado intermediario do
+   * arrasto: os pocos aparecem com o nome certo e simplesmente nao aceitam
+   * coluna nenhuma, sem erro e sem aviso. O pacote importava e renderizava o
+   * estado vazio — todas as guardas anteriores passavam.
+   */
+  it('nenhuma condicao do PACOTE declara "min" — senao os pocos travam', () => {
+    expect(embutido.dataViewMappings.length).toBeGreaterThan(0);
+
+    for (const mapping of embutido.dataViewMappings) {
+      expect(mapping.conditions?.length ?? 0).toBeGreaterThan(0);
+      for (const condition of mapping.conditions ?? []) {
+        for (const [role, range] of Object.entries(condition)) {
+          expect(range, role).not.toHaveProperty('min');
+          expect(range, role).toHaveProperty('max');
+        }
+      }
+    }
   });
 
   /**

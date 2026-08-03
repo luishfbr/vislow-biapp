@@ -23,5 +23,9 @@
   "dependencies": {
     "@vislow/component-registry": "workspace:*",
     "@vislow/config-schema": "workspace:*"
+  },
+  "devDependencies": {
+    "ajv": "8.20.0",
+    "powerbi-visuals-api": "5.11.1"
   }
 }
