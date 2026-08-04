@@ -12,7 +12,7 @@
  */
 export class BuildQueue {
   private running = 0;
-  private readonly waiting: (() => void)[] = [];
+  private readonly waiting: { token: string; release: () => void }[] = [];
 
   constructor(private readonly concurrency: number) {
     if (concurrency < 1) throw new Error('A concorrencia da fila precisa ser >= 1.');
@@ -23,9 +23,20 @@ export class BuildQueue {
     return this.waiting.length;
   }
 
-  public async run<T>(task: () => Promise<T>): Promise<T> {
+  /**
+   * Quantos builds estao na frente de `token`.
+   *
+   * `0` e a proxima da fila; `-1` e "nao esta esperando" — ou porque ja rodou,
+   * ou porque nunca entrou. Quem le decide o que fazer com a distincao: para o
+   * editor, `-1` num build `queued` significa que ele acabou de ganhar a vaga.
+   */
+  public positionOf(token: string): number {
+    return this.waiting.findIndex((entry) => entry.token === token);
+  }
+
+  public async run<T>(token: string, task: () => Promise<T>): Promise<T> {
     if (this.running >= this.concurrency) {
-      await new Promise<void>((resolve) => this.waiting.push(resolve));
+      await new Promise<void>((release) => this.waiting.push({ token, release }));
     }
     this.running += 1;
     try {
@@ -34,7 +45,7 @@ export class BuildQueue {
       this.running -= 1;
       // `shift`, nao `pop`: quem chegou primeiro roda primeiro. Com `pop`, uma
       // fila que nunca esvazia deixaria o primeiro pedido esperando para sempre.
-      this.waiting.shift()?.();
+      this.waiting.shift()?.release();
     }
   }
 }

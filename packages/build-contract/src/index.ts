@@ -22,6 +22,39 @@ import type { ValidationIssue } from '@vislow/config-schema';
 export type BuildStatus = 'queued' | 'running' | 'done' | 'failed';
 
 /**
+ * Etapa dentro de um build `running`.
+ *
+ * O `status` sozinho diz "esta rodando" e cala por doze segundos — indistinguivel
+ * de travado. A etapa e o que o servidor SABE e o cliente nao tinha como
+ * adivinhar. Cinco nomes, nao os sete passos do pipeline: `copyTemplate` e
+ * `generateProject` sao a mesma coisa para quem espera, e `linkDependencies` e
+ * `vendorInternalPackages` tambem.
+ *
+ * Ordem, e nao peso: quanto cada etapa custa e medicao que envelhece, e isso e
+ * assunto de quem desenha a barra.
+ */
+export type BuildStep =
+  /** Schema, regras semanticas e template preparado. */
+  | 'validating'
+  /** Scaffold do template + os tres arquivos do codegen. */
+  | 'generating'
+  /** `node_modules` por hardlink + os pacotes `@vislow/*`. */
+  | 'linking'
+  /** `pbiviz package`. E a etapa longa — ~7,5 s dos ~12 s medidos. */
+  | 'compiling'
+  /** O portao do ADR-11. Nada sai do worker sem passar por ele. */
+  | 'inspecting';
+
+/** A ordem em que o pipeline percorre as etapas. O cliente conta a partir dela. */
+export const BUILD_STEP_ORDER: readonly BuildStep[] = [
+  'validating',
+  'generating',
+  'linking',
+  'compiling',
+  'inspecting',
+];
+
+/**
  * Codigos de falha. Existem para que o suporte seja possivel: sem eles o
  * usuario so consegue relatar "nao funcionou" (RNF-11).
  */
@@ -64,6 +97,14 @@ export interface BuildRecord {
   finishedAt?: string;
   error?: BuildError;
   metrics?: BuildMetrics;
+  /** Onde o pipeline esta. So enquanto `status` for `running`. */
+  step?: BuildStep;
+  /**
+   * Quantos builds ha na frente deste. So enquanto `status` for `queued`, e
+   * calculado na LEITURA: gravar no registro exigiria reescrever todos os
+   * enfileirados a cada vaga que abre, para um numero que ninguem consultou.
+   */
+  queuePosition?: number;
 }
 
 /** Corpo de `POST /builds`. */

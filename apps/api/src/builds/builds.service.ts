@@ -70,8 +70,23 @@ export class BuildsService {
     return record;
   }
 
+  /**
+   * O registro como o cliente o ve.
+   *
+   * A posicao na fila e DERIVADA aqui, e nao gravada: ela muda para todo mundo a
+   * cada vaga que abre, e gravar significaria reescrever N registros por evento
+   * para um numero que talvez ninguem consulte. Calculada na leitura, ela nunca
+   * esta velha.
+   */
   public find(id: string): BuildRecord | undefined {
-    return this.builds.get(id)?.record;
+    const record = this.builds.get(id)?.record;
+    if (!record) return undefined;
+    if (record.status !== 'queued') return record;
+
+    const position = this.queue.positionOf(id);
+    // `-1` e a janela entre ganhar a vaga e o `patch` para `running`: dizer
+    // "ainda ha builds na frente" ali seria mentira, e `0` ja e a verdade.
+    return { ...record, queuePosition: Math.max(0, position) };
   }
 
   /** O artefato so existe entre o fim do build e o vencimento do TTL. */
@@ -84,12 +99,21 @@ export class BuildsService {
   private async process(id: string, spec: VisualSpec): Promise<void> {
     const started = Date.now();
 
-    await this.queue.run(async () => {
+    // O id e o token da fila: e o que permite responder "quantos na sua frente"
+    // sem a fila conhecer o conceito de build.
+    await this.queue.run(id, async () => {
       this.patch(id, { status: 'running' });
       this.logger.log(`build ${id} iniciada — ${spec.project.name}`);
 
       try {
-        const outcome = await runBuildPipeline(spec, id, this.pipelineOptions);
+        const outcome = await runBuildPipeline(spec, id, {
+          ...this.pipelineOptions,
+          // A etapa vira estado do registro na hora. O cliente pergunta a cada
+          // segundo e le a ultima; nenhuma etapa precisa ser "entregue".
+          onStep: (step) => {
+            this.patch(id, { step });
+          },
+        });
         this.complete(id, outcome, Date.now() - started);
         this.logger.log(
           `build ${id} concluida em ${String(Date.now() - started)} ms — ` +

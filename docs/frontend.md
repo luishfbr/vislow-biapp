@@ -130,7 +130,7 @@ duplicaria o visual em vez de atualizá-lo.
 ```
 clique → valida (inválido: aponta os campos na árvore e no painel, e para)
        → POST /builds { spec }           → 202 { buildId }
-       → GET  /builds/:id [polling 1 s]  → "na fila..." / "compilando..."
+       → GET  /builds/:id [polling 1 s]  → fila (posição) / etapa do pipeline
        → GET  /builds/:id/artifact       → blob
        → saveAs + bump da versão + instruções de importação
 ```
@@ -138,6 +138,19 @@ clique → valida (inválido: aponta os campos na árvore e no painel, e para)
 As fases são nomeadas porque a espera passou a existir: ~12 s medidos, e "Gerando..." parado por doze segundos é
 indistinguível de travado. O download só acontece após um estado **terminal** — pedir o artefato antes traz um
 `409`, não um pacote.
+
+**A tela inteira fica travada durante a build**, num `<dialog>` modal (`BuildProgressDialog`). Não é enfeite: a
+spec já subiu, então continuar arrastando no canvas produz um pacote que não corresponde ao que está na tela, e
+nada avisaria. O bloqueio vem do `showModal()` nativo — o resto da página sai do top layer e para de receber
+clique, foco e Tab de uma vez —, e o que se **acrescenta** é o contrário do padrão dos outros diálogos: `Esc` e
+clique no backdrop são recusados enquanto `busy`. Não há cancelar: o servidor compilaria de qualquer jeito.
+
+**A barra tem cinco segmentos de larguras diferentes**, proporcionais ao custo medido de cada etapa
+(`STEP_EXPECTED_MS` em `lib/buildProgress.ts` — os pesos são derivados dessa tabela por divisão, não de uma
+segunda lista). Dentro da fatia da etapa atual a razão rasteja por uma curva que satura e **nunca alcança o
+começo da fatia seguinte**, então a chegada da próxima etapa é sempre um avanço. A razão é **monotônica** por
+`Math.max` com o quadro anterior: o poll é de 1 s e uma etapa que chega fora de ordem não pode fazer a barra
+voltar. Essa aritmética mora fora do React e se testa lá, como a de `canvasGeometry.ts`.
 
 Cada `BuildErrorCode` vira uma frase que diz o que fazer, num `switch` exaustivo por compilador sobre o tipo de
 `@vislow/build-contract`: um código novo no servidor **quebra o build do editor** em vez de virar "erro

@@ -14,7 +14,7 @@ import {
   vendorInternalPackages,
 } from '@vislow/visual-template';
 import { MAX_JS_BYTES, MAX_PACKAGE_BYTES, describeBytes } from './budgets.js';
-import { BuildFailure } from './types.js';
+import { BuildFailure, type BuildStep } from './types.js';
 
 /**
  * O pipeline de build. Uma spec entra, um `.pbiviz` verificado sai.
@@ -49,6 +49,14 @@ export interface BuildOutcome {
 export interface PipelineOptions {
   /** Tempo duro do build inteiro. Estourou, o diretorio morre junto. */
   timeoutMs: number;
+  /**
+   * Chamado ao ENTRAR em cada etapa, nunca ao sair: o que o usuario espera ler e
+   * o que esta acontecendo agora, e a etapa longa e justamente a que nao teria
+   * aviso nenhum se o sinal fosse na conclusao.
+   *
+   * Opcional porque o pipeline roda sem plateia nos testes e no gate de aceite.
+   */
+  onStep?: (step: BuildStep) => void;
 }
 
 export const DEFAULT_TIMEOUT_MS = 180_000;
@@ -206,8 +214,13 @@ export async function runBuildPipeline(
   buildId: string,
   options: PipelineOptions = { timeoutMs: DEFAULT_TIMEOUT_MS },
 ): Promise<BuildOutcome> {
+  const step = (name: BuildStep): void => {
+    options.onStep?.(name);
+  };
+
   // 1. Validacao. Antes de tocar o disco: uma spec invalida nao merece um
   //    diretorio temporario, e o erro precisa citar o CAMPO, nao o build.
+  step('validating');
   const validation = validateSpec(spec);
   if (validation.kind === 'invalid') {
     throw new BuildFailure('SPEC_INVALID', 'A spec do visual nao e valida.', {
@@ -235,6 +248,7 @@ export async function runBuildPipeline(
 
   try {
     // 2. Scaffold estatico.
+    step('generating');
     await copyTemplate(workdir);
 
     // 3. Codegen: os tres arquivos que distinguem um visual de outro.
@@ -245,6 +259,7 @@ export async function runBuildPipeline(
 
     // 4. Dependencias: hardlink da store, sem rede e sem npm. A arvore vem do
     //    lockfile do template — nunca da spec do usuario.
+    step('linking');
     try {
       await linkDependencies(workdir);
     } catch (error) {
@@ -257,6 +272,7 @@ export async function runBuildPipeline(
     await vendorInternalPackages(workdir);
 
     // 6. Compilacao de verdade.
+    step('compiling');
     try {
       await run(process.execPath, [pbivizCli(workdir), 'package'], {
         cwd: workdir,
@@ -275,6 +291,7 @@ export async function runBuildPipeline(
     }
 
     // 7. Portao. Nada sai daqui sem passar.
+    step('inspecting');
     const artifact = await readArtifact(workdir);
     const outcome = await inspectArtifact(artifact, validation.spec);
     return { ...outcome, fileName: artifactFileName(validation.spec.project.name) };

@@ -95,7 +95,53 @@ describe('build bem-sucedida', () => {
     // Baixar antes da hora traria um 409 do servidor, nao um pacote.
     expect(calls.filter((url) => url.endsWith('/artifact'))).toHaveLength(1);
     expect(phases).toContain('queued');
-    expect(phases).toContain('compiling');
+    expect(phases).toContain('running');
+  });
+
+  /**
+   * A etapa e a posicao sao o unico sinal real que a barra tem. Se elas se
+   * perdessem no caminho — e perder um campo num `JSON.parse` nao gera erro
+   * nenhum — a interface voltaria a mostrar uma barra parada, sem sintoma.
+   */
+  it('repassa a etapa do servidor e a posicao na fila', async () => {
+    vi.useFakeTimers();
+    stubFetch([
+      { json: { buildId: 'b-1', status: 'queued' } },
+      { json: { ...RECORD, status: 'queued', queuePosition: 2 } },
+      { json: { ...RECORD, status: 'running', step: 'compiling' } },
+      { json: RECORD },
+      { blob: 'pacote' },
+    ]);
+
+    const phases: BuildPhase[] = [];
+    const pending = requestBuild(spec, (phase) => phases.push(phase));
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(phases).toContainEqual({ kind: 'queued', position: 2 });
+    expect(phases).toContainEqual({ kind: 'running', step: 'compiling' });
+  });
+
+  /**
+   * Um servidor mais velho responde sem `step`. Ali o cliente precisa escolher
+   * um chute que so possa ser corrigido para a FRENTE — a primeira etapa —,
+   * porque a barra e monotonica e um chute alto demais travaria o resto.
+   */
+  it('sem etapa no registro, assume a primeira', async () => {
+    vi.useFakeTimers();
+    stubFetch([
+      { json: { buildId: 'b-1', status: 'queued' } },
+      { json: { ...RECORD, status: 'running' } },
+      { json: RECORD },
+      { blob: 'pacote' },
+    ]);
+
+    const phases: BuildPhase[] = [];
+    const pending = requestBuild(spec, (phase) => phases.push(phase));
+    await vi.runAllTimersAsync();
+    await pending;
+
+    expect(phases).toContainEqual({ kind: 'running', step: 'validating' });
   });
 });
 

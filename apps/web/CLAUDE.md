@@ -7,6 +7,10 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
   saem todos de `NODE_DESCRIPTORS`. Uma lista paralela é a quinta cópia do catálogo e a primeira a divergir.
 - **`lib/nodeComponents.ts` é o gêmeo por referência do que o codegen faz por texto.** `nodeComponents.test.ts`
   compara o nome da função com `descriptor.component` — é a única coisa ligando os dois caminhos.
+- **Durante a build, a tela inteira fica travada** — `BuildProgressDialog`, `<dialog>` com `showModal()`. A spec
+  já subiu: editar depois disso produz um pacote que não corresponde à tela. Esc e clique no backdrop são
+  recusados enquanto `busy`, ao contrário de todos os outros diálogos daqui. A aritmética da barra vive em
+  `lib/buildProgress.ts`, sem React, e é **monotônica** — a barra não volta nem com resposta fora de ordem.
 - **Seletor de zustand nunca constrói valor.** O v5 compara com `Object.is`, então devolver um `Map` ou objeto
   novo re-renderiza em loop e trava a aba. Derivação que cria objeto vive em `lib/issues.ts`, memoizada no
   componente.
