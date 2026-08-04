@@ -14,6 +14,7 @@ export type {
   BuildMetrics,
   BuildRecord,
   BuildStatus,
+  BuildStep,
 } from '@vislow/build-contract';
 
 /** Erro que o pipeline lanca para virar `BuildError` sem perder o codigo. */

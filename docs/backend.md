@@ -8,7 +8,7 @@ está em [build-visual.md](build-visual.md).
 
 ```
 POST /builds        { spec }  ->  202 { buildId, status }
-GET  /builds/:id              ->  200 { status, error?, metrics? }
+GET  /builds/:id              ->  200 { status, step?, queuePosition?, error?, metrics? }
 GET  /builds/:id/artifact     ->  200 .pbiviz  (Content-Disposition com o nome do usuário)
 ```
 
@@ -21,6 +21,19 @@ com timeout curto.
 
 `GET /builds/:id/artifact` responde **409** enquanto a build não terminou. Um 404 faria o cliente parar de
 perguntar justamente quando deveria continuar esperando.
+
+**O `status` sozinho é mudo.** `running` cala por doze segundos, e o editor não teria como distinguir isso de
+travado. Por isso o registro carrega mais dois campos, ambos opcionais e ambos só válidos no estado a que
+pertencem:
+
+- **`step`** — em qual das cinco etapas (`validating`, `generating`, `linking`, `compiling`, `inspecting`) o
+  pipeline está. O `runBuildPipeline` recebe um `onStep` opcional e o dispara ao **entrar** em cada etapa, nunca
+  ao sair: a etapa longa é justamente a que não teria aviso nenhum se o sinal fosse na conclusão. A ordem
+  canônica é `BUILD_STEP_ORDER`, no contrato; **quanto cada etapa custa não vive aqui** — é medição, e é o
+  editor quem desenha a barra.
+- **`queuePosition`** — quantos builds há na frente, calculado na **leitura** (`BuildsService.find`) a partir do
+  `BuildQueue.positionOf`. Gravar exigiria reescrever todos os enfileirados a cada vaga que abre, para um número
+  que talvez ninguém consulte.
 
 | Código | Significado |
 |---|---|

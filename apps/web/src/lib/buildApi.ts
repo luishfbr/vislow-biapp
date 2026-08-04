@@ -3,6 +3,7 @@ import {
   type BuildErrorCode,
   type BuildMetrics,
   type BuildRecord,
+  type BuildStep,
   type CreateBuildResponse,
 } from '@vislow/build-contract';
 import type { VisualSpec } from '@vislow/component-registry';
@@ -35,12 +36,19 @@ const POLL_INTERVAL_MS = 1000;
  */
 const POLL_TIMEOUT_MS = 240_000;
 
-/** Fases visiveis do export. Discriminante de string, como no resto do projeto. */
+/**
+ * Fases visiveis do export. Discriminante de string, como no resto do projeto.
+ *
+ * `queued` e `running` carregam o que o servidor sabe e o cliente nao teria como
+ * inventar: quantos builds ha na frente, e em qual das cinco etapas o pipeline
+ * esta. Sem esses dois campos a unica barra honesta seria uma barra
+ * indeterminada.
+ */
 export type BuildPhase =
   | { kind: 'idle' }
   | { kind: 'uploading' }
-  | { kind: 'queued' }
-  | { kind: 'compiling' }
+  | { kind: 'queued'; position: number }
+  | { kind: 'running'; step: BuildStep }
   | { kind: 'done'; fileName: string; metrics: BuildMetrics | null }
   | { kind: 'error'; message: string; hint: string | null; issues: ValidationIssue[] };
 
@@ -207,9 +215,16 @@ async function pollUntilTerminal(
     const record = (await response.json()) as BuildRecord;
     if (isTerminal(record.status)) return record;
 
-    // `queued` e `compiling` sao fases diferentes para o usuario: uma diz "a fila
-    // esta ocupada", a outra diz "e a sua vez e esta demorando".
-    onPhase({ kind: record.status === 'queued' ? 'queued' : 'compiling' });
+    // `queued` e `running` sao fases diferentes para o usuario: uma diz "a fila
+    // esta ocupada", a outra diz "e a sua vez, e aqui esta o que falta".
+    if (record.status === 'queued') {
+      onPhase({ kind: 'queued', position: record.queuePosition ?? 0 });
+    } else {
+      // Um servidor mais velho nao manda `step`. `validating` e o unico chute
+      // seguro: e a primeira etapa, entao a barra so pode andar para a frente
+      // quando a verdade chegar.
+      onPhase({ kind: 'running', step: record.step ?? 'validating' });
+    }
 
     if (Date.now() > deadline) {
       throw new Error('A API parou de responder sobre esta build.');

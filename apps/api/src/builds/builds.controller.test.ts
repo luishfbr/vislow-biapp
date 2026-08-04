@@ -116,6 +116,28 @@ describe('BuildsController', () => {
   });
 
   /**
+   * A etapa e a posicao na fila atravessam o fio inteiras.
+   *
+   * Parece trivial e nao e: sao os dois campos novos do `BuildRecord`, e um
+   * serializador que filtrasse propriedades desconhecidas os apagaria em
+   * silencio — o editor voltaria a mostrar uma barra parada, sem nenhum erro
+   * para explicar por que.
+   */
+  it('GET /builds/:id leva a etapa e a posicao na fila ate o cliente', async () => {
+    const base = fake.records.get('abcd1234')!;
+
+    fake.records.set('abcd1234', { ...base, status: 'queued', queuePosition: 2 });
+    const waiting = await request(http()).get('/builds/abcd1234').expect(200);
+    expect((waiting.body as BuildRecord).queuePosition).toBe(2);
+
+    fake.records.set('abcd1234', { ...base, status: 'running', step: 'compiling' });
+    const running = await request(http()).get('/builds/abcd1234').expect(200);
+    expect((running.body as BuildRecord).step).toBe('compiling');
+
+    fake.records.set('abcd1234', base);
+  });
+
+  /**
    * 409, nao 404: a build EXISTE, so nao terminou. Um 404 faria o cliente parar
    * de perguntar justamente quando deveria continuar esperando.
    */

@@ -24,8 +24,8 @@ describe('BuildQueue', () => {
     let running = 0;
     let peak = 0;
 
-    const tasks = gates.map((gate) =>
-      queue.run(async () => {
+    const tasks = gates.map((gate, index) =>
+      queue.run(`t${String(index)}`, async () => {
         running += 1;
         peak = Math.max(peak, running);
         await gate.promise;
@@ -46,7 +46,7 @@ describe('BuildQueue', () => {
     const queue = new BuildQueue(1);
     const order: number[] = [];
     const tasks = [1, 2, 3].map((n) =>
-      queue.run(async () => {
+      queue.run(`t${String(n)}`, async () => {
         order.push(n);
         await Promise.resolve();
       }),
@@ -63,21 +63,59 @@ describe('BuildQueue', () => {
    */
   it('libera a vaga mesmo quando a tarefa falha', async () => {
     const queue = new BuildQueue(1);
-    await expect(queue.run(() => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
-    await expect(queue.run(() => Promise.resolve('ok'))).resolves.toBe('ok');
+    await expect(queue.run('a', () => Promise.reject(new Error('boom')))).rejects.toThrow('boom');
+    await expect(queue.run('b', () => Promise.resolve('ok'))).resolves.toBe('ok');
   });
 
   it('conta quantos esperam vaga', async () => {
     const queue = new BuildQueue(1);
     const gate = deferred();
-    const first = queue.run(() => gate.promise);
+    const first = queue.run('a', () => gate.promise);
     await Promise.resolve();
 
-    const second = queue.run(() => Promise.resolve());
+    const second = queue.run('b', () => Promise.resolve());
     expect(queue.queued).toBe(1);
 
     gate.resolve();
     await Promise.all([first, second]);
     expect(queue.queued).toBe(0);
+  });
+
+  /**
+   * A posicao e o que o editor mostra durante a espera. O que se prova aqui e
+   * que ela ANDA: uma fila que sempre respondesse "ha alguem na sua frente" e
+   * tao muda quanto nao responder nada.
+   */
+  it('diz quantos estao na frente, e o numero decresce conforme as vagas abrem', async () => {
+    const queue = new BuildQueue(1);
+    const gates = [deferred(), deferred(), deferred()];
+    const tasks = gates.map((gate, index) => queue.run(`t${String(index)}`, () => gate.promise));
+
+    await Promise.resolve();
+    // `t0` pegou a unica vaga; os outros dois esperam, em ordem.
+    expect(queue.positionOf('t1')).toBe(0);
+    expect(queue.positionOf('t2')).toBe(1);
+
+    gates[0]?.resolve();
+    await gates[0]?.promise;
+    await Promise.resolve();
+    expect(queue.positionOf('t2')).toBe(0);
+
+    for (const gate of gates) gate.resolve();
+    await Promise.all(tasks);
+  });
+
+  it('devolve -1 para quem nao espera — rodando, terminado ou inexistente', async () => {
+    const queue = new BuildQueue(1);
+    const gate = deferred();
+    const running = queue.run('a', () => gate.promise);
+    await Promise.resolve();
+
+    expect(queue.positionOf('a')).toBe(-1);
+    expect(queue.positionOf('nunca-existiu')).toBe(-1);
+
+    gate.resolve();
+    await running;
+    expect(queue.positionOf('a')).toBe(-1);
   });
 });

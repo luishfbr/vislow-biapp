@@ -9,6 +9,12 @@ import { useEffect, useRef } from 'react';
  * usuario nao sabe o que fazer com o arquivo que acabou de baixar. Usa o
  * `<dialog>` nativo: Esc, backdrop e retencao de foco vem de graca, e nao ha
  * biblioteca de modal no projeto.
+ *
+ * Os passos saem daqui como componente proprio (`ImportSteps`) porque o dialogo
+ * de compilacao termina neles: quando o pacote fica pronto, e o MESMO dialogo
+ * que passa a mostra-los, em vez de fechar e abrir outro por cima. Este dialogo
+ * continua existindo para o link "Como importar", que e consultado fora do
+ * fluxo de export.
  */
 
 const STEPS: { title: string; detail: string }[] = [
@@ -30,6 +36,27 @@ const STEPS: { title: string; detail: string }[] = [
       'Reexporte o MESMO projeto e importe de novo: o identificador e reusado, entao o Power BI atualiza o visual existente em vez de duplicar.',
   },
 ];
+
+/** So a lista. Sem dialogo, sem cabecalho — quem monta a moldura e quem usa. */
+export function ImportSteps() {
+  return (
+    <ol className="flex flex-col gap-3 px-5 py-4">
+      {STEPS.map((step, index) => (
+        <li key={step.title} className="flex gap-3">
+          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+            {index + 1}
+          </span>
+          <div>
+            <p className="text-xs font-medium">{step.title}</p>
+            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+              {step.detail}
+            </p>
+          </div>
+        </li>
+      ))}
+    </ol>
+  );
+}
 
 export interface ImportInstructionsProps {
   open: boolean;
@@ -61,21 +88,7 @@ export function ImportInstructions({ open, filename, onClose }: ImportInstructio
         <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{filename}</p>
       </div>
 
-      <ol className="flex flex-col gap-3 px-5 py-4">
-        {STEPS.map((step, index) => (
-          <li key={step.title} className="flex gap-3">
-            <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-700 dark:bg-sky-950 dark:text-sky-300">
-              {index + 1}
-            </span>
-            <div>
-              <p className="text-xs font-medium">{step.title}</p>
-              <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
-                {step.detail}
-              </p>
-            </div>
-          </li>
-        ))}
-      </ol>
+      <ImportSteps />
 
       <div className="flex justify-end border-t border-slate-200 px-5 py-3 dark:border-slate-700">
         <button
