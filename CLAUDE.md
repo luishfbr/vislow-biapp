@@ -40,6 +40,19 @@ A ordem vive no `turbo.json` e vale igual aqui e no CI (ADR-17). Os scripts `lin
 em `packages/visual-template/deps/`, e cada build monta o `node_modules` por **hardlink** — nunca symlink, que
 reintroduziria o achado 39. Passo novo que precise de rede está no lugar errado: vai para o preparo.
 
+## Planejamento: todo plano passa pelo `grilling`
+
+**Antes de apresentar qualquer plano de implementação** — feature nova, refatoração, sprint, mudança de
+arquitetura —, invoque a skill **`grilling`** (`.claude/skills/grilling/`) e conduza a entrevista com ela: uma
+pergunta por vez, cada uma com a sua recomendação, descendo a árvore de decisão até o entendimento comum. Só
+depois escreva o plano. Fato que dá para descobrir lendo o repo você descobre sozinho; **decisão é do usuário**.
+
+Vale também quando o plano nasce dentro do plan mode: o `grilling` vem **antes** do `ExitPlanMode`, nunca
+depois. O usuário pode disparar a mesma coisa à mão com `/grill-me`.
+
+O `grilling` decide **o que** construir. As duas skills de frontend abaixo decidem **como a UI fica** — quando a
+feature mexe em UI, os três rodam, nesta ordem: `grilling` → `frontend-design` → código → `web-design-guidelines`.
+
 ## Frontend: as duas skills são obrigatórias
 
 **Toda feature que cria ou reformula UI** — em `apps/web` **ou** em `packages/visual-kit` — usa as duas skills
