@@ -1,6 +1,7 @@
 'use client';
 
 import { NODE_DESCRIPTORS, acceptsChildren, type NodeKind } from '@vislow/component-registry';
+import { Plus } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { searchComponents } from '@/lib/componentSearch';
 import { selectSelectedNode, useEditorStore } from '@/store/useEditorStore';
@@ -60,13 +61,13 @@ export function AddComponentButton() {
           setOpen(true);
         }}
         aria-haspopup="dialog"
-        className="flex w-full items-center gap-2 rounded-md border border-sky-200 bg-sky-50 px-3 py-2 text-left text-xs font-medium text-sky-900 transition-colors hover:border-sky-300 hover:bg-sky-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:border-sky-900 dark:bg-sky-950 dark:text-sky-100 dark:hover:bg-sky-900"
+        // O repouso e /5 e o hover e /10: a varredura tinha deixado os dois em
+        // /10 e o botao parava de responder ao ponteiro.
+        className="flex w-full items-center gap-2 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-left text-xs font-medium text-primary transition-colors hover:border-primary/40 hover:bg-primary/10 outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        <span aria-hidden className="text-sm leading-none">
-          +
-        </span>
+        <Plus className="size-4 shrink-0" />
         Adicionar componente
-        <kbd className="ml-auto rounded border border-sky-300 px-1 py-0.5 font-mono text-[10px] font-normal text-sky-700 dark:border-sky-800 dark:text-sky-300">
+        <kbd className="ml-auto rounded border border-primary/40 px-1 py-0.5 font-mono text-micro font-normal text-primary">
           {shortcut}
         </kbd>
       </button>
@@ -158,11 +159,13 @@ export function AddComponentDialog({ open, onClose }: AddComponentDialogProps) {
   };
 
   // A MESMA regra de `addNode`, dita em portugues: dentro da selecao quando ela
-  // aceita filhos, senao logo depois dela.
-  const targetLabel = NODE_DESCRIPTORS[target.kind].label;
-  const destination = acceptsChildren(target)
-    ? `Entra dentro de ${targetLabel}`
-    : `Entra logo depois de ${targetLabel}`;
+  // aceita filhos, senao logo depois dela. Sem selecao, a regra e a mesma
+  // aplicada a raiz — e e isso que a frase precisa dizer, em vez de sumir.
+  const destination = !target
+    ? 'Entra na prancheta'
+    : acceptsChildren(target)
+      ? `Entra dentro de ${NODE_DESCRIPTORS[target.kind].label}`
+      : `Entra logo depois de ${NODE_DESCRIPTORS[target.kind].label}`;
 
   return (
     <dialog
@@ -174,10 +177,10 @@ export function AddComponentDialog({ open, onClose }: AddComponentDialogProps) {
         if (event.target === dialog.current) onClose();
       }}
       aria-labelledby="add-component-title"
-      className="m-auto w-[30rem] max-w-[calc(100vw-2rem)] rounded-lg bg-white p-0 text-slate-800 shadow-xl backdrop:bg-slate-900/40 dark:bg-slate-900 dark:text-slate-100"
+      className="m-auto w-[30rem] max-w-[calc(100vw-2rem)] rounded-lg bg-card p-0 text-foreground shadow-xl backdrop:bg-black/50"
     >
       <div className="flex flex-col">
-        <div className="border-b border-slate-200 px-4 py-3 dark:border-slate-700">
+        <div className="border-b border-border px-4 py-3">
           <h2 id="add-component-title" className="sr-only">
             Adicionar componente
           </h2>
@@ -203,7 +206,7 @@ export function AddComponentDialog({ open, onClose }: AddComponentDialogProps) {
             // ortografico so atrapalhariam uma busca por nome de componente.
             autoComplete="off"
             spellCheck={false}
-            className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none placeholder:text-slate-400 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:focus:ring-sky-900"
+            className="w-full rounded-md border border-input px-3 py-2 text-ui outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
           />
         </div>
 
@@ -218,7 +221,7 @@ export function AddComponentDialog({ open, onClose }: AddComponentDialogProps) {
         </p>
 
         {results.length === 0 ? (
-          <p className="px-4 py-8 text-center text-xs wrap-break-word text-slate-500 dark:text-slate-400">
+          <p className="px-4 py-8 text-center text-xs wrap-break-word text-muted-foreground">
             Nenhum componente para <span className="font-medium">{query}</span>. Tente “grafico”,
             “numero” ou “texto”.
           </p>
@@ -255,19 +258,19 @@ export function AddComponentDialog({ open, onClose }: AddComponentDialogProps) {
                     setActive(index);
                   }}
                   className={`block w-full px-4 py-2 text-left transition-colors ${
-                    highlighted ? 'bg-sky-50 dark:bg-sky-950' : ''
+                    highlighted ? 'bg-primary/10' : ''
                   }`}
                 >
                   <span
                     className={`block text-xs font-medium ${
                       highlighted
-                        ? 'text-sky-900 dark:text-sky-100'
-                        : 'text-slate-800 dark:text-slate-100'
+                        ? 'text-primary'
+                        : 'text-foreground'
                     }`}
                   >
                     {descriptor.label}
                   </span>
-                  <span className="block text-[11px] leading-tight text-slate-500 dark:text-slate-400">
+                  <span className="block text-label leading-tight text-muted-foreground">
                     {descriptor.hint}
                   </span>
                 </button>
@@ -282,11 +285,11 @@ export function AddComponentDialog({ open, onClose }: AddComponentDialogProps) {
           clicar. A paleta antiga dizia as duas metades da regra e deixava o
           usuario decidir qual valia para ele.
         */}
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 px-4 py-2 dark:border-slate-700">
-          <p className="min-w-0 truncate text-[11px] text-slate-500 dark:text-slate-400">
+        <div className="flex items-center justify-between gap-3 border-t border-border px-4 py-2">
+          <p className="min-w-0 truncate text-label text-muted-foreground">
             {destination}
           </p>
-          <p className="hidden shrink-0 text-[10px] text-slate-400 sm:block">
+          <p className="hidden shrink-0 text-micro text-muted-foreground sm:block">
             ↑↓ navegar · ↵ adicionar · Esc fechar
           </p>
         </div>

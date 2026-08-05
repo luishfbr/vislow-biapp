@@ -163,7 +163,12 @@ describe('quando termina', () => {
     expect(container.querySelector('[role="progressbar"]')?.getAttribute('aria-valuenow')).toBe(
       '100',
     );
-    expect(container.textContent).toContain('221 KB');
+    // Espaco INSECAVEL entre numero e unidade, afirmado pelo PONTO DE CODIGO e
+    // nao pela aparencia: escrito como espaco comum este teste passaria por
+    // engano, porque os dois sao indistinguiveis no editor. Vem de
+    // `formatKilobytes` (achado 62), que tambem poe a virgula decimal do pt-BR.
+    expect(container.textContent).toContain('221\u00a0KB');
+    expect(container.textContent).not.toContain('221 KB');
 
     act(() => {
       vi.runAllTimers();

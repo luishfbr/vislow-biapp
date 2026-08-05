@@ -43,6 +43,29 @@ export function createNode(
 }
 
 /**
+ * Copia um no e toda a sua descendencia com IDS NOVOS.
+ *
+ * O id novo em cada nivel nao e detalhe: `NODE_ID_PATTERN` nao exige unicidade,
+ * mas `validateSpec` reprova id repetido, e antes disso `findNode` e `replace`
+ * param no PRIMEIRO que casam — uma copia com o id do original faria toda edicao
+ * do duplicado acertar o original, em silencio.
+ *
+ * As props e a caixa vem por copia rasa de proposito: sao objetos de valor que
+ * ninguem muta no lugar (toda escrita passa por `setNodeProps`/`setNodeRect`,
+ * que criam objeto novo).
+ */
+export function cloneSubtree(node: SpecNode): SpecNode {
+  const copy: SpecNode = {
+    id: nextNodeId(node.kind),
+    kind: node.kind,
+    props: { ...node.props },
+  };
+  if (node.rect) copy.rect = { ...node.rect };
+  if (node.children) copy.children = node.children.map(cloneSubtree);
+  return copy;
+}
+
+/**
  * Papeis que um no novo deve ligar: o primeiro declarado de cada tipo exigido.
  *
  * Existe para o editor. `createNode` sozinho deixa o campo em branco de

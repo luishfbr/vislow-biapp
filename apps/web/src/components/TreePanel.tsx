@@ -6,7 +6,10 @@ import {
   parentOf,
   type SpecNode,
 } from '@vislow/component-registry';
+import { ArrowDown, ArrowUp, Circle, X } from 'lucide-react';
 import { useMemo } from 'react';
+import { PanelSection } from '@/components/PanelSection';
+import { Button } from '@/components/ui/button';
 import { issuesByNode, markedAncestors } from '@/lib/issues';
 import { useEditorStore } from '@/store/useEditorStore';
 
@@ -67,22 +70,21 @@ function TreeRow({
         }}
         aria-current={selected}
         style={{ paddingLeft: `${String(depth * 0.75 + 0.5)}rem` }}
-        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-xs transition-colors ${
+        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-body transition-colors ${
           selected
-            ? 'bg-sky-100 font-medium text-sky-900 dark:bg-sky-950 dark:text-sky-100'
-            : 'text-slate-700 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800'
+            ? 'bg-primary/10 font-medium text-primary'
+            : 'text-foreground hover:bg-muted'
         }`}
       >
         <span className="truncate">{describe(node)}</span>
         {faulty && (
           // Marca tambem os ANCESTRAIS: um problema num no profundo deixaria o
           // export bloqueado sem indicio nenhum na parte visivel da arvore.
-          <span
+          <Circle
+            role="img"
             aria-label="tem campo pendente"
-            className="ml-auto shrink-0 text-[10px] text-amber-600 dark:text-amber-400"
-          >
-            ●
-          </span>
+            className="ml-auto size-2 shrink-0 fill-current text-warning"
+          />
         )}
       </button>
       {node.children?.map((child) => (
@@ -91,11 +93,6 @@ function TreeRow({
     </>
   );
 }
-
-const TOOL =
-  'rounded border border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-600 ' +
-  'enabled:hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 ' +
-  'dark:border-slate-600 dark:text-slate-300 dark:enabled:hover:bg-slate-800';
 
 export function TreePanel() {
   const spec = useEditorStore((s) => s.spec);
@@ -113,13 +110,14 @@ export function TreePanel() {
     return withAncestors;
   }, [spec, issues]);
 
-  const parent = parentOf(spec.root, selectedId);
+  const parent = selectedId === null ? null : parentOf(spec.root, selectedId);
   const siblings = parent?.children ?? [];
   const index = siblings.findIndex((child) => child.id === selectedId);
 
   // O botao so fica ativo quando a operacao seria aceita — as mesmas condicoes
   // que `moveNode` e `removeNode` checam. Botao ativo que nao faz nada e a
-  // versao de interface do no-op silencioso.
+  // versao de interface do no-op silencioso. Sem selecao cai no mesmo caso da
+  // raiz: nao ha no para subir, descer ou apagar.
   const isRoot = parent === null;
   const canMoveUp = !isRoot && index > 0;
   const canMoveDown = !isRoot && index >= 0 && index < siblings.length - 1;
@@ -127,15 +125,15 @@ export function TreePanel() {
   const empty = (spec.root.children?.length ?? 0) === 0;
 
   return (
-    <section className="flex min-h-0 flex-1 flex-col px-3 pb-3">
-      <div className="mb-1.5 flex items-center justify-between gap-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Composicao
-        </h2>
+    <PanelSection
+      title="Composicao"
+      grow
+      className="px-3 pb-3"
+      actions={
         <div className="flex gap-1">
-          <button
-            type="button"
-            className={TOOL}
+          <Button
+            variant="ghost"
+            size="icon-sm"
             disabled={!canMoveUp}
             onClick={() => {
               moveSelected(-1);
@@ -143,11 +141,11 @@ export function TreePanel() {
             title="Mover para cima"
             aria-label="Mover para cima"
           >
-            ↑
-          </button>
-          <button
-            type="button"
-            className={TOOL}
+            <ArrowUp />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             disabled={!canMoveDown}
             onClick={() => {
               moveSelected(1);
@@ -155,32 +153,32 @@ export function TreePanel() {
             title="Mover para baixo"
             aria-label="Mover para baixo"
           >
-            ↓
-          </button>
-          <button
-            type="button"
-            className={TOOL}
+            <ArrowDown />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-sm"
             disabled={isRoot}
             onClick={removeSelected}
             title={isRoot ? 'A raiz nao pode ser removida' : 'Remover'}
             aria-label="Remover"
           >
-            ✕
-          </button>
+            <X />
+          </Button>
         </div>
-      </div>
-
-      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-slate-200 bg-white py-1 dark:border-slate-700 dark:bg-slate-900">
+      }
+    >
+      <div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-card py-1">
         <TreeRow node={spec.root} depth={0} faultyIds={faultyIds} />
         {empty && (
           // Estado vazio: a raiz sozinha nao explica que falta alguma coisa, e o
           // export fica bloqueado sem que nada na tela diga o porque.
-          <p className="px-3 py-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+          <p className="px-3 py-3 text-label leading-relaxed text-muted-foreground">
             A composicao esta vazia. Use <strong className="font-medium">Adicionar componente</strong>{' '}
             para colocar a primeira peca dentro do container.
           </p>
         )}
       </div>
-    </section>
+    </PanelSection>
   );
 }

@@ -13,24 +13,22 @@ import { TOKEN_CATALOG, type TokenKind } from '@vislow/config-schema';
  */
 
 const TOKEN_LABELS: Record<string, string> = {
-  none: 'Nenhum',
-  xs: 'Minimo',
-  sm: 'Pequeno',
-  md: 'Medio',
-  base: 'Padrao',
-  lg: 'Grande',
-  xl: 'Muito grande',
-  '2xl': 'Enorme',
-  '4xl': 'Gigante',
-  full: 'Circular',
+  // Sombra. Os degraus de MEDIDA sairam do catalogo na spec 4.0.0 — espacamento,
+  // raio, espessura e tamanho de fonte viraram pixel livre, e um campo em pixel
+  // nao tem rotulo para traduzir.
+  none: 'Nenhuma',
+  sm: 'Sutil',
+  md: 'Media',
+  lg: 'Forte',
+  // Peso.
   normal: 'Normal',
   medium: 'Medio',
   semibold: 'Semi-negrito',
   bold: 'Negrito',
+  // Alinhamento.
   left: 'Esquerda',
   center: 'Centro',
   right: 'Direita',
-  thin: 'Fina',
 };
 
 /** Rotulos dos `select` do registro, que nao passam pelo catalogo de tokens. */

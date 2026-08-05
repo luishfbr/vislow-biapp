@@ -3,7 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { BUILD_STEP_ORDER } from '@vislow/build-contract';
 import type { BuildPhase } from '@/lib/buildApi';
-import { baseOf, formatElapsed, progressOf, weightOf } from '@/lib/buildProgress';
+import { Button } from '@/components/ui/button';
+import { baseOf, progressOf, weightOf } from '@/lib/buildProgress';
+import { formatKilobytes, formatSeconds } from '@/lib/formatNumber';
 
 import { ImportSteps } from './ImportInstructions';
 
@@ -145,7 +147,7 @@ export function BuildProgressDialog({ phase, fileName, onRetry, onClose }: Build
   }, [phase.kind, reducedMotion]);
 
   const failed = phase.kind === 'error';
-  const elapsed = formatElapsed(Math.max(0, now - startedAt.current));
+  const elapsed = formatSeconds(Math.max(0, now - startedAt.current));
 
   return (
     <dialog
@@ -165,13 +167,13 @@ export function BuildProgressDialog({ phase, fileName, onRetry, onClose }: Build
       // cresce com as instrucoes de importacao, e numa janela baixa o rodape
       // sairia da tela — com o `<dialog>` modal, sem barra de rolagem da pagina
       // por tras para salvar.
-      className="m-auto max-h-[calc(100vh-2rem)] w-[30rem] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-lg bg-white p-0 text-slate-800 shadow-xl backdrop:bg-slate-900/50 dark:bg-slate-900 dark:text-slate-100"
+      className="m-auto max-h-[calc(100vh-2rem)] w-[30rem] max-w-[calc(100vw-2rem)] overflow-y-auto overscroll-contain rounded-lg bg-card p-0 text-foreground shadow-xl backdrop:bg-black/50"
     >
-      <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+      <div className="border-b border-border px-5 py-4">
         <h2 id="build-progress-title" className="text-sm font-semibold">
           {failed ? 'A build falhou' : phase.kind === 'done' ? 'Pacote gerado' : 'Compilando o visual'}
         </h2>
-        <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{fileName}</p>
+        <p className="mt-1 break-all font-mono text-label text-muted-foreground">{fileName}</p>
       </div>
 
       <div className="px-5 py-4">
@@ -182,12 +184,12 @@ export function BuildProgressDialog({ phase, fileName, onRetry, onClose }: Build
           <p
             aria-live="polite"
             className={`min-w-0 wrap-break-word text-sm font-medium ${
-              failed ? 'text-red-600 dark:text-red-400' : ''
+              failed ? 'text-destructive' : ''
             }`}
           >
             {view.label}
           </p>
-          <span className="shrink-0 text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
+          <span className="shrink-0 text-label tabular-nums text-muted-foreground">
             {phase.kind === 'running' && (
               <span className="mr-2">
                 etapa {String(view.stepIndex + 1)} de {String(BUILD_STEP_ORDER.length)}
@@ -211,7 +213,7 @@ export function BuildProgressDialog({ phase, fileName, onRetry, onClose }: Build
             <div
               key={step}
               style={{ width: `${String(weightOf(step) * 100)}%` }}
-              className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-700"
+              className="h-1.5 overflow-hidden rounded-full bg-muted"
             >
               {/* `scaleX`, e nao `width`: a animacao fica na composicao, sem
                   recalcular layout doze vezes por segundo. O arredondamento da
@@ -221,7 +223,7 @@ export function BuildProgressDialog({ phase, fileName, onRetry, onClose }: Build
                 style={{
                   transform: `scaleX(${String(clamp((view.ratio - baseOf(step)) / weightOf(step)))})`,
                 }}
-                className={`h-full w-full origin-left ${failed ? 'bg-red-500' : 'bg-sky-600'} ${
+                className={`h-full w-full origin-left ${failed ? 'bg-destructive' : 'bg-primary'} ${
                   reducedMotion ? '' : 'transition-transform duration-200 ease-out'
                 }`}
               />
@@ -230,13 +232,13 @@ export function BuildProgressDialog({ phase, fileName, onRetry, onClose }: Build
         </div>
 
         {view.detail !== null && (
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+          <p className="mt-3 text-label leading-relaxed text-muted-foreground">
             {view.detail}
           </p>
         )}
 
         {busy && (
-          <p className="mt-3 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+          <p className="mt-3 text-label leading-relaxed text-muted-foreground">
             O editor fica travado até o pacote ficar pronto. A composição já subiu — o que for
             mudado agora não entra neste arquivo.
           </p>
@@ -246,36 +248,28 @@ export function BuildProgressDialog({ phase, fileName, onRetry, onClose }: Build
           // As medidas ficam a vista porque o orcamento e duro (1 MB de JS, 2 MB
           // de pacote): quem esta compondo precisa ver o custo subir antes de a
           // build ser reprovada.
-          <p className="mt-3 text-[11px] tabular-nums text-slate-500 dark:text-slate-400">
-            {(phase.metrics.packageBytes / 1024).toFixed(0)} KB · {formatElapsed(phase.metrics.durationMs)}{' '}
+          <p className="mt-3 font-mono text-micro tabular-nums text-muted-foreground">
+            {formatKilobytes(phase.metrics.packageBytes)} · {formatSeconds(phase.metrics.durationMs)}{' '}
             de compilação
           </p>
         )}
       </div>
 
       {phase.kind === 'done' && stepsVisible && (
-        <div className="border-t border-slate-200 dark:border-slate-700">
+        <div className="border-t border-border">
           <ImportSteps />
         </div>
       )}
 
       {!busy && (
-        <div className="flex justify-end gap-2 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-md px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600 dark:text-slate-300 dark:hover:bg-slate-800"
-          >
+        <div className="flex justify-end gap-2 border-t border-border px-5 py-3">
+          <Button variant="ghost" size="sm" onClick={onClose}>
             {failed ? 'Fechar' : 'Entendi'}
-          </button>
+          </Button>
           {failed && (
-            <button
-              type="button"
-              onClick={onRetry}
-              className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-600"
-            >
+            <Button size="sm" onClick={onRetry}>
               Tentar de novo
-            </button>
+            </Button>
           )}
         </div>
       )}

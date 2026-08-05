@@ -22,15 +22,45 @@ import type { FieldSpec, NodeDescriptor, NodeKind } from './types.js';
 export const CONTAINER_STACK = 'stack';
 export const CONTAINER_CANVAS = 'canvas';
 
+/**
+ * Teto das medidas de moldura, em pixel.
+ *
+ * Nao e o tamanho da prancheta: espacamento de 200px ja e mais do que qualquer
+ * composicao plausivel usa, e um teto folgado demais transforma um zero a mais
+ * digitado por engano num componente que sumiu da tela sem explicacao.
+ */
+const LENGTH_MAX = 200;
+
 /** Campos de moldura, repetidos em todo no que desenha uma superficie. */
 const SURFACE_FIELDS: FieldSpec[] = [
-  { key: 'padding', label: 'Espacamento', kind: 'token', token: 'spacing', default: 'md' },
-  { key: 'radius', label: 'Raio de borda', kind: 'token', token: 'radius', default: 'lg' },
-  { key: 'border', label: 'Borda', kind: 'token', token: 'border', default: 'none' },
+  { key: 'padding', label: 'Espacamento', kind: 'length', default: 16, min: 0, max: LENGTH_MAX },
+  { key: 'radius', label: 'Raio de borda', kind: 'length', default: 8, min: 0, max: LENGTH_MAX },
+  {
+    // `borderWidth`, e nao `border`: o campo agora e uma MEDIDA, e `border: 2`
+    // se leria como um enum cujo segundo valor foi escolhido. O nome mudou junto
+    // com o tipo, na mesma migracao, para nao deixar um rastro do enum antigo
+    // num campo que ja nao e enum.
+    key: 'borderWidth',
+    label: 'Espessura da borda',
+    kind: 'length',
+    default: 0,
+    min: 0,
+    max: 24,
+  },
   { key: 'shadow', label: 'Sombra', kind: 'token', token: 'shadow', default: 'none' },
   { key: 'background', label: 'Cor de fundo', kind: 'color', default: '#ffffff' },
   { key: 'borderColor', label: 'Cor da borda', kind: 'color', default: '#e2e8f0' },
 ];
+
+/**
+ * Faixa do tamanho de fonte, em pixel.
+ *
+ * O piso de 8 nao e arbitrario: abaixo disso o texto e ilegivel em qualquer
+ * moldura, e oferecer o valor seria oferecer um jeito de esconder conteudo sem
+ * perceber.
+ */
+const FONT_SIZE_MIN = 8;
+const FONT_SIZE_MAX = 200;
 
 /** Campos comuns a todo no que le uma serie categoria/valor. */
 const SERIES_FIELDS: FieldSpec[] = [
@@ -51,6 +81,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     label: 'Container',
     hint: 'Agrupa outros componentes: empilhados, ou posicionados livremente.',
     keywords: ['grupo', 'caixa', 'secao', 'layout', 'empilhar', 'painel', 'canvas', 'prancheta'],
+    shortcut: 'C',
     acceptsChildren: true,
     component: 'Container',
     fields: [
@@ -79,9 +110,10 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
       {
         key: 'gap',
         label: 'Espaco entre itens',
-        kind: 'token',
-        token: 'spacing',
-        default: 'sm',
+        kind: 'length',
+        default: 8,
+        min: 0,
+        max: LENGTH_MAX,
         showWhen: { key: 'placement', equals: CONTAINER_STACK },
       },
       ...SURFACE_FIELDS,
@@ -93,11 +125,19 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     label: 'Texto',
     hint: 'Titulo, rotulo ou nota. Nao le dados do modelo.',
     keywords: ['titulo', 'rotulo', 'legenda', 'nota', 'paragrafo', 'cabecalho'],
+    shortcut: 'T',
     acceptsChildren: false,
     component: 'TextNode',
     fields: [
       { key: 'content', label: 'Conteudo', kind: 'text', default: 'Texto', maxLength: 200 },
-      { key: 'fontSize', label: 'Tamanho', kind: 'token', token: 'fontSize', default: 'lg' },
+      {
+        key: 'fontSize',
+        label: 'Tamanho',
+        kind: 'length',
+        default: 18,
+        min: FONT_SIZE_MIN,
+        max: FONT_SIZE_MAX,
+      },
       { key: 'fontWeight', label: 'Peso', kind: 'token', token: 'fontWeight', default: 'bold' },
       { key: 'align', label: 'Alinhamento', kind: 'token', token: 'align', default: 'left' },
       { key: 'color', label: 'Cor', kind: 'color', default: '#1e293b' },
@@ -109,12 +149,20 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     label: 'KPI',
     hint: 'Destaca um numero unico, agregado da medida.',
     keywords: ['numero', 'cartao', 'card', 'indicador', 'metrica', 'total'],
+    shortcut: 'K',
     acceptsChildren: false,
     component: 'KpiNode',
     fields: [
       { key: 'measureRole', label: 'Valor', kind: 'role', roleKind: 'measure' },
       { key: 'label', label: 'Rotulo', kind: 'text', default: '', maxLength: 60 },
-      { key: 'valueFontSize', label: 'Tamanho do valor', kind: 'token', token: 'fontSize', default: '4xl' },
+      {
+        key: 'valueFontSize',
+        label: 'Tamanho do valor',
+        kind: 'length',
+        default: 36,
+        min: FONT_SIZE_MIN,
+        max: FONT_SIZE_MAX,
+      },
       { key: 'valueColor', label: 'Cor do valor', kind: 'color', default: '#3b82f6' },
       { key: 'labelColor', label: 'Cor do rotulo', kind: 'color', default: '#64748b' },
     ],
@@ -125,6 +173,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     label: 'Barras',
     hint: 'Compara valores entre categorias.',
     keywords: ['grafico', 'colunas', 'ranking', 'comparar', 'barra'],
+    shortcut: 'B',
     acceptsChildren: false,
     component: 'BarChartNode',
     fields: [
@@ -146,6 +195,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     label: 'Linha',
     hint: 'Mostra evolucao ao longo de uma sequencia.',
     keywords: ['grafico', 'tempo', 'serie temporal', 'tendencia', 'evolucao'],
+    shortcut: 'L',
     acceptsChildren: false,
     component: 'LineChartNode',
     fields: [
@@ -162,6 +212,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     label: 'Area',
     hint: 'Como linha, com enfase no volume acumulado.',
     keywords: ['grafico', 'tempo', 'volume', 'acumulado', 'tendencia'],
+    shortcut: 'A',
     acceptsChildren: false,
     component: 'AreaChartNode',
     fields: [
@@ -177,6 +228,7 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
     label: 'Pizza',
     hint: 'Composicao de um total. Use com poucas categorias.',
     keywords: ['grafico', 'rosca', 'donut', 'proporcao', 'participacao', 'fatia'],
+    shortcut: 'P',
     acceptsChildren: false,
     component: 'PieChartNode',
     fields: [

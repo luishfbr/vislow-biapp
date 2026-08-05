@@ -64,6 +64,56 @@ const V2_SALVA = {
   },
 };
 
+/**
+ * Uma spec v3 real: o formato em que as medidas ainda eram token.
+ *
+ * Mora na MESMA chave que a 4.0.0 usa — a `vislow:project:v3`. Nao ha chave
+ * nova, entao a unica coisa entre este arquivo e o projeto do usuario e o
+ * migrador.
+ */
+const V3_SALVA = {
+  schemaVersion: '3.0.0',
+  project: {
+    id: 'PainelSalvo4b8e',
+    name: 'Painel salvo',
+    packageVersion: '1.0.0.2',
+    artboard: { width: 1280, height: 720 },
+  },
+  data: {
+    columns: [{ name: 'valor', displayName: 'Valor', kind: 'measure', type: 'decimal' }],
+    rows: [[1200]],
+  },
+  root: {
+    id: 'container-1',
+    kind: 'container',
+    props: {
+      placement: 'canvas',
+      direction: 'column',
+      gap: 'sm',
+      padding: 'md',
+      radius: 'lg',
+      border: 'thin',
+      shadow: 'none',
+      background: '#ffffff',
+      borderColor: '#e2e8f0',
+    },
+    children: [
+      {
+        id: 'kpi-2',
+        kind: 'kpi',
+        props: {
+          measureRole: 'valor',
+          label: 'Receita',
+          valueFontSize: '4xl',
+          valueColor: '#3b82f6',
+          labelColor: '#64748b',
+        },
+        rect: { x: 10, y: 10, w: 80, h: 80 },
+      },
+    ],
+  },
+};
+
 describe('loadProject', () => {
   beforeEach(() => {
     window.localStorage.clear();
@@ -100,13 +150,28 @@ describe('loadProject', () => {
     expect(spec?.data.rows.length).toBeGreaterThan(0);
   });
 
-  it('a chave v3 tem precedencia sobre a v2 — migrar e so para quem nao migrou', () => {
+  it('a chave atual tem precedencia sobre a v2 — nao ha fallback', () => {
     window.localStorage.setItem(V2_KEY, JSON.stringify(V2_SALVA));
-    window.localStorage.setItem(V3_KEY, JSON.stringify(V2_SALVA)); // v2 na chave v3: invalida
+    // Carga irrecuperavel na chave atual: nao e v2, nao e v3, nao valida.
+    window.localStorage.setItem(V3_KEY, JSON.stringify({ schemaVersion: '3.0.0' }));
 
     // Nao cai de volta para a v2: a chave atual existe e mandou. Um fallback
     // aqui ressuscitaria em silencio um projeto que o usuario ja evoluiu.
     expect(loadProject()).toBeNull();
+  });
+
+  it('um projeto v3 na chave atual MIGRA para pixel — nao e descartado', () => {
+    // A 4.0.0 nao ganhou chave nova: o v3 de TODO usuario esta exatamente aqui.
+    // Sem este passo, subir a versao apagaria o projeto de todo mundo de uma vez.
+    window.localStorage.setItem(V3_KEY, JSON.stringify(V3_SALVA));
+
+    const spec = loadProject();
+    expect(spec).not.toBeNull();
+    expect(validateSpec(spec).kind).toBe('valid');
+    expect(spec?.project.id).toBe('PainelSalvo4b8e');
+    expect(spec?.root.props.padding).toBe(16); // era 'md'
+    expect(spec?.root.props.borderWidth).toBe(1); // era border: 'thin'
+    expect(spec?.root.children?.[0]?.props.valueFontSize).toBe(36); // era '4xl'
   });
 
   it('carga adulterada e descartada, nao explode', () => {

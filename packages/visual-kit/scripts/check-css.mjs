@@ -38,9 +38,28 @@ const CSS = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist', 'styles.
  * Escolha utilidades com UMA origem no fonte. `absolute`, por exemplo, nao serve
  * para conferir o `CanvasSlot`: a sobreposicao de teclado dos graficos tambem a
  * produz, e a regra sobreviveria a perda dela no slot.
+ *
+ * A LISTA MUDOU NA SPEC 4.0.0. Ela conferia raio, tamanho de fonte e
+ * espacamento, que eram mapas de token — na 4.0.0 essas tres viraram medida
+ * livre em pixel, aplicada por `style`, e nao existe mais classe para conferir.
+ * As que ficaram cobrem uma origem cada, e juntas cobrem todo mapa restante:
+ *
+ *   flex-row        -> DIRECTION_CLASS
+ *   text-right      -> ALIGN_CLASS
+ *   font-medium     -> FONT_WEIGHT_CLASS
+ *   shadow-sm       -> SHADOW_CLASS
+ *   overflow-hidden -> CanvasSlot
+ *   p-4             -> states.tsx (a moldura dos estados vazio e de erro)
  */
 const PREFIX = 'pbi\\:';
-const UTILITIES = ['p-4', 'rounded-xl', 'text-lg', 'shadow-sm', 'overflow-hidden'];
+const UTILITIES = [
+  'flex-row',
+  'text-right',
+  'font-medium',
+  'shadow-sm',
+  'overflow-hidden',
+  'p-4',
+];
 const REQUIRED = UTILITIES.map((utility) => PREFIX + utility);
 
 /**

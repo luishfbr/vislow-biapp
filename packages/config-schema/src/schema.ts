@@ -1,13 +1,10 @@
 import {
-  ALIGN,
-  BORDER,
-  COLOR_PATTERN,
-  FONT_SIZE,
-  FONT_WEIGHT,
-  RADIUS,
-  SHADOW,
-  SPACING,
-} from './tokens.js';
+  LEGACY_BORDER,
+  LEGACY_FONT_SIZE,
+  LEGACY_RADIUS,
+  LEGACY_SPACING,
+} from './legacyTokens.js';
+import { ALIGN, COLOR_PATTERN, FONT_WEIGHT, SHADOW } from './tokens.js';
 
 /**
  * Versao do schema (RN-09/RN-12). Semver.
@@ -53,17 +50,17 @@ export const visualConfigSchema = {
     }),
     chartType: enumOf(['bar', 'kpi']),
     layout: object({
-      padding: enumOf(SPACING),
-      radius: enumOf(RADIUS),
+      padding: enumOf(LEGACY_SPACING),
+      radius: enumOf(LEGACY_RADIUS),
       shadow: enumOf(SHADOW),
-      border: enumOf(BORDER),
+      border: enumOf(LEGACY_BORDER),
       surfaceColor: color,
       borderColor: color,
     }),
     header: object({
       show: { type: 'boolean' },
       text: { type: 'string', maxLength: 200 },
-      fontSize: enumOf(FONT_SIZE),
+      fontSize: enumOf(LEGACY_FONT_SIZE),
       fontWeight: enumOf(FONT_WEIGHT),
       align: enumOf(ALIGN),
       textColor: color,
@@ -74,18 +71,18 @@ export const visualConfigSchema = {
     }),
     bar: object({
       accentColor: color,
-      barRadius: enumOf(RADIUS),
+      barRadius: enumOf(LEGACY_RADIUS),
       showGridLines: { type: 'boolean' },
       gridColor: color,
       showValueLabels: { type: 'boolean' },
       valueLabelColor: color,
-      valueLabelSize: enumOf(FONT_SIZE),
+      valueLabelSize: enumOf(LEGACY_FONT_SIZE),
       categoryLabelColor: color,
     }),
     kpi: object({
       accentColor: color,
-      valueFontSize: enumOf(FONT_SIZE),
-      labelFontSize: enumOf(FONT_SIZE),
+      valueFontSize: enumOf(LEGACY_FONT_SIZE),
+      labelFontSize: enumOf(LEGACY_FONT_SIZE),
       labelColor: color,
       showComparison: { type: 'boolean' },
       positiveColor: color,

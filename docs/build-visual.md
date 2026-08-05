@@ -52,10 +52,27 @@ aparece literal em `states.tsx`, então quebrar só o mapa de tokens não a remo
 para a lista da guarda, **prefira as que só o `tokens.ts` produz** — `pbi:rounded-xl`, `pbi:text-lg`,
 `pbi:shadow-sm`.
 
-### 1.4 Cor nunca vira classe
+### 1.4 Cor e medida nunca viram classe
 
 Hex livre validado por `pattern`, aplicado por `style` inline. É a exceção deliberada à RN-05 que permite
 qualquer cor de marca sem quebrar a garantia de purge.
+
+**Desde a spec 4.0.0 a MEDIDA seguiu o mesmo caminho.** Espaçamento, raio, espessura de borda e tamanho de
+fonte eram enums de seis ou sete degraus — não havia como pedir 13px de espaçamento, só `sm` (8) ou `md` (16).
+A regra da string literal era a razão de serem enums, mas ela só vale para **classe**: `style` inline não passa
+por análise estática nenhuma, e é por isso que a cor sempre funcionou livre. Hoje as medidas são `number` na
+spec e `style` nos componentes, e a garantia de purge continua intacta — nenhum número do usuário vira nome de
+classe.
+
+O que continua no catálogo de tokens é o que é **escolha entre alternativas**, e não medida: peso, alinhamento e
+sombra. `font-weight` e `text-align` são valores nomeados no próprio CSS, e a sombra é uma receita de várias
+camadas que não cabe num número.
+
+⚠️ **A guarda de CSS mudou de lista junto.** `check-css.mjs` conferia `rounded-xl`, `text-lg` e `p-4`, que
+vinham dos mapas de token; os dois primeiros perderam a única origem no fonte. A lista de hoje cobre uma origem
+cada — `flex-row`, `text-right`, `font-medium`, `shadow-sm`, `overflow-hidden`, `p-4`. Ao mexer nela, escolha
+utilidade com **uma** origem, e lembre que o próprio script é varrido pelo Tailwind (por isso prefixo e
+utilidade viajam separados).
 
 ## 2. O bundle
 

@@ -1,8 +1,7 @@
 import {
   isV1Config,
-  isV2Spec,
+  migrateToCurrent,
   migrateV1,
-  migrateV2ToV3,
   validateSpec,
   type VisualSpec,
 } from '@vislow/component-registry';
@@ -63,17 +62,18 @@ export function loadProject(): VisualSpec | null {
   if (typeof window === 'undefined') return null;
 
   try {
+    // A chave da v3 tambem passa pelo migrador: ate a spec 3.0.0 as medidas
+    // eram token (`padding: 'md'`), e a 4.0.0 so aceita pixel. Sem este passo,
+    // TODO projeto ja salvo seria reprovado pelo schema e descartado em
+    // silencio — a chave e a mesma, e o formato dentro dela mudou.
     const current = readJson(STORAGE_KEY);
-    if (current !== null) {
-      const result = validateSpec(current);
-      return result.kind === 'valid' ? result.spec : null;
-    }
+    if (current !== null) return migrated(migrateToCurrent(current));
 
     // Migrar preserva o `project.id`, e com ele a capacidade de ATUALIZAR o
     // visual no Power BI em vez de duplicar (RF-10). E a unica parte
     // insubstituivel de um projeto antigo.
     const v2 = readJson(V2_KEY);
-    if (v2 !== null) return migrated(isV2Spec(v2) ? migrateV2ToV3(v2) : null);
+    if (v2 !== null) return migrated(migrateToCurrent(v2));
 
     const legacy = readJson(LEGACY_KEY);
     if (legacy === null || !isV1Config(legacy)) return null;
@@ -81,15 +81,20 @@ export function loadProject(): VisualSpec | null {
     const config = validateConfig(legacy);
     if (config.kind === 'invalid') return null;
 
-    return migrated(migrateV1(config.config));
+    return migrated(migrateToCurrent(migrateV1(config.config)));
   } catch {
     return null;
   }
 }
 
-function migrated(spec: VisualSpec | null): VisualSpec | null {
-  if (!spec) return null;
-  const result = validateSpec(spec);
+/**
+ * `unknown`, e nao `VisualSpec`: `migrateToCurrent` devolve o que conseguiu
+ * converter, e "conseguiu" so se sabe VALIDANDO. Tipar a entrada como spec aqui
+ * seria afirmar antes de conferir — e o unico efeito seria calar o compilador
+ * no lugar exato onde a conferencia acontece.
+ */
+function migrated(candidate: unknown): VisualSpec | null {
+  const result = validateSpec(candidate);
   return result.kind === 'valid' ? result.spec : null;
 }
 

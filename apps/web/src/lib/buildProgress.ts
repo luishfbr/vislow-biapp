@@ -175,12 +175,7 @@ function describe(phase: BuildPhase, elapsedInStepMs: number): ProgressView {
   }
 }
 
-/**
- * Segundos decorridos, na forma curta que ja aparece nas metricas do export.
- *
- * O espaco e insecavel (`\u00a0`): o numero e a unidade sao uma coisa so, e a
- * quebra entre eles no fim de uma linha estreita deixaria um "12" orfao.
- */
-export function formatElapsed(ms: number): string {
-  return `${(ms / 1000).toFixed(ms < 10_000 ? 1 : 0)}\u00a0s`;
-}
+// O tempo decorrido saiu daqui: virou `formatSeconds`, em `lib/formatNumber.ts`.
+// A aritmetica da barra continua neste arquivo; a formatacao de numero foi para
+// onde o `Intl` mora, junto com o tamanho do pacote e a hora do export
+// (achado 62). Sem alias de reexportacao: quem quer formatar importa de la.

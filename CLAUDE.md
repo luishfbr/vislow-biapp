@@ -68,7 +68,8 @@ sugestão da skill**; a tabela de precedência está em [docs/frontend.md](docs/
 As específicas de área estão nos docs acima. Estas seis quebram código em qualquer lugar do repo:
 
 - **Classe Tailwind é string literal completa.** Interpolação some sem erro dentro do Power BI — o CSS é
-  pré-compilado e só enxerga o fonte do `visual-kit`.
+  pré-compilado e só enxerga o fonte do `visual-kit`. **Cor e medida são as exceções**: valor livre, aplicado
+  por `style` inline, nunca por classe.
 - **O prefixo vem ANTES da variante:** `pbi:focus:ring-2`, nunca `focus:pbi:ring-2`. Ao contrário, o CLI não
   gera regra nenhuma e não reclama. Classe com variante se confere no `dist/styles.css`, não no olho.
 - **`innerHTML` é proibido** — pelo nosso ESLint e pelo lint oficial do `pbiviz`, que falha o build.
@@ -98,9 +99,22 @@ o **canvas de posicionamento livre** (ADR-18). Pacote **221,1 KB**, `content.js`
 O container tem duas disposições: `stack` empilha como sempre, `canvas` dá a cada filho uma caixa em `%` do pai,
 arrastável e redimensionável no preview. Raiz de projeto novo nasce canvas; spec já salva continua empilhando.
 
+**O canvas trabalha como um editor de desenho** (desde 2026-08-04). Não há mais grade obrigatória — o valor é
+livre em pixel e o encaixe é uma atração de 6px por aresta ou centro de irmão. Pressionar já seleciona **e**
+arrasta no mesmo gesto; `Shift` tranca o eixo ou preserva a proporção, `Ctrl/⌘` solta do encaixe, `Alt` duplica
+arrastando. Clicar no vazio **limpa a seleção** (`selectedId` é `string | null`) e o painel da direita passa a
+falar do projeto. A câmera tem zoom de 10% a 400% e deslocamento (`lib/viewport.ts`). Duplo clique **entra** num
+container aninhado; `Esc` sobe. Há desfazer e refazer, e **um arrasto é um passo**, não duzentos.
+
 O preview desenha uma **prancheta de tamanho declarado** (`project.artboard`, 100×100 a 1920×1080, padrão
 1280×720), em pixel real e reduzida por escala para caber no painel. **Ela é do editor e não vai para o pacote**
 — um visual do Power BI não escolhe o próprio tamanho, e um teste do codegen reprova o build se ela vazar.
+
+**Toda medida é pixel livre** (spec 4.0.0). `padding`, `gap`, `radius`, `borderWidth`, `fontSize` e
+`valueFontSize` são `kind: 'length'` no registro — número inteiro, digitável, com arrasto no rótulo para
+ajustar. Chegam ao visual compilado por `style` inline, como a cor. O catálogo de tokens ficou só com o que é
+escolha entre alternativas: peso, alinhamento e sombra. Projeto salvo em 3.0.0 migra em `migrate.ts`, com
+fixture congelada — sem ela o `loadProject` apagaria o projeto de todo usuário em silêncio.
 
 O projeto tem uma **tabela de dados de exemplo** (`spec.data`, spec 3.0.0): até 10 colunas e 50 linhas, cada
 coluna com um tipo declarado (`text`, `integer`, `decimal`, `percent`, `currency`, `date`, `boolean`). **A

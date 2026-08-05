@@ -1,4 +1,4 @@
-import type { Align, Border, FontSize, FontWeight, Radius, Shadow, Spacing } from '@vislow/config-schema';
+import type { Align, FontWeight, Shadow } from '@vislow/config-schema';
 
 /**
  * Mapa token -> classe Tailwind.  ESTE ARQUIVO E O CORACAO DO ADR-02.
@@ -13,65 +13,25 @@ import type { Align, Border, FontSize, FontWeight, Radius, Shadow, Spacing } fro
  *
  * Tailwind v4 usa prefixo em forma de variante: `pbi:flex`, nao `pbi-flex`.
  * Validado no spike contra a toolchain do pbiviz (ADR-06 revisado).
- */
-
-export const SPACING_CLASS: Record<Spacing, string> = {
-  none: '',
-  xs: 'pbi:p-1',
-  sm: 'pbi:p-2',
-  md: 'pbi:p-4',
-  lg: 'pbi:p-6',
-  xl: 'pbi:p-8',
-};
-
-export const RADIUS_CLASS: Record<Radius, string> = {
-  none: 'pbi:rounded-none',
-  sm: 'pbi:rounded-sm',
-  md: 'pbi:rounded-md',
-  lg: 'pbi:rounded-lg',
-  xl: 'pbi:rounded-xl',
-  full: 'pbi:rounded-full',
-};
-
-/** Raio aplicado so no topo — usado nas barras. */
-export const RADIUS_TOP_CLASS: Record<Radius, string> = {
-  none: 'pbi:rounded-t-none',
-  sm: 'pbi:rounded-t-sm',
-  md: 'pbi:rounded-t-md',
-  lg: 'pbi:rounded-t-lg',
-  xl: 'pbi:rounded-t-xl',
-  full: 'pbi:rounded-t-full',
-};
-
-/**
- * Espacamento ENTRE itens de um container.
  *
- * Mapa separado do `SPACING_CLASS` de proposito: `p-*` e `gap-*` sao classes
- * diferentes e a regra das strings literais proibe derivar uma da outra.
+ * ===================== POR QUE MEDIDA NAO ESTA MAIS AQUI =====================
+ * Espacamento, raio, espessura e tamanho de fonte tinham mapa neste arquivo ate
+ * a spec 3.0.0 — seis ou sete degraus cada. A regra acima e a razao de terem
+ * sido enums: `pbi:p-${n}` nao gera CSS nenhum. Mas ela so vale para CLASSE.
+ * Desde sempre a cor e livre e funciona, porque vai por `style` inline, que nao
+ * passa por analise estatica nenhuma (ver `highContrast.ts`) — e o `CanvasSlot`
+ * faz o mesmo com percentual arbitrario.
+ *
+ * As medidas seguiram esse caminho: viraram numero na spec e `style` inline nos
+ * componentes. O que continua aqui e o que e ESCOLHA ENTRE ALTERNATIVAS, e nao
+ * medida — peso, alinhamento, sombra e direcao.
+ * =============================================================================
  */
-export const GAP_CLASS: Record<Spacing, string> = {
-  none: 'pbi:gap-0',
-  xs: 'pbi:gap-1',
-  sm: 'pbi:gap-2',
-  md: 'pbi:gap-4',
-  lg: 'pbi:gap-6',
-  xl: 'pbi:gap-8',
-};
 
 /** Direcao de um container. Chaves batem com o campo `direction` do registro. */
 export const DIRECTION_CLASS: Record<'row' | 'column', string> = {
   row: 'pbi:flex-row',
   column: 'pbi:flex-col',
-};
-
-export const FONT_SIZE_CLASS: Record<FontSize, string> = {
-  xs: 'pbi:text-xs',
-  sm: 'pbi:text-sm',
-  base: 'pbi:text-base',
-  lg: 'pbi:text-lg',
-  xl: 'pbi:text-xl',
-  '2xl': 'pbi:text-2xl',
-  '4xl': 'pbi:text-4xl',
 };
 
 export const FONT_WEIGHT_CLASS: Record<FontWeight, string> = {
@@ -94,26 +54,31 @@ export const SHADOW_CLASS: Record<Shadow, string> = {
   lg: 'pbi:shadow-lg',
 };
 
-export const BORDER_CLASS: Record<Border, string> = {
-  none: 'pbi:border-0',
-  thin: 'pbi:border',
-  medium: 'pbi:border-2',
-};
-
 /** Todos os mapas, para o teste de cobertura de tokens (T-02). */
 export const CLASS_MAPS = {
-  spacing: SPACING_CLASS,
-  gap: GAP_CLASS,
-  radius: RADIUS_CLASS,
-  radiusTop: RADIUS_TOP_CLASS,
-  fontSize: FONT_SIZE_CLASS,
   fontWeight: FONT_WEIGHT_CLASS,
   align: ALIGN_CLASS,
   shadow: SHADOW_CLASS,
-  border: BORDER_CLASS,
 } as const;
 
 /** Junta classes ignorando vazios. */
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(' ');
+}
+
+/**
+ * Uma medida em pixel, pronta para `style`.
+ *
+ * Existe para dar UM lugar a duas decisoes que, espalhadas, divergiriam entre os
+ * componentes: o que fazer com um numero que nao chegou (a spec garante que
+ * chega, mas o visual compilado tambem roda contra props montadas a mao em
+ * teste), e o que fazer com um negativo — que o schema ja recusa, e que aqui
+ * vira zero em vez de virar um layout invertido sem erro nenhum.
+ *
+ * Devolve NUMERO, e nao string: o React ja acrescenta `px` a propriedade
+ * numerica, e uma string interpolada aqui seria a unica coisa neste arquivo com
+ * cara de classe construida — exatamente o que ninguem deve imitar.
+ */
+export function px(value: unknown): number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0 ? value : 0;
 }

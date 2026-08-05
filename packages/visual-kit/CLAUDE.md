@@ -14,7 +14,13 @@ visual, e é isso que explica cada restrição. Detalhe em [docs/frontend.md](..
 - **Classe Tailwind é string literal completa** em `src/tokens.ts`. Interpolação some sem erro dentro do Power
   BI. E **o prefixo vem antes da variante**: `pbi:focus:ring-2`, nunca `focus:pbi:ring-2` — ao contrário, o CLI
   não gera regra e não reclama. Confira no `dist/styles.css`.
-- **Cor nunca vira classe:** hex validado, aplicado por `style` inline.
+- **Cor e MEDIDA nunca viram classe:** hex validado e pixel livre, aplicados por `style` inline. Espaçamento,
+  raio, espessura e tamanho de fonte deixaram de ser token na spec 4.0.0 — os componentes recebem `number` e o
+  helper `px()` decide o que fazer com valor ausente ou impossível. O que sobrou em `tokens.ts` é peso,
+  alinhamento, sombra e direção.
+- **`borderStyle: 'solid'` é EXPLÍCITO no `Container`.** O preflight do Tailwind não é carregado, e sem ele o
+  default do CSS é `none` — a borda teria espessura e não desenharia nada. Enquanto era classe, `pbi:border`
+  cuidava disso sozinha.
 - **Alto contraste: HTML usa a variável CSS, SVG lê o quadro.** `var()` **não** é substituído em atributo de
   apresentação de SVG. Nos nós de HTML use `hcInk`/`hcSurface`/`hcAccent`/`hcLine`; nos gráficos resolva por
   `hostOf(frame).highContrast`.

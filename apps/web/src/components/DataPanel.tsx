@@ -1,8 +1,12 @@
 'use client';
 
 import { bindingCount } from '@vislow/component-registry';
+import { Table2 } from 'lucide-react';
 import { COLUMN_TYPE_LABEL, type ColumnType } from '@vislow/config-schema';
 import { useState } from 'react';
+import { EmptyState } from '@/components/EmptyState';
+import { PanelSection } from '@/components/PanelSection';
+import { Button } from '@/components/ui/button';
 import { DataTableDialog } from '@/components/DataTableDialog';
 import { COLUMN_MARK } from '@/lib/columnMarks';
 import { useEditorStore } from '@/store/useEditorStore';
@@ -20,11 +24,6 @@ import { useEditorStore } from '@/store/useEditorStore';
  * edicao inteira mora no dialogo, que tem a largura da tela.
  */
 
-const ACTION =
-  'w-full rounded-md border border-dashed border-slate-300 px-2 py-1.5 text-[11px] font-medium ' +
-  'text-slate-600 hover:border-sky-400 hover:text-sky-700 focus-visible:outline-2 ' +
-  'focus-visible:outline-offset-2 focus-visible:outline-sky-500 dark:border-slate-600 dark:text-slate-300';
-
 export function DataPanel() {
   const spec = useEditorStore((s) => s.spec);
   const [open, setOpen] = useState(false);
@@ -32,36 +31,46 @@ export function DataPanel() {
   const { columns, rows } = spec.data;
 
   return (
-    // Faixa propria, com fundo e borda de topo: e a segunda coisa mais olhada da
-    // coluna e antes ela era a quarta secao de uma pilha rolavel, saindo da tela
-    // quando a arvore crescia. Aqui ela tem lugar fixo e rolagem propria.
-    <section className="shrink-0 border-t border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950">
-      <div className="mb-1.5 flex items-baseline justify-between gap-2">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-          Dados de exemplo
-        </h2>
-        <span className="text-[10px] tabular-nums text-slate-400">
+    // Faixa propria, com fundo: e a segunda coisa mais olhada da coluna e antes
+    // ela era a quarta secao de uma pilha, saindo da tela quando a arvore
+    // crescia. Agora ela e um painel com altura negociavel e rolagem propria —
+    // quem a separa das camadas e a alca do `PanelResizeHandle`, nao uma borda.
+    <PanelSection
+      title="Dados de exemplo"
+      grow
+      className="bg-muted/50 p-3"
+      actions={
+        <span className="font-mono text-micro tabular-nums text-muted-foreground">
           {columns.length} col · {rows.length} lin
         </span>
-      </div>
+      }
+    >
 
-      <ul className="flex max-h-44 flex-col gap-1.5 overflow-y-auto">
+      {columns.length === 0 ? (
+        // Sem coluna nao ha campo, e sem campo o visual compilado nao tem o que
+        // pedir ao Power BI — o export fica bloqueado e nada na tela diria por que.
+        <EmptyState icon={Table2} title="Nenhuma coluna ainda" className="min-h-0 flex-1">
+          Cada coluna vira um campo que o visual pede no Power BI. Abra a planilha para criar a
+          primeira.
+        </EmptyState>
+      ) : (
+      <ul className="flex min-h-0 flex-1 flex-col gap-1.5 overflow-y-auto">
         {columns.map((column) => {
           const used = bindingCount(spec, column.name);
           return (
             <li
               key={column.name}
-              className="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1.5 dark:border-slate-700 dark:bg-slate-900"
+              className="shrink-0 rounded-md border border-border bg-card px-2 py-1.5"
             >
               <div className="flex items-center gap-1.5">
                 {/* O mesmo chip do cabecalho da grade: o usuario reconhece a
                     coluna pelo sinal antes de ler o rotulo. */}
                 <TypeMark type={column.type} measure={column.kind === 'measure'} />
-                <span className="min-w-0 flex-1 truncate text-xs text-slate-800 dark:text-slate-100">
+                <span className="min-w-0 flex-1 truncate text-body text-foreground">
                   {column.displayName}
                 </span>
               </div>
-              <div className="mt-0.5 flex items-center gap-2 pl-1 text-[10px] text-slate-400">
+              <div className="mt-0.5 flex items-center gap-2 pl-1 text-micro text-muted-foreground">
                 <span className="shrink-0">{COLUMN_TYPE_LABEL[column.type].toLowerCase()}</span>
                 <span className="min-w-0 truncate font-mono">{column.name}</span>
                 {/* Quantos componentes usam a coluna. Esta na tela porque apagar
@@ -75,18 +84,24 @@ export function DataPanel() {
           );
         })}
       </ul>
+      )}
 
-      <button
-        type="button"
-        className={`${ACTION} mt-2`}
+      {/* Tracejado de proposito: e um convite a abrir a planilha, nao uma acao
+          primaria. O `border-dashed` viaja como classe porque a variante
+          `outline` do Button nao tem tracejado — e o unico desvio, nao um sexto
+          idioma de botao. */}
+      <Button
+        variant="outline"
+        size="sm"
+        className="mt-2 w-full border-dashed"
         onClick={() => {
           setOpen(true);
         }}
       >
         Editar dados
-      </button>
+      </Button>
 
-      <p className="mt-2 text-[10px] leading-tight text-slate-500 dark:text-slate-400">
+      <p className="mt-2 text-micro leading-tight text-muted-foreground">
         Os valores ficam <strong className="font-medium">no editor</strong> e não entram no pacote.
         O que o visual leva são as colunas: no Power BI, elas viram os campos que ele exige.
       </p>
@@ -97,7 +112,7 @@ export function DataPanel() {
           setOpen(false);
         }}
       />
-    </section>
+    </PanelSection>
   );
 }
 
@@ -113,10 +128,10 @@ function TypeMark({ type, measure }: { type: ColumnType; measure: boolean }) {
   return (
     <span
       aria-hidden="true"
-      className={`shrink-0 rounded px-1 py-0.5 font-mono text-[10px] leading-none ${
+      className={`shrink-0 rounded px-1 py-0.5 font-mono text-micro leading-none ${
         measure
-          ? 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300'
-          : 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400'
+          ? 'bg-primary/10 text-primary'
+          : 'bg-muted text-muted-foreground'
       }`}
     >
       {measure && <span className="mr-0.5">Σ</span>}

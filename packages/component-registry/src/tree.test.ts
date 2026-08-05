@@ -139,7 +139,7 @@ describe('props', () => {
     const next = setNodeProps(fixture(), 'titulo', { content: 'Ola' });
     expect(findNode(next!, 'titulo')?.props).toMatchObject({
       content: 'Ola',
-      fontSize: 'lg',
+      fontSize: 18,
     });
   });
 

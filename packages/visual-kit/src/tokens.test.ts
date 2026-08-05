@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TOKEN_CATALOG, type TokenKind } from '@vislow/config-schema';
-import { CLASS_MAPS, cx } from './tokens.js';
+import { CLASS_MAPS, cx, px } from './tokens.js';
 
 /**
  * T-02 — o guardiao do ADR-02 / RN-05.
@@ -12,13 +12,9 @@ import { CLASS_MAPS, cx } from './tokens.js';
  */
 describe('cobertura de tokens (T-02)', () => {
   const MAP_FOR: Record<TokenKind, keyof typeof CLASS_MAPS> = {
-    spacing: 'spacing',
-    radius: 'radius',
-    fontSize: 'fontSize',
     fontWeight: 'fontWeight',
     align: 'align',
     shadow: 'shadow',
-    border: 'border',
   };
 
   it.each(Object.keys(TOKEN_CATALOG) as TokenKind[])(
@@ -35,14 +31,27 @@ describe('cobertura de tokens (T-02)', () => {
     },
   );
 
-  it('radiusTop cobre exatamente os mesmos valores de radius', () => {
-    expect(Object.keys(CLASS_MAPS.radiusTop).sort()).toEqual(
-      Object.keys(CLASS_MAPS.radius).sort(),
-    );
+  it('o catalogo nao voltou a governar MEDIDA', () => {
+    // Na spec 4.0.0 espacamento, raio, espessura e tamanho de fonte deixaram de
+    // ser enum e viraram pixel livre, aplicado por `style`. Reintroduzir um
+    // deles como token seria voltar a prender o usuario em seis degraus — e o
+    // caminho para isso e silencioso: bastaria acrescentar a chave aqui.
+    expect(Object.keys(TOKEN_CATALOG).sort()).toEqual(['align', 'fontWeight', 'shadow']);
+  });
+});
+
+describe('medida em pixel', () => {
+  it('deixa passar o pixel escolhido', () => {
+    expect(px(13)).toBe(13);
+    expect(px(0.5)).toBe(0.5);
   });
 
-  it('gap cobre exatamente os mesmos valores de spacing', () => {
-    expect(Object.keys(CLASS_MAPS.gap).sort()).toEqual(Object.keys(CLASS_MAPS.spacing).sort());
+  it('numero ausente ou impossivel vira zero, nunca `NaN`', () => {
+    // `style={{ padding: NaN }}` e ignorado sem erro, e o componente sai com o
+    // espacamento do host — divergindo do preview sem nada reclamar.
+    for (const bad of [undefined, null, 'md', NaN, Infinity, -4]) {
+      expect(px(bad)).toBe(0);
+    }
   });
 });
 

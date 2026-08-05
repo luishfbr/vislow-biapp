@@ -47,7 +47,24 @@ export type FieldSpec =
   | (FieldBase & { kind: 'color'; default: string })
   | (FieldBase & { kind: 'boolean'; default: boolean })
   | (FieldBase & { kind: 'text'; default: string; maxLength: number })
+  /**
+   * Numero SEM unidade: espessura de traco do Recharts, opacidade em pontos
+   * percentuais, raio interno da pizza em % do raio externo.
+   */
   | (FieldBase & { kind: 'number'; default: number; min: number; max: number })
+  /**
+   * MEDIDA, em pixel inteiro.
+   *
+   * Distinta de `number` porque tem unidade, e a unidade muda o controle (o
+   * campo mostra "px") e o schema (inteiro, nao decimal — meio pixel de
+   * espacamento nao e uma escolha, e um engano de digitacao).
+   *
+   * Distinta de `token` porque e LIVRE: ate a spec 3.0.0 toda medida era um enum
+   * de seis degraus, e nao havia como pedir 13px. O valor chega ao visual
+   * compilado por `style` inline, como a cor — nunca como classe do Tailwind,
+   * que precisa ser literal no fonte (ver `visual-kit/src/tokens.ts`).
+   */
+  | (FieldBase & { kind: 'length'; default: number; min: number; max: number })
   /** Referencia a um papel de dado que o usuario declarou no projeto. */
   | (FieldBase & { kind: 'role'; roleKind: RoleKind })
   | (FieldBase & { kind: 'select'; options: string[]; default: string });
@@ -68,6 +85,15 @@ export interface NodeDescriptor {
    * primeira a esquecer o tipo de no seguinte.
    */
   keywords: string[];
+  /**
+   * A tecla que arma esta ferramenta na barra do editor, em maiuscula.
+   *
+   * Fica AQUI pela mesma regra dos `keywords`: um mapa de atalhos em `apps/web`
+   * seria a lista paralela que este registro existe para evitar, e a primeira a
+   * esquecer o tipo de no seguinte — que entraria na barra sem tecla nenhuma, ou
+   * pior, roubando a de outro. `registry.test.ts` reprova letra repetida.
+   */
+  shortcut: string;
   /** Se aceita filhos. So o container aceita — arvore com folhas bem definidas. */
   acceptsChildren: boolean;
   fields: FieldSpec[];
