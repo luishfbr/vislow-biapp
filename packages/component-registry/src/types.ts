@@ -7,14 +7,7 @@ import type { TokenKind } from '@vislow/config-schema';
  * do `pbiviz` compila sem `strictNullChecks`, e sem ela o TypeScript nao
  * estreita uniao por discriminante booleano.
  */
-export type NodeKind =
-  | 'container'
-  | 'text'
-  | 'kpi'
-  | 'barChart'
-  | 'lineChart'
-  | 'areaChart'
-  | 'pieChart';
+export type NodeKind = 'container' | 'text';
 
 /** Papel de dado no Power BI. `grouping` vira eixo/categoria; `measure`, valor. */
 export type RoleKind = 'grouping' | 'measure';
@@ -48,8 +41,13 @@ export type FieldSpec =
   | (FieldBase & { kind: 'boolean'; default: boolean })
   | (FieldBase & { kind: 'text'; default: string; maxLength: number })
   /**
-   * Numero SEM unidade: espessura de traco do Recharts, opacidade em pontos
-   * percentuais, raio interno da pizza em % do raio externo.
+   * Numero SEM unidade: opacidade em pontos percentuais, espessura de traco,
+   * raio interno de uma rosca em % do raio externo.
+   *
+   * HOJE NENHUM DESCRITOR USA. Fica pelo mesmo motivo que `role`: e a metade
+   * viva de uma distincao — `number` contra `length` — que o painel, o schema e
+   * o codegen ja sabem tratar, e que volta inteira com os graficos da Fase 4.
+   * Apaga-lo custaria mais para reescrever do que custa manter.
    */
   | (FieldBase & { kind: 'number'; default: number; min: number; max: number })
   /**

@@ -78,18 +78,18 @@ describe('a barra sai do catalogo', () => {
 describe('armar e desarmar', () => {
   it('clicar arma o tipo no store', () => {
     act(() => {
-      byLabel(NODE_DESCRIPTORS.barChart.label).click();
+      byLabel(NODE_DESCRIPTORS.text.label).click();
     });
-    expect(useEditorStore.getState().paletteKind).toBe('barChart');
+    expect(useEditorStore.getState().paletteKind).toBe('text');
   });
 
   it('clicar na ferramenta ja armada volta para selecionar', () => {
-    const barras = NODE_DESCRIPTORS.barChart.label;
+    const alvo = NODE_DESCRIPTORS.text.label;
     act(() => {
-      byLabel(barras).click();
+      byLabel(alvo).click();
     });
     act(() => {
-      byLabel(barras).click();
+      byLabel(alvo).click();
     });
     expect(useEditorStore.getState().paletteKind).toBeNull();
   });
@@ -111,11 +111,11 @@ describe('armar e desarmar', () => {
    */
   it('marca aria-pressed na ferramenta ativa, e so nela', () => {
     act(() => {
-      byLabel(NODE_DESCRIPTORS.kpi.label).click();
+      byLabel(NODE_DESCRIPTORS.text.label).click();
     });
     const marcadas = tools().filter((b) => b.getAttribute('aria-pressed') === 'true');
     expect(marcadas).toHaveLength(1);
-    expect(marcadas[0]?.getAttribute('aria-label')).toBe(NODE_DESCRIPTORS.kpi.label);
+    expect(marcadas[0]?.getAttribute('aria-label')).toBe(NODE_DESCRIPTORS.text.label);
   });
 
   it('sem nada armado, quem esta marcada e a de selecao', () => {
@@ -147,11 +147,11 @@ describe('foco em roda', () => {
 
   it('o ponto de parada acompanha a ferramenta armada', () => {
     act(() => {
-      byLabel(NODE_DESCRIPTORS.pieChart.label).click();
+      byLabel(NODE_DESCRIPTORS.text.label).click();
     });
     const tabulaveis = tools().filter((b) => b.tabIndex === 0);
     expect(tabulaveis).toHaveLength(1);
-    expect(tabulaveis[0]?.getAttribute('aria-label')).toBe(NODE_DESCRIPTORS.pieChart.label);
+    expect(tabulaveis[0]?.getAttribute('aria-label')).toBe(NODE_DESCRIPTORS.text.label);
   });
 
   it('a seta direita anda para a proxima', () => {

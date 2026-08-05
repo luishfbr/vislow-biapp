@@ -48,14 +48,11 @@ export function Container({
 
   return (
     <div
-      // `min-h-0`/`min-w-0` nao sao decorativos: sem eles um filho flexivel nunca
-      // encolhe abaixo do proprio conteudo, e o ResponsiveContainer do Recharts
-      // mede altura zero — grafico invisivel, sem erro nenhum.
+      // `.vsl-stack` e `.vsl-canvas` ja carregam `flex: 1` e os `min-*` zerados:
+      // sem eles um filho flexivel nunca encolhe abaixo do proprio conteudo, e
+      // um no que se mede pela moldura le altura zero — invisivel, sem erro.
       className={cx(
-        'pbi:flex-1',
-        'pbi:min-h-0',
-        'pbi:min-w-0',
-        free ? 'pbi:relative' : 'pbi:flex',
+        free ? 'vsl-canvas' : 'vsl-stack',
         !free && DIRECTION_CLASS[direction],
         SHADOW_CLASS[shadow],
       )}
@@ -67,11 +64,11 @@ export function Container({
         padding: px(padding),
         borderRadius: px(radius),
         borderWidth: width,
-        // EXPLICITO, e nao herdado: o preflight do Tailwind nao e carregado no
-        // visual compilado (`styles.css` importa so `theme` e `utilities`), e
-        // sem preflight o `border-style` default do CSS e `none` — a borda teria
-        // espessura e nao desenharia nada. Enquanto `borderWidth` era classe,
-        // `pbi:border` cuidava disso sozinha.
+        // EXPLICITO, e nao herdado. O `border-style` default do CSS e `none`: a
+        // borda teria espessura e nao desenharia nada. Enquanto `borderWidth`
+        // era classe, o `border` do Tailwind cuidava disso sozinho; o
+        // `styles.css` escrito a mao nao carrega reset nenhum, de proposito, e
+        // por isso a responsabilidade e daqui.
         borderStyle: width > 0 ? 'solid' : 'none',
         // O `gap` do flex reservaria espaco entre filhos que sairam da cadeia:
         // num canvas eles sao absolutos, e o container nem e flex.

@@ -33,8 +33,9 @@ adapta.**
 | A skill sugere | Aqui vira |
 |---|---|
 | Cor livre no CSS | Hex validado, aplicado por `style` inline — cor **nunca** vira classe |
-| Classe utilitária escrita na hora | String literal completa no mapa de `visual-kit/src/tokens.ts`; variante com o prefixo **antes** (`pbi:focus:ring-2`) |
-| Família tipográfica característica | Só no editor. O `visual-kit` **não tem token de família** — a face vem do host. Precisar de uma é feature de schema primeiro, nunca webfont externa: o visual roda offline e contra orçamento de 1 MB |
+| Classe utilitária escrita na hora | No editor, à vontade (Tailwind). No `visual-kit`, string literal completa no mapa de `src/tokens.ts`, prefixo `vsl-`, e a regra correspondente escrita à mão em `src/styles.css` — a guarda reprova classe sem regra **e** regra sem uso |
+| Família tipográfica característica | O `visual-kit` **declara uma pilha** em `.vsl-text` desde a spec 5.0.0 — Aptos antes de Segoe UI, para não parecer visual nativo. Não é token e o usuário não escolhe: embarcar fonte não cabe no orçamento de 1 MB e a build não usa rede. Escolher a **ordem** da pilha é a única identidade tipográfica disponível |
+| Paleta de acento para o visual | Não existe, e é uma posição: a linguagem do kit é **"papel, não tinta"** (`config-schema/src/design.ts`). Nenhum valor dela é cromático — numa ferramenta de composição a cor é do autor do relatório, e o que é nosso é o neutro exato em que ele a põe |
 | Micro-interação com estado | No `visual-kit`, sem hooks — classe, ou cálculo no render |
 | Wrapper clicável para seleção | Em container que empilha, não: quebra a medida do `ResponsiveContainer` (ADR-14). Em canvas, a camada é filha `absolute` e está fora do fluxo (ADR-18) |
 | Componente pronto copiado da internet | Só no estilo `base-nova`. Os primitivos daqui são **Base UI, não Radix** — trecho Radix não compila, e o erro não aponta para a causa. Ver [1.3](#13-o-sistema-de-design-do-editor-componentsui) |
@@ -296,9 +297,9 @@ mais na cadeia de flex quebra a medida do `ResponsiveContainer` (ADR-14); o grup
 não roubar clique do gráfico. As setas movem o **foco do DOM**, não um índice em estado — é o que dá navegação
 por setas sem hook.
 
-**Classe com variante se confere no `dist/styles.css`, não no olho** (achado 54): `pbi:sr-only` e
-`pbi:focus:not-sr-only` foram validadas compilando o CSS e lendo os seletores gerados antes de o componente ser
-escrito.
+> **DORMENTE na spec 5.0.0.** A sobreposição é dos gráficos, e eles saíram do catálogo. Esta seção descreve o
+> desenho que a Fase 4 reocupa junto com o KPI Card; os testes correspondentes estão em quarentena declarada em
+> `compiledVisual.e2e.test.ts`.
 
 ### 3.4 Os serviços do host viajam no quadro
 

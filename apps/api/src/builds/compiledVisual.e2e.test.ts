@@ -20,7 +20,7 @@ import { existsSync } from 'node:fs';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { join } from 'node:path';
-import { assertValidSpec, type VisualSpec } from '@vislow/component-registry';
+import { assertValidSpec, defaultPropsFor, type VisualSpec } from '@vislow/component-registry';
 import { generateCapabilities, specWithEveryKind } from '@vislow/codegen';
 import { inspectPbiviz } from '@vislow/config-schema/packaging';
 import { VENDOR_DIR } from '@vislow/visual-template';
@@ -261,18 +261,17 @@ async function renderCompiled(
   return { html: await settle(), errors, element, window, calls, redraw: settle };
 }
 
-/**
- * Os botoes da sobreposicao de teclado (RF-23), na ordem dos pontos.
+/*
+ * Aqui vivia `keyboardKeys(element)`, que devolvia os botoes da sobreposicao de
+ * teclado (RF-23) na ordem dos pontos da serie. Eram a ponte que tornava o
+ * cross-filter TESTAVEL num jsdom: acionar um deles percorria o mesmo caminho
+ * de um clique na barra — `FrameHost.select` -> `selectionManager.select` — sem
+ * depender do Recharts resolver coordenada de mouse num DOM sem motor de
+ * layout.
  *
- * Sao a ponte que torna o cross-filter TESTAVEL num jsdom: acionar um deles
- * percorre o mesmo caminho de um clique na barra — `FrameHost.select` ->
- * `selectionManager.select` — sem depender do Recharts resolver coordenada de
- * mouse num DOM sem motor de layout. O que sobra para o Desktop e so o gesto
- * do mouse, que a matriz MT cobre.
+ * A sobreposicao e dos graficos, e saiu com eles na spec 5.0.0. Ver a
+ * quarentena no fim deste arquivo.
  */
-function keyboardKeys(element: Element): NodeListOf<Element> {
-  return element.querySelectorAll('[role="group"] button');
-}
 
 describe('spec compilada vira um .pbiviz que renderiza', () => {
   let spec: VisualSpec;
@@ -311,7 +310,7 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
 
   /** ADR-02: sem o CSS pre-compilado o visual importa e sai sem estilo nenhum. */
   it('leva o CSS do visual-kit no bundle', () => {
-    expect(js).toContain('pbi:');
+    expect(js).toContain('vsl-');
   });
 
   /**
@@ -320,16 +319,18 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
    * apareceu: o bundle carregava, o KPI renderizava e o grafico caia no
    * ErrorBoundary.
    */
-  it('renderiza dados, e nao o card de erro', async () => {
+  it('renderiza a composicao, e nao o card de erro', async () => {
     const { html, errors } = await renderCompiled(js, guid, true);
 
-    expect(html).not.toContain('Nao foi possivel renderizar o visual');
+    expect(html).not.toContain('Não foi possível renderizar o visual');
     expect(html).not.toContain('RENDER_FAIL');
-    expect(html.length).toBeGreaterThan(500);
-    // As categorias do DataView chegaram ate a tela.
-    expect(html).toContain('Norte');
-    // Recharts desenha em SVG; sem <svg> nenhum grafico saiu.
-    expect(html).toContain('<svg');
+    expect(html.length).toBeGreaterThan(300);
+    // O conteudo da caixa de texto atravessou codegen, webpack e `pbiviz
+    // package` e chegou ao DOM.
+    expect(html).toContain(String(defaultPropsFor('text').content));
+    // A tipografia e NOSSA, nao herdada do host: a classe que carrega a familia
+    // e o `tabular-nums` esta no elemento.
+    expect(html).toContain('vsl-text');
     expect(errors).toEqual([]);
   }, 60_000);
 
@@ -353,7 +354,7 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
     }
     // E o container que as contem virou bloco de contencao — sem isto as caixas
     // se posicionariam contra a janela, nao contra o visual.
-    expect(html).toContain('pbi:relative');
+    expect(html).toContain('vsl-canvas');
   }, 60_000);
 
   /**
@@ -373,14 +374,24 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   }, 60_000);
 
   /**
-   * RN-04 do outro lado: sem campos ligados o visual instrui, nao fica branco
-   * nem quebra. E o estado que o usuario ve no segundo seguinte ao import.
+   * RN-04 do outro lado: SEM DataView nenhum, o visual continua desenhando.
+   *
+   * Ate a spec 4.0.0 este teste esperava o `EmptyState` — "Faltam campos para
+   * montar o visual" —, porque todo no do catalogo consumia dados e sem coluna
+   * ligada nao havia o que desenhar. Nenhum no consome dados na 5.0.0: uma
+   * composicao de texto NAO depende do modelo, e exibir "faltam campos" seria
+   * mentira. O que a RN-04 continua exigindo e o que se afirma aqui — nunca
+   * branco, nunca card de erro.
+   *
+   * O `EmptyState` continua no kit, sem consumidor, e volta a aparecer com o KPI
+   * Card da Fase 4.
    */
-  it('sem dados, mostra o estado vazio com instrucao', async () => {
+  it('sem DataView, desenha a composicao em vez de quebrar', async () => {
     const { html, errors } = await renderCompiled(js, guid, false);
 
-    expect(html).toContain('Faltam campos para montar o visual');
+    expect(html).toContain(String(defaultPropsFor('text').content));
     expect(html).not.toContain('RENDER_FAIL');
+    expect(html).not.toContain('Não foi possível renderizar o visual');
     expect(errors).toEqual([]);
   }, 60_000);
 
@@ -393,8 +404,15 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
    * anterior deste teste comparava o codegen consigo mesmo e por isso passava
    * verde enquanto o pacote entregue recusava todo arrasto no Desktop.
    */
-  it('o capabilities do PACOTE declara os papeis que a arvore consome', () => {
-    expect(embutido.dataRoles.map((role) => role.name).sort()).toEqual(['categoria', 'valor']);
+  it('o capabilities do PACOTE nao declara papel — ninguem consome dados', () => {
+    // Ate a spec 4.0.0 este teste conferia que os papeis consumidos pela arvore
+    // chegavam ao pacote (`['categoria', 'valor']`) — sem isso o usuario nao tem
+    // onde arrastar a coluna e o visual fica eternamente vazio. Nenhum no
+    // consome dados na 5.0.0, e o visual gerado sai SEM POCO DE CAMPOS no Power
+    // BI. Isto e consequencia conhecida da poda, nao descuido: a afirmacao fica
+    // registrada aqui e falha no dia em que a Fase 4 devolver o KPI Card.
+    expect(embutido.dataRoles).toEqual([]);
+    expect(embutido.dataViewMappings).toEqual([]);
   });
 
   it('o capabilities do PACOTE e exatamente o que o codegen gerou', () => {
@@ -403,41 +421,22 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
     expect(embutido).toEqual(JSON.parse(JSON.stringify(generateCapabilities(spec))));
   });
 
-  /**
-   * O tipo declarado na tabela de exemplo vira restricao do host.
+  /*
+   * ============ AS DUAS GUARDAS DE POCO DE CAMPOS ESTAO DORMENTES ============
+   * Havia aqui dois testes que so tem sujeito com `dataRoles` no pacote:
    *
-   * `requiredTypes` faz o Power BI recusar o arrasto de uma coluna do tipo
-   * errado. Sem ele, o tipo que o usuario escolhe no editor seria so a
-   * formatacao do preview.
-   */
-  it('o capabilities do PACOTE exige o campo do tipo certo', () => {
-    const porNome = new Map(embutido.dataRoles.map((role) => [role.name, role]));
-    expect(porNome.get('categoria')?.requiredTypes).toEqual([{ text: true }]);
-    expect(porNome.get('valor')?.requiredTypes).toEqual([{ integer: true }]);
-  });
-
-  /**
-   * Regressao de 2026-08-03, e a assertiva que faltava para pegar o bug no lugar
-   * onde ele importa.
+   *   - "o capabilities do PACOTE exige o campo do tipo certo" — `requiredTypes`
+   *     e o que faz o host RECUSAR o arrasto de uma coluna do tipo errado; sem
+   *     ele o tipo escolhido no editor seria so formatacao de preview
+   *   - "nenhuma condicao do PACOTE declara `min` — senao os pocos travam" — a
+   *     regressao de 2026-08-03, em que os pocos apareciam com o nome certo e
+   *     recusavam toda coluna, para sempre, sem erro e sem aviso
    *
-   * Uma condicao com `min` faz o host recusar todo estado intermediario do
-   * arrasto: os pocos aparecem com o nome certo e simplesmente nao aceitam
-   * coluna nenhuma, sem erro e sem aviso. O pacote importava e renderizava o
-   * estado vazio — todas as guardas anteriores passavam.
+   * O codigo dos dois continua em `capabilities.ts`, e o `inspectArtifact` do
+   * `pipeline.ts` continua rejeitando `min` em producao. Voltam a ter o que
+   * medir com o KPI Card da Fase 4.
+   * ==========================================================================
    */
-  it('nenhuma condicao do PACOTE declara "min" — senao os pocos travam', () => {
-    expect(embutido.dataViewMappings.length).toBeGreaterThan(0);
-
-    for (const mapping of embutido.dataViewMappings) {
-      expect(mapping.conditions?.length ?? 0).toBeGreaterThan(0);
-      for (const condition of mapping.conditions ?? []) {
-        for (const [role, range] of Object.entries(condition)) {
-          expect(range, role).not.toHaveProperty('min');
-          expect(range, role).toHaveProperty('max');
-        }
-      }
-    }
-  });
 
   /**
    * OS VALORES DA TABELA DE EXEMPLO NAO ESTAO NO PACOTE.
@@ -461,89 +460,58 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   });
 
   /**
-   * PARIDADE DE INTERATIVIDADE (Sprint 6, achado 53).
+   * RF-21 — a unica das seis capacidades do Sprint 6 que NAO foi para a
+   * quarentena, porque `Container` e `TextBox` continuam passando cor e fundo
+   * por `hcInk`/`hcSurface`.
    *
-   * Ate aqui o gate provava que o pacote DESENHA. As assertivas abaixo provam
-   * que ele CONVERSA com o host — que e onde o pivo da ADR-08 tinha deixado seis
-   * capacidades para tras sem nenhum teste notar.
+   * A variavel CSS no elemento raiz e o mecanismo inteiro do lado do HTML. Ela
+   * e escrita por `applyHighContrast`, dentro de `readFrame` — e por isso o
+   * `update()` continua chamando `readFrame` mesmo sem papel nenhum declarado.
+   * Tirar essa chamada por parecer inutil desligaria o alto contraste em
+   * silencio.
    */
-  describe('paridade de interatividade', () => {
-    /** RF-23: sem isso o visual e inutilizavel sem mouse, e o AppSource recusa. */
-    it('cada ponto da serie e alcancavel por teclado, com rotulo legivel', async () => {
-      const { element } = await renderCompiled(js, guid, true);
-      const labels = [...keyboardKeys(element)].map((node) => node.textContent);
+  it('em alto contraste, a paleta do host chega ao elemento raiz', async () => {
+    const { element } = await renderCompiled(js, guid, true, true);
+    const style = (element as HTMLElement).style;
 
-      // Quatro categorias do DataView, uma por grafico que a spec monta.
-      expect(labels.length).toBeGreaterThanOrEqual(4);
-      // Categoria E valor, e o valor ja FORMATADO pelo `format` da coluna
-      // (`#,0.00`): um rotulo com o numero cru nao serve para leitor de tela.
-      expect(labels).toContain('Norte: 120.00');
-      expect([...keyboardKeys(element)][0]?.getAttribute('aria-pressed')).toBe('false');
-    }, 60_000);
+    expect(style.getPropertyValue('--vislow-hc-ink')).toBe(HC_PALETTE.foreground);
+    expect(style.getPropertyValue('--vislow-hc-surface')).toBe(HC_PALETTE.background);
+  }, 60_000);
 
-    /**
-     * RF-18, o coracao do sprint: acionar um ponto tem de chegar ao
-     * `selectionManager` com a identidade DAQUELA linha. E a assertiva que
-     * teria reprovado o pacote do Sprint 5.
-     */
-    it('acionar um ponto filtra o relatorio (cross-filter)', async () => {
-      const { element, calls, redraw } = await renderCompiled(js, guid, true);
-      const keys = [...keyboardKeys(element)];
+  it('fora do alto contraste, nenhuma variavel fica presa no elemento', async () => {
+    const { element } = await renderCompiled(js, guid, true);
+    expect((element as HTMLElement).style.getPropertyValue('--vislow-hc-ink')).toBe('');
+  }, 60_000);
 
-      (keys[1] as HTMLElement | undefined)?.click();
-      await redraw();
-
-      expect(calls.selections).toHaveLength(1);
-      expect(calls.selections[0]?.identity).toEqual({ key: 'row-1' });
-      expect(calls.selections[0]?.multi).toBe(false);
-    }, 60_000);
-
-    /** RF-19: o balao e o do host — e o que herda os campos do relatorio. */
-    it('o foco num ponto pede o tooltip NATIVO, com os valores formatados', async () => {
-      const { element, calls, redraw } = await renderCompiled(js, guid, true);
-
-      (([...keyboardKeys(element)][0] as HTMLElement | undefined))?.focus();
-      await redraw();
-
-      expect(calls.tooltips.length).toBeGreaterThan(0);
-      const items = calls.tooltips[0]?.dataItems ?? [];
-      expect(items.map((item) => item.displayName)).toEqual(['Regiao', 'Receita']);
-      // O `format` da coluna chega ao balao (RF-17): 120 vira "120.00", e nao
-      // o numero cru. Sem isso o tooltip mostraria `1234567.89` onde o Power BI
-      // mostra `R$ 1,23 mi` — um dos sinais de visual amador.
-      expect(items[1]?.value).toBe('120.00');
-    }, 60_000);
-
-    /** RF-24: sem isso o botao direito abre o menu do navegador no relatorio. */
-    it('o botao direito abre o menu de contexto do host', async () => {
-      const { element, window, calls, redraw } = await renderCompiled(js, guid, true);
-
-      element.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true }));
-      await redraw();
-
-      expect(calls.contextMenus).toBe(1);
-    }, 60_000);
-
-    /**
-     * RF-21. A variavel CSS no elemento raiz e o mecanismo inteiro para o HTML
-     * da arvore; o SVG do grafico le a paleta pelo quadro. As duas pontas sao
-     * verificadas aqui porque so o artefato compilado tem as duas juntas.
-     */
-    it('em alto contraste, a paleta do host vence as cores do usuario', async () => {
-      const { element, html } = await renderCompiled(js, guid, true, true);
-      const style = (element as HTMLElement).style;
-
-      expect(style.getPropertyValue('--vislow-hc-ink')).toBe(HC_PALETTE.foreground);
-      expect(style.getPropertyValue('--vislow-hc-surface')).toBe(HC_PALETTE.background);
-      // O SVG nao pode carregar `var()`: o valor tem de estar resolvido.
-      expect(html).not.toContain('fill="var(');
-      expect(html).toContain(`fill="${HC_PALETTE.foreground}"`);
-    }, 60_000);
-
-    it('fora do alto contraste, nenhuma variavel fica presa no elemento', async () => {
-      const { element } = await renderCompiled(js, guid, true);
-      expect((element as HTMLElement).style.getPropertyValue('--vislow-hc-ink')).toBe('');
-    }, 60_000);
-  });
+  /*
+   * ========== A PARIDADE DE INTERATIVIDADE ESTA EM QUARENTENA (5.0.0) ========
+   * Havia aqui um `describe('paridade de interatividade')` com seis testes — o
+   * fecho do Sprint 6 e do achado 53, em que o pacote DESENHAVA certo e nao
+   * FILTRAVA nada, sem nenhum teste notar:
+   *
+   *   - cada ponto da serie alcancavel por teclado, com rotulo legivel (RF-23)
+   *   - acionar um ponto filtra o relatorio, com a identidade DAQUELA linha,
+   *     `{ key: 'row-1' }` (RF-18)
+   *   - o foco pede o tooltip NATIVO com os valores ja formatados pelo `format`
+   *     da coluna (RF-19 / RF-17)
+   *   - o botao direito abre o menu de contexto do host (RF-24)
+   *   - em alto contraste a paleta do host vence, e o SVG le a paleta pelo
+   *     quadro em vez de carregar `var()` (RF-21)
+   *   - fora do alto contraste nenhuma variavel fica presa no elemento
+   *
+   * OS SEIS TINHAM O GRAFICO COMO UNICO SUJEITO: a sobreposicao de teclado, as
+   * marcas selecionaveis e o `fill` resolvido sao todos dele. Com a poda da
+   * 5.0.0 nao ha no que se ligue ao host — `interaction.ts` e `dataFrame.ts`
+   * continuam no template, chamados a cada `update()`, mas sem consumidor.
+   *
+   * A METADE HTML DO ALTO CONTRASTE NAO FICOU DESCOBERTA: `SpecPreview.test.tsx`
+   * confere que a cor e o fundo da caixa de texto saem embrulhados em
+   * `var(--vislow-hc-*, ...)`, que e o mecanismo inteiro do lado do HTML. O que
+   * esta sem cobertura e a ponta SVG, que so existe com grafico.
+   *
+   * Os seis voltam com o KPI Card da Fase 4. `apps/web/src/components/
+   * kitInteraction.test.tsx`, que cobria os mesmos comportamentos no lado do
+   * editor, foi apagado pelo mesmo motivo.
+   * =========================================================================
+   */
 });
-

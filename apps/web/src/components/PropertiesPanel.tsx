@@ -195,16 +195,25 @@ function errorFor(problems: NodeIssues | undefined, key: string): string | undef
  */
 function isVisible(field: FieldSpec, node: SpecNode): boolean {
   if (!field.showWhen) return true;
-  const descriptor = NODE_DESCRIPTORS[node.kind];
-  const governing = descriptor.fields.find((f) => f.key === field.showWhen?.key);
+
+  // O valor ATUAL manda, e ele nao e necessariamente string: `showBackground` e
+  // booleano e governa a cor de fundo. Enquanto so `string` era aceita, um
+  // governante booleano caia direto no `default` do descritor — o campo
+  // governado ficava congelado na visibilidade inicial e o interruptor nao fazia
+  // nada na tela.
   const current = node.props[field.showWhen.key];
-  const value =
-    typeof current === 'string'
-      ? current
-      : governing && governing.kind !== 'role'
-        ? String(governing.default)
-        : undefined;
-  return value === field.showWhen.equals;
+  if (typeof current === 'string' || typeof current === 'boolean' || typeof current === 'number') {
+    return String(current) === field.showWhen.equals;
+  }
+
+  // Prop ausente: cai no default do descritor. Campo de papel nao tem default e
+  // nao governa nada.
+  const governing = NODE_DESCRIPTORS[node.kind].fields.find((f) => f.key === field.showWhen?.key);
+  return (
+    governing !== undefined &&
+    governing.kind !== 'role' &&
+    String(governing.default) === field.showWhen.equals
+  );
 }
 
 /** Moldura comum aos dois estados do painel, para o cabecalho nao divergir. */

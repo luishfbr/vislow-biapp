@@ -25,18 +25,24 @@ const TOKEN_LABELS: Record<string, string> = {
   medium: 'Medio',
   semibold: 'Semi-negrito',
   bold: 'Negrito',
-  // Alinhamento.
+  // Alinhamento horizontal.
   left: 'Esquerda',
   center: 'Centro',
   right: 'Direita',
+  // Alinhamento vertical. Catalogo proprio (`valign`), e nao os tres de cima:
+  // sao dois eixos independentes, e juntar os seis num catalogo so obrigaria
+  // todo consumidor a saber quais valores servem para qual eixo.
+  top: 'Topo',
+  middle: 'Meio',
+  bottom: 'Base',
 };
 
 /** Rotulos dos `select` do registro, que nao passam pelo catalogo de tokens. */
 const OPTION_LABELS: Record<string, string> = {
   row: 'Linha',
   column: 'Coluna',
-  vertical: 'Vertical',
-  horizontal: 'Horizontal',
+  wrap: 'Quebrar linha',
+  truncate: 'Cortar com reticencias',
 };
 
 export interface Option {

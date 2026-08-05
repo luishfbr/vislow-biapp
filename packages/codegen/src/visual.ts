@@ -130,7 +130,7 @@ export function generateVisualSource(spec: VisualSpec, buildId: string): string 
 import type powerbi from 'powerbi-visuals-api';
 import { StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { ErrorBoundary, TruncationNotice } from '@vislow/visual-kit';
+import { ErrorBoundary, TruncationNotice, VisualRoot } from '@vislow/visual-kit';
 import { ${nodeImports.join(', ')} } from '@vislow/visual-kit/nodes';
 import { Interaction } from './interaction';
 
@@ -196,7 +196,7 @@ export class Visual implements IVisual {
     // excecao acontece fora do bloco. Só o ErrorBoundary captura.
     this.root.render(
       <StrictMode>
-        <div className="pbi:relative pbi:w-full pbi:h-full pbi:flex pbi:flex-col">
+        <VisualRoot>
           <ErrorBoundary buildId={BUILD_ID}>
             <Tree ${withFrame ? 'frame={frame}' : ''}/>
           </ErrorBoundary>
@@ -204,7 +204,7 @@ export class Visual implements IVisual {
           {frame.truncated && (
             <TruncationNotice shown={frame.truncated.shown} limit={frame.truncated.limit} />
           )}
-        </div>
+        </VisualRoot>
       </StrictMode>,
     );
   }

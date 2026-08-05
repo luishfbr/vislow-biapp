@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { createDefaultConfig, TOKEN_CATALOG } from '@vislow/config-schema';
+import { TOKEN_CATALOG } from '@vislow/config-schema';
 import { createEmptySpec, createNode, DEFAULT_TABLE, nextNodeId } from './factory.js';
-import { isV1Config, migrateToCurrent, migrateV1 } from './migrate.js';
 import { defaultPropsFor, NODE_DESCRIPTORS, NODE_KINDS, roleFieldsOf } from './registry.js';
 import { assertValidSpec, validateSpec, walk } from './schema.js';
 import {
@@ -27,11 +26,8 @@ import { insertChild } from './tree.js';
 function specWithEveryNode(): VisualSpec {
   const spec = createEmptySpec('Todos os nos');
   let root = spec.root;
-  for (const kind of NODE_KINDS.filter((kind) => kind !== 'container')) {
-    root = insertChild(root, root.id, createNode(kind, {
-      categoryRole: 'regiao',
-      measureRole: 'receita',
-    }))!;
+  for (const kind of NODE_KINDS) {
+    root = insertChild(root, root.id, createNode(kind))!;
   }
   return { ...spec, root };
 }
@@ -294,21 +290,31 @@ describe('prancheta do editor', () => {
 });
 
 describe('os problemas apontam o campo certo', () => {
-  /** Um `barChart` sem papel ligado — o estado pendente que o editor mostra. */
-  function pendingBar() {
-    return validateSpec(specWithChild(createNode('barChart'), 'Pendente'));
+  /**
+   * Um texto sem `fontSize` — campo obrigatorio do tipo, apagado a mao.
+   *
+   * Ate a spec 4.0.0 o sujeito aqui era um `barChart` sem papel ligado, que
+   * nascia invalido de proposito. Sem campo de papel no catalogo, nenhum no
+   * nasce invalido, e o jeito de chegar a este estado passa a ser o de sempre no
+   * mundo real: uma spec importada ou editada a mao com um campo faltando.
+   */
+  function textoQuebrado() {
+    const node = createNode('text');
+    delete node.props.fontSize;
+    return validateSpec(specWithChild(node, 'Pendente'));
   }
 
   it('so fala dos campos do TIPO declarado, nunca dos das outras variantes', () => {
-    // Com `oneOf`, um barChart sem medida acusava tambem "falta direction" e
-    // "falta gap" — campos de container. Erro de outro tipo de no manda o
-    // usuario procurar um controle que a tela dele nem tem.
-    const result = pendingBar();
+    // Com `oneOf`, um no invalido acusava tambem "falta direction" e "falta gap"
+    // — campos de container. Erro de outro tipo de no manda o usuario procurar
+    // um controle que a tela dele nem tem. E o que a ADR-15 resolve com
+    // `if`/`then` por kind.
+    const result = textoQuebrado();
     expect(result.kind).toBe('invalid');
     if (result.kind !== 'invalid') return;
 
     const alheios = result.issues.filter((issue) =>
-      ['direction', 'gap', 'content', 'innerRadius'].some((campo) => issue.path.endsWith(campo)),
+      ['direction', 'gap', 'placement', 'borderColor'].some((campo) => issue.path.endsWith(campo)),
     );
     expect(alheios).toEqual([]);
   });
@@ -316,67 +322,34 @@ describe('os problemas apontam o campo certo', () => {
   it('o caminho aponta o CAMPO, no formato do walk', () => {
     // `required` do Ajv aponta o objeto; sem anexar a propriedade, o editor
     // saberia que "algo em props falta" e nao qual controle acender.
-    const result = pendingBar();
+    const result = textoQuebrado();
     if (result.kind !== 'invalid') throw new Error('esperava invalido');
 
-    expect(result.issues.map((issue) => issue.path)).toContain(
-      'root.children[0].props.measureRole',
-    );
-  });
-
-  it('o formato do caminho e o MESMO nas duas validacoes', () => {
-    // Schema e regras semanticas alimentam a mesma lista. Formatos diferentes
-    // impediriam qualquer consumidor de ligar um problema a um no.
-    const spec = specWithChild(
-      createNode('barChart', { categoryRole: 'regiao', measureRole: 'inexistente' }),
-      'Papel fantasma',
-    );
-    const semantico = validateSpec(spec);
-    if (semantico.kind !== 'invalid') throw new Error('esperava invalido');
-
-    expect(semantico.issues[0]?.path).toBe('root.children[0].props.measureRole');
+    expect(result.issues.map((issue) => issue.path)).toContain('root.children[0].props.fontSize');
   });
 
   it('nao devolve invalido com lista de problemas vazia', () => {
-    const result = pendingBar();
+    const result = textoQuebrado();
     if (result.kind !== 'invalid') throw new Error('esperava invalido');
     expect(result.issues.length).toBeGreaterThan(0);
   });
 });
 
-describe('validacao semantica de papeis', () => {
-  it('rejeita no que referencia papel nao declarado', () => {
-    const spec = specWithChild(
-      createNode('barChart', { categoryRole: 'regiao', measureRole: 'inexistente' }),
-      'Papel fantasma',
-    );
-
-    const result = validateSpec(spec);
-    expect(result.kind).toBe('invalid');
-    if (result.kind === 'invalid') {
-      expect(result.issues.some((i) => i.message.includes('papel nao declarado'))).toBe(true);
-    }
-  });
-
-  it('rejeita papel do tipo errado — grouping onde se exige measure', () => {
-    const spec = createEmptySpec('Tipo trocado');
-    spec.root.children = [
-      // `categoria` e grouping; o campo measureRole exige measure.
-      createNode('barChart', { categoryRole: 'regiao', measureRole: 'regiao' }),
-    ];
-
-    const result = validateSpec(spec);
-    expect(result.kind).toBe('invalid');
-    if (result.kind === 'invalid') {
-      expect(result.issues.some((i) => i.message.includes('exige measure'))).toBe(true);
-    }
-  });
-
-  it('rejeita no com papel nao ligado — o default nao existe de proposito', () => {
-    const spec = createEmptySpec('Papel pendente');
-    spec.root.children = [createNode('barChart')];
-    expect(validateSpec(spec).kind).toBe('invalid');
-  });
+describe('validacao semantica', () => {
+  /*
+   * ================ AS TRES REGRAS DE PAPEL ESTAO DORMENTES ==================
+   * Havia aqui tres testes sobre as regras semanticas de papel, que o JSON
+   * Schema nao consegue expressar e `validateSpec` verifica a mao:
+   *
+   *   - "rejeita no que referencia papel nao declarado"
+   *   - "rejeita papel do tipo errado — grouping onde se exige measure"
+   *   - "rejeita no com papel nao ligado — o default nao existe de proposito"
+   *
+   * Os tres precisavam de um no que DECLARASSE campo de papel, e nenhum
+   * descritor declara na spec 5.0.0. As regras continuam em `schema.ts`, sem
+   * nada que as acione, e voltam a morder com o KPI Card da Fase 4.
+   * ==========================================================================
+   */
 
   it('rejeita ids de no duplicados', () => {
     const spec = createEmptySpec('Ids repetidos');
@@ -424,59 +397,22 @@ describe('identificadores', () => {
   });
 });
 
-describe('migracao v1 -> spec atual', () => {
-  it('preserva a identidade do projeto — e o ponto da migracao (RF-10)', () => {
-    const v1 = createDefaultConfig('Projeto Antigo', 'bar');
-    const v2 = migrateV1(v1);
-
-    expect(v2.project.id).toBe(v1.project.id);
-    expect(v2.project.name).toBe(v1.project.name);
-    expect(v2.project.packageVersion).toBe(v1.project.packageVersion);
-  });
-
-  // A `migrateV1` entrega uma arvore v3 — medidas em token. Quem a leva ate a
-  // spec atual e o encadeador, e e ele que os dois pontos de entrada chamam.
-  // Validar a saida crua da v1 testaria um formato intermediario que nunca e
-  // gravado em lugar nenhum.
-  it('produz arvore valida a partir de um config de barras', () => {
-    const spec = migrateToCurrent(migrateV1(createDefaultConfig('Barras v1', 'bar')));
-    expect(() => { assertValidSpec(spec); }).not.toThrow();
-    expect(walk(spec as VisualSpec).some(({ node }) => node.kind === 'barChart')).toBe(true);
-  });
-
-  it('produz arvore valida a partir de um config de KPI', () => {
-    const spec = migrateToCurrent(migrateV1(createDefaultConfig('KPI v1', 'kpi')));
-    expect(() => { assertValidSpec(spec); }).not.toThrow();
-    expect(walk(spec as VisualSpec).some(({ node }) => node.kind === 'kpi')).toBe(true);
-  });
-
-  it('leva a moldura v1 para o container raiz, convertida em pixel', () => {
-    const v1 = createDefaultConfig('Moldura', 'bar');
-    v1.layout.padding = 'xl';
-    v1.layout.surfaceColor = '#0f172a';
-
-    const spec = migrateToCurrent(migrateV1(v1)) as VisualSpec;
-    // `xl` valia `p-8` no Tailwind, que sao 32px. O numero e historia, nao
-    // escolha: mudar aqui mudaria a aparencia de todo projeto v1 migrado.
-    expect(spec.root.props.padding).toBe(32);
-    expect(spec.root.props.background).toBe('#0f172a');
-  });
-
-  it('omite o texto quando o titulo estava desligado', () => {
-    const v1 = createDefaultConfig('Sem titulo', 'bar');
-    v1.header.show = false;
-
-    const v2 = migrateV1(v1);
-    expect(walk(v2).some(({ node }) => node.kind === 'text')).toBe(false);
-  });
-
-  it('isV1Config distingue os dois formatos', () => {
-    expect(isV1Config(createDefaultConfig('v1', 'bar'))).toBe(true);
-    expect(isV1Config(createEmptySpec('v2'))).toBe(false);
-    expect(isV1Config(null)).toBe(false);
-    expect(isV1Config({})).toBe(false);
-  });
-});
+/*
+ * ================= A BATERIA DE MIGRACAO SAIU NA SPEC 5.0.0 ==================
+ * Havia aqui `describe('migracao v1 -> spec atual')`, com sete testes sobre
+ * `migrateV1` / `migrateToCurrent` / `isV1Config`: identidade do projeto
+ * preservada (RF-10), arvore valida a partir de um config de barras e de um de
+ * KPI, moldura convertida de token para pixel, titulo desligado que nao vira no.
+ *
+ * A cadeia inteira de migracao foi APAGADA. A 5.0.0 removeu tipos de no, e nao
+ * ha ponte 4->5: mantida, `migrate.ts` continuaria rodando, produzindo spec
+ * 4.0.0 e entregando-a a um validador que garantidamente reprova — apagando o
+ * projeto do usuario sem dizer nada. Sem os testes de migracao acima nao ha o
+ * que testar; o que protege quem tinha projeto salvo agora e a CHAVE do
+ * `localStorage`, que pulou para `vislow:project:v5` e simplesmente nao procura
+ * o que nao sabe ler (ver `apps/web/src/lib/persistence.ts`).
+ * ============================================================================
+ */
 
 describe('T-XX: o atalho de ferramenta e unico e vem do catalogo', () => {
   /**

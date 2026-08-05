@@ -17,7 +17,7 @@
  *   - symlink reintroduziria exatamente a condicao do achado 39;
  *   - `file:` faria o `npm ci` recusar o lockfile a cada byte alterado no kit.
  */
-import { cp, mkdir, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -84,6 +84,34 @@ async function main() {
     );
   }
   console.log('CSS do visual-kit presente.');
+
+  // ===================== NENHUMA BIBLIOTECA EXTERNA NO KIT ===================
+  // O Recharts saiu do visual compilado na spec 5.0.0, e saiu tambem do
+  // `package.json` do template — nao esta mais instalado. Um `dist/` que ainda o
+  // importe nao quebra o build enquanto ninguem o alcanca pelo grafo de imports,
+  // e foi exatamente o que aconteceu: `charts.js` e `KpiNode.js` sobreviveram no
+  // `dist/` depois de apagados do `src/`, porque o `tsc` nao apaga o que sumiu.
+  //
+  // Esta guarda olha o que de fato VIAJA para dentro do visual, e nao o fonte.
+  // Ela reprova o pacote antes de o `pbiviz` tentar resolver um modulo que nao
+  // existe — e a mensagem dele nao apontaria para a causa.
+  const proibidas = ['recharts', 'd3-'];
+  const restos = [];
+  for (const file of await readdir(join(VENDOR, 'visual-kit', 'dist'), { recursive: true })) {
+    if (!file.endsWith('.js')) continue;
+    const full = join(VENDOR, 'visual-kit', 'dist', file);
+    const code = await readFile(full, 'utf8');
+    const achada = proibidas.find((lib) => code.includes(`from '${lib}`) || code.includes(`"${lib}`));
+    if (achada) restos.push(`${file} (${achada})`);
+  }
+  if (restos.length > 0) {
+    throw new Error(
+      `o dist/ do visual-kit importa biblioteca externa:\n  ${restos.join('\n  ')}\n` +
+        'Provavel resto de build antigo — o `tsc` nao apaga o que sumiu do `src/`. ' +
+        'Rode `pnpm --filter @vislow/visual-kit build`, que agora limpa o `dist/` antes.',
+    );
+  }
+  console.log('visual-kit sem biblioteca externa.');
 }
 
 await main();

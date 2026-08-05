@@ -8,11 +8,10 @@ import {
   type SpecNode,
   type VisualSpec,
 } from '@vislow/component-registry';
-import { ErrorBoundary } from '@vislow/visual-kit';
+import { ErrorBoundary, VisualRoot } from '@vislow/visual-kit';
 import { CanvasSlot, sampleFrame, type DataFrame } from '@vislow/visual-kit/nodes';
 import { createElement, type ReactNode } from 'react';
 import { CanvasOverlay } from '@/components/CanvasOverlay';
-import type { NodeIssues } from '@/lib/issues';
 import { NODE_COMPONENTS } from '@/lib/nodeComponents';
 
 /**
@@ -29,30 +28,21 @@ import { NODE_COMPONENTS } from '@/lib/nodeComponents';
  */
 
 /**
- * Um no com campo pendente nao pode ser renderizado com honestidade.
+ * SEM PLACEHOLDER DE NO PENDENTE — e por que ele saiu na spec 5.0.0.
  *
- * Renderizar assim mesmo passaria `undefined` como nome de papel e o kit
- * mostraria "campo undefined faltando" — uma mensagem sobre o nosso bug, nao
- * sobre o que o usuario precisa fazer. Este placeholder some sozinho quando ele
- * liga o campo, e nao existe no visual compilado porque uma spec pendente nunca
- * chega ao compilador (o export fica bloqueado).
+ * Ate a 4.0.0 um grafico nascia INVALIDO de proposito: o campo de papel nao tem
+ * default, e o no ficava pendente ate o usuario ligar uma coluna. Renderiza-lo
+ * assim passaria `undefined` como nome de papel, entao o preview trocava o no
+ * inteiro por uma ficha ambar. Nenhum descritor declara campo de papel agora, e
+ * no nenhum nasce invalido.
+ *
+ * O estado ainda e alcancavel — o campo hexadecimal do `ColorField` grava a cada
+ * tecla, e `#1e2` e invalido no caminho para `#1e293b`. Mas trocar o no inteiro
+ * por uma ficha no meio da digitacao e PIOR do que deixar o navegador ignorar
+ * uma cor que ele nao entende: quem digita perde de vista o que esta editando. O
+ * erro continua sendo dito onde importa — embaixo do proprio campo, no painel —
+ * e continua bloqueando o export.
  */
-function PendingNode({ label, problems }: { label: string; problems: string[] }) {
-  return (
-    // Ambar LITERAL, sem token e sem `dark:`. Este no e desenhado DENTRO da
-    // prancheta, que e branca nos dois temas — `text-warning` viraria amber-400
-    // sobre branco quando o usuario poe o editor no escuro, e o aviso ficaria
-    // ilegivel exatamente onde ele precisa ser lido.
-    <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded border-2 border-dashed border-amber-400 bg-amber-50/70 p-3 text-center">
-      <span className="text-xs font-semibold text-amber-700">{label}: campo pendente</span>
-      {problems.map((problem) => (
-        <span key={problem} className="text-micro text-amber-600">
-          {problem}
-        </span>
-      ))}
-    </div>
-  );
-}
 
 /**
  * Manipulacao direta, quando o preview esta no editor.
@@ -136,26 +126,8 @@ function measureOf(
   return bound;
 }
 
-function renderNode(
-  node: SpecNode,
-  frame: DataFrame,
-  issues: ReadonlyMap<string, NodeIssues>,
-  edit: PreviewEdit | undefined,
-): ReactNode {
+function renderNode(node: SpecNode, frame: DataFrame, edit: PreviewEdit | undefined): ReactNode {
   const descriptor = NODE_DESCRIPTORS[node.kind];
-  const problem = issues.get(node.id);
-
-  if (problem && problem.byField.size > 0) {
-    return (
-      <PendingNode
-        key={node.id}
-        label={descriptor.label}
-        problems={[...problem.byField.keys()].map(
-          (field) => descriptor.fields.find((f) => f.key === field)?.label ?? field,
-        )}
-      />
-    );
-  }
 
   // A ORDEM vem do descritor, nao do objeto `props` — pelo mesmo motivo do
   // codegen: a ordem das chaves de um JSON e do cliente.
@@ -171,7 +143,7 @@ function renderNode(
   // o `validateSpec` reprova a spec importada que tentar.
   const free = positionsChildren(node);
   const children: ReactNode[] = (node.children ?? []).map((child) => {
-    const rendered = renderNode(child, frame, issues, edit);
+    const rendered = renderNode(child, frame, edit);
     const rect = child.rect;
     return free && rect ? (
       <CanvasSlot key={child.id} x={rect.x} y={rect.y} w={rect.w} h={rect.h}>
@@ -231,29 +203,22 @@ function renderNode(
     : createElement(NODE_COMPONENTS[node.kind], props);
 }
 
-export function SpecPreview({
-  spec,
-  issues,
-  edit,
-}: {
-  spec: VisualSpec;
-  issues: ReadonlyMap<string, NodeIssues>;
-  edit?: PreviewEdit | undefined;
-}) {
+export function SpecPreview({ spec, edit }: { spec: VisualSpec; edit?: PreviewEdit | undefined }) {
   // O preview desenha o que o USUARIO digitou na tabela de exemplo. Antes o
   // quadro era fabricado a partir do nome do papel, e ele compunha contra
   // numeros que nao eram dele.
   const frame = sampleFrame(spec.data);
 
   return (
-    // A moldura e a MESMA que o codegen emite em volta da arvore. Sem ela o
-    // preview daria altura diferente aos filhos flexiveis e o grafico mediria
-    // outro tamanho — divergencia silenciosa, do tipo que so aparece no Desktop.
-    <div className="pbi:relative pbi:w-full pbi:h-full pbi:flex pbi:flex-col">
+    // O MESMO componente que o codegen emite em volta da arvore — nao uma string
+    // de classes repetida dos dois lados, que era como isto funcionava ate a
+    // spec 4.0.0. Divergir ali daria ao preview uma moldura e ao pacote outra, e
+    // a diferenca so apareceria dentro do Power BI.
+    <VisualRoot>
       {/* O ErrorBoundary tambem aqui: a arvore em edicao passa por estados que o
           componente pode nao suportar, e travar o editor seria pior que mostrar
           o card de erro — o mesmo raciocinio da RN-04, do lado do editor. */}
-      <ErrorBoundary>{renderNode(spec.root, frame, issues, edit)}</ErrorBoundary>
-    </div>
+      <ErrorBoundary>{renderNode(spec.root, frame, edit)}</ErrorBoundary>
+    </VisualRoot>
   );
 }

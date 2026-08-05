@@ -22,9 +22,10 @@
     "src"
   ],
   "scripts": {
-    "// build": "Um passo so, de proposito: `tsc` e o Tailwind escrevem no MESMO `dist/`, e duas tarefas do turbo com outputs sobrepostos produzem cache parcial. Os inputs tambem sao os mesmos (`src/**`), entao separar nao granularia nada.",
-    "build": "tsc -p tsconfig.build.json && pnpm run build:css && node scripts/check-css.mjs",
-    "build:css": "tailwindcss -i ./src/styles.css -o ./dist/styles.css --minify",
+    "// build": "Um passo so, de proposito: `tsc` e o passo de CSS escrevem no MESMO `dist/`, e duas tarefas do turbo com outputs sobrepostos produzem cache parcial. Os inputs tambem sao os mesmos (`src/**`), entao separar nao granularia nada.",
+    "// build:clean": "O `rm -rf` NAO e higiene: o `tsc` nao apaga o que sumiu do fonte, e o `stage-vendor` copia o `dist/` INTEIRO para dentro do visual. Sem isto, `charts.js` e `KpiNode.js` continuaram meses no pacote depois de apagados do `src/` — importando um `recharts` que ja nao estava instalado.",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && pnpm run build:css && node scripts/check-css.mjs",
+    "build:css": "node scripts/build-css.mjs",
     "typecheck": "tsc -p tsconfig.json",
     "clean": "rm -rf dist .turbo"
   },
@@ -32,16 +33,9 @@
     "@vislow/config-schema": "workspace:*"
   },
   "peerDependencies": {
-    "react": "^19.0.0",
-    "recharts": "^3.10.0"
-  },
-  "peerDependenciesMeta": {
-    "recharts": { "optional": true }
+    "react": "^19.0.0"
   },
   "devDependencies": {
-    "@tailwindcss/cli": "4.3.3",
-    "@types/react": "19.2.7",
-    "recharts": "3.10.1",
-    "tailwindcss": "4.3.3"
+    "@types/react": "19.2.7"
   }
 }

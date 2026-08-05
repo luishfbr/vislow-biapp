@@ -6,15 +6,12 @@ import {
   createNode,
   defaultPropsFor,
   insertChild,
-  roleFieldsOf,
-  KIND_FOR_TYPE,
-  type DataColumn,
   type SampleTable,
   type SpecNode,
   type VisualSpec,
   type NodeKind,
 } from '@vislow/component-registry';
-import { INITIAL_PACKAGE_VERSION, createProjectId, type ColumnType } from '@vislow/config-schema';
+import { INITIAL_PACKAGE_VERSION, createProjectId } from '@vislow/config-schema';
 
 /**
  * Specs de teste, derivadas do REGISTRO — nunca escritas a mao.
@@ -55,13 +52,17 @@ export const TEST_TABLE: SampleTable = {
   ],
 };
 
-/** Liga todo campo de papel do tipo ao papel de teste do mesmo `roleKind`. */
+/**
+ * Um no do tipo pedido.
+ *
+ * Ate a spec 4.0.0 esta funcao LIGAVA os campos de papel do tipo as colunas de
+ * teste — era o que fazia a fixture produzir um `capabilities.json` com
+ * `dataRoles`. Nenhum descritor declara campo de papel na 5.0.0, entao nao ha o
+ * que ligar, e a fixture passou a exercitar um pacote sem poco de campos. Volta
+ * a ter conteudo com o KPI Card da Fase 4.
+ */
 export function nodeOf(kind: NodeKind): SpecNode {
-  const bindings: Record<string, string> = {};
-  for (const field of roleFieldsOf(kind)) {
-    bindings[field.key] = field.roleKind === 'grouping' ? 'categoria' : 'valor';
-  }
-  return createNode(kind, bindings);
+  return createNode(kind);
 }
 
 /** Projeto minimo com um unico no na raiz de um container. */
@@ -93,11 +94,15 @@ export function specWithEveryKind(name = 'Teste de Codegen'): VisualSpec {
   // POSICIONADO, porque e o que a raiz de um projeto novo faz. O portao compila
   // esta fixture de verdade: se ele empilhasse, nada no pipeline real exercitaria
   // o `CanvasSlot`, e a primeira vez que alguem visse um no posicionado dentro do
-  // Power BI seria em producao. Cada tipo cai numa faixa — inclusive os graficos,
-  // que passam a medir dentro de uma caixa absoluta e nao mais na cadeia de flex.
+  // Power BI seria em producao. Cada tipo cai numa faixa.
+  // TODO tipo entra, inclusive o container — um container aninhado dentro de um
+  // canvas e composicao legitima, e e o unico jeito de a fixture ter mais de um
+  // filho posicionado agora que o catalogo tem dois tipos. O gate depende disso:
+  // a assertiva de geometria compara VARIAS caixas, e com uma so ela passaria
+  // por coincidencia.
   let container = createNode('container');
   container.props.placement = CONTAINER_CANVAS;
-  for (const kind of NODE_KINDS.filter((kind) => kind !== 'container')) {
+  for (const kind of NODE_KINDS) {
     container = insertChild(container, container.id, nodeOf(kind)) ?? container;
   }
   return {
@@ -116,36 +121,19 @@ export function specWithEveryKind(name = 'Teste de Codegen'): VisualSpec {
   };
 }
 
-/**
- * Projeto cuja PRIMEIRA coluna e do tipo pedido, ligada num grafico.
+/*
+ * Aqui vivia `specWithColumnType(type)`: um projeto cuja primeira coluna era do
+ * tipo pedido, LIGADA num grafico de barras. Era a fixture da bateria que
+ * conferia o `requiredTypes` de cada `ColumnType` no `capabilities.json` — e a
+ * que provava que `date` fica de fora, porque o schema oficial nao tem tipo
+ * temporal e o `pbiviz package` lanca.
  *
- * Duas colunas porque o grafico exige um agrupamento e uma medida: a testada e a
- * companheira do outro papel. Toda celula e vazia — `null` vale em qualquer
- * tipo, e aqui o que esta sob teste e o tipo declarado, nao o valor.
+ * Saiu na spec 5.0.0 junto com os graficos. Sem no que consuma dados nao ha como
+ * LIGAR uma coluna, e sem ligacao o `usedRoles` devolve vazio: a fixture nao
+ * teria como produzir um `dataRole` para conferir. A bateria correspondente esta
+ * em quarentena declarada no `codegen.test.ts`, e as duas voltam juntas com o
+ * KPI Card da Fase 4.
  */
-export function specWithColumnType(type: ColumnType): VisualSpec {
-  const kind = KIND_FOR_TYPE[type];
-  const par: DataColumn =
-    kind === 'grouping'
-      ? { name: 'par', displayName: 'Par', kind: 'measure', type: 'decimal' }
-      : { name: 'par', displayName: 'Par', kind: 'grouping', type: 'text' };
-
-  const container = createNode('container');
-  container.children = [
-    createNode('barChart', {
-      categoryRole: kind === 'grouping' ? 'alvo' : 'par',
-      measureRole: kind === 'measure' ? 'alvo' : 'par',
-    }),
-  ];
-
-  return {
-    ...specWith(container),
-    data: {
-      columns: [{ name: 'alvo', displayName: 'Alvo', kind, type }, par],
-      rows: [[null, null]],
-    },
-  };
-}
 
 /** Um container com um unico filho do tipo pedido. */
 export function specWithKind(kind: NodeKind): VisualSpec {

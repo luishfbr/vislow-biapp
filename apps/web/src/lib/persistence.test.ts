@@ -1,78 +1,45 @@
 // @vitest-environment jsdom
-import { validateSpec } from '@vislow/component-registry';
+import { createEmptySpec, validateSpec } from '@vislow/component-registry';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { loadProject } from './persistence';
+import { loadProject, saveProjectDebounced } from './persistence';
 
 /**
  * O caminho por onde um projeto salvo se PERDE.
  *
  * `loadProject` descarta em silencio a spec que nao valida, e isso e
  * deliberado: abrir num estado invalido travaria o export sem o usuario saber
- * por que. O preco e que uma migracao quebrada nao da erro na tela — ela apaga
- * o projeto de quem abriu o editor. Este arquivo e a guarda entre as duas
- * coisas.
+ * por que.
  *
- * As cargas sao ESCRITAS A MAO, e nao construidas com as funcoes de hoje. Uma
- * carga derivada do codigo atual evoluiria junto com ele e continuaria verde no
- * dia em que o arquivo do usuario deixasse de abrir.
+ * ================= O QUE MUDOU, E POR QUE O ARQUIVO ENCOLHEU ================
+ * Ate a spec 4.0.0 este arquivo tinha seis testes de MIGRACAO — uma spec v2 e
+ * uma v3 escritas a mao, com token no lugar de pixel, e assercoes sobre o que a
+ * conversao tinha de preservar (a identidade do projeto, RF-10; as ligacoes; a
+ * tabela nao esvaziar). Eram a guarda entre "o schema evoluiu" e "o projeto do
+ * usuario sumiu".
+ *
+ * A 5.0.0 removeu tipos de no e NAO tem migracao. Em vez de converter, a chave
+ * mudou para `vislow:project:v5`: o projeto antigo continua no navegador e
+ * simplesmente nunca e procurado. Nao ha conversao para dar errado, e por isso
+ * nao ha mais o que essas seis assercoes protegessem.
+ *
+ * O que sobra e a guarda que continua valendo: a chave certa, a carga
+ * adulterada, e — a mais importante — a prova de que a chave NOVA nao le a
+ * antiga. Se ela lesse, todo projeto salvo seria reprovado pelo schema 5.0.0 e
+ * apagado em silencio, que e exatamente o modo de falha que a troca de chave
+ * existe para evitar.
+ * ============================================================================
+ *
+ * As cargas continuam ESCRITAS A MAO onde importa. Uma carga derivada do codigo
+ * atual evoluiria junto com ele e continuaria verde no dia em que o arquivo do
+ * usuario deixasse de abrir.
  */
 
+const KEY = 'vislow:project:v5';
 const V3_KEY = 'vislow:project:v3';
-const V2_KEY = 'vislow:project:v2';
 
-/** Uma spec v2 real, do formato que antecede a tabela de exemplo. */
-const V2_SALVA = {
-  schemaVersion: '2.0.0',
-  project: {
-    id: 'VendasporRegiao7f3a',
-    name: 'Vendas por Região',
-    packageVersion: '1.0.0.4',
-    artboard: { width: 1280, height: 720 },
-  },
-  dataRoles: [
-    { name: 'categoria', displayName: 'Categoria', kind: 'grouping' },
-    { name: 'valor', displayName: 'Valor', kind: 'measure' },
-  ],
-  root: {
-    id: 'container-1',
-    kind: 'container',
-    props: {
-      placement: 'canvas',
-      direction: 'column',
-      gap: 'sm',
-      padding: 'md',
-      radius: 'lg',
-      border: 'none',
-      shadow: 'none',
-      background: '#ffffff',
-      borderColor: '#e2e8f0',
-    },
-    children: [
-      {
-        id: 'kpi-2',
-        kind: 'kpi',
-        props: {
-          measureRole: 'valor',
-          label: 'Receita',
-          valueFontSize: '4xl',
-          valueColor: '#3b82f6',
-          labelColor: '#64748b',
-        },
-        rect: { x: 10, y: 10, w: 80, h: 80 },
-      },
-    ],
-  },
-};
-
-/**
- * Uma spec v3 real: o formato em que as medidas ainda eram token.
- *
- * Mora na MESMA chave que a 4.0.0 usa — a `vislow:project:v3`. Nao ha chave
- * nova, entao a unica coisa entre este arquivo e o projeto do usuario e o
- * migrador.
- */
-const V3_SALVA = {
-  schemaVersion: '3.0.0',
+/** Uma spec 4.0.0 real, do formato que a 5.0.0 nao le mais. */
+const V4_SALVA = {
+  schemaVersion: '4.0.0',
   project: {
     id: 'PainelSalvo4b8e',
     name: 'Painel salvo',
@@ -89,10 +56,10 @@ const V3_SALVA = {
     props: {
       placement: 'canvas',
       direction: 'column',
-      gap: 'sm',
-      padding: 'md',
-      radius: 'lg',
-      border: 'thin',
+      gap: 8,
+      padding: 16,
+      radius: 8,
+      borderWidth: 1,
       shadow: 'none',
       background: '#ffffff',
       borderColor: '#e2e8f0',
@@ -104,7 +71,7 @@ const V3_SALVA = {
         props: {
           measureRole: 'valor',
           label: 'Receita',
-          valueFontSize: '4xl',
+          valueFontSize: 36,
           valueColor: '#3b82f6',
           labelColor: '#64748b',
         },
@@ -123,59 +90,55 @@ describe('loadProject', () => {
     expect(loadProject()).toBeNull();
   });
 
-  it('um projeto v2 salvo MIGRA — nao abre em branco', () => {
-    window.localStorage.setItem(V2_KEY, JSON.stringify(V2_SALVA));
+  it('le uma spec 5.0.0 da chave atual', () => {
+    const spec = createEmptySpec('Painel');
+    window.localStorage.setItem(KEY, JSON.stringify(spec));
 
-    const spec = loadProject();
-    expect(spec).not.toBeNull();
-    expect(validateSpec(spec).kind).toBe('valid');
+    const carregada = loadProject();
+    expect(validateSpec(carregada).kind).toBe('valid');
+    expect(carregada?.project.id).toBe(spec.project.id);
   });
 
-  it('a migracao preserva a identidade — sem ela o Power BI duplica (RF-10)', () => {
-    window.localStorage.setItem(V2_KEY, JSON.stringify(V2_SALVA));
+  it('NAO olha a chave antiga — e o que impede o apagamento em silencio', () => {
+    // A guarda central da troca de chave. Se `loadProject` lesse `:v3`, esta
+    // carga 4.0.0 seria lida, reprovada pelo schema (o tipo `kpi` nao existe
+    // mais) e DESCARTADA sem dizer nada — o usuario abriria o editor e o
+    // projeto dele teria sumido. Comecar em branco tambem perde o projeto, mas
+    // sem ter mexido no que estava guardado: a carga antiga continua la.
+    window.localStorage.setItem(V3_KEY, JSON.stringify(V4_SALVA));
 
-    const spec = loadProject();
-    expect(spec?.project.id).toBe('VendasporRegiao7f3a');
-    expect(spec?.project.packageVersion).toBe('1.0.0.4');
-  });
-
-  it('a migracao preserva a composicao e as ligacoes', () => {
-    window.localStorage.setItem(V2_KEY, JSON.stringify(V2_SALVA));
-
-    const spec = loadProject();
-    expect(spec?.root.children?.[0]?.props.measureRole).toBe('valor');
-    expect(spec?.data.columns.map((column) => column.name)).toEqual(['categoria', 'valor']);
-    // A tabela nasce preenchida: migrar nao pode esvaziar o preview de quem ja
-    // tinha uma composicao na tela.
-    expect(spec?.data.rows.length).toBeGreaterThan(0);
-  });
-
-  it('a chave atual tem precedencia sobre a v2 — nao ha fallback', () => {
-    window.localStorage.setItem(V2_KEY, JSON.stringify(V2_SALVA));
-    // Carga irrecuperavel na chave atual: nao e v2, nao e v3, nao valida.
-    window.localStorage.setItem(V3_KEY, JSON.stringify({ schemaVersion: '3.0.0' }));
-
-    // Nao cai de volta para a v2: a chave atual existe e mandou. Um fallback
-    // aqui ressuscitaria em silencio um projeto que o usuario ja evoluiu.
     expect(loadProject()).toBeNull();
+    expect(window.localStorage.getItem(V3_KEY)).not.toBeNull();
   });
 
-  it('um projeto v3 na chave atual MIGRA para pixel — nao e descartado', () => {
-    // A 4.0.0 nao ganhou chave nova: o v3 de TODO usuario esta exatamente aqui.
-    // Sem este passo, subir a versao apagaria o projeto de todo mundo de uma vez.
-    window.localStorage.setItem(V3_KEY, JSON.stringify(V3_SALVA));
-
-    const spec = loadProject();
-    expect(spec).not.toBeNull();
-    expect(validateSpec(spec).kind).toBe('valid');
-    expect(spec?.project.id).toBe('PainelSalvo4b8e');
-    expect(spec?.root.props.padding).toBe(16); // era 'md'
-    expect(spec?.root.props.borderWidth).toBe(1); // era border: 'thin'
-    expect(spec?.root.children?.[0]?.props.valueFontSize).toBe(36); // era '4xl'
+  it('spec de major antigo na chave ATUAL e descartada, nao aceita pela metade', () => {
+    // Cenario de storage adulterado, ou de um downgrade do app. O schema 5.0.0
+    // nao conhece `kpi`: aceitar isto abriria o editor com um no que nenhum
+    // componente sabe desenhar.
+    window.localStorage.setItem(KEY, JSON.stringify(V4_SALVA));
+    expect(loadProject()).toBeNull();
   });
 
   it('carga adulterada e descartada, nao explode', () => {
-    window.localStorage.setItem(V3_KEY, '{ isto nao e json');
+    window.localStorage.setItem(KEY, '{ isto nao e json');
     expect(loadProject()).toBeNull();
+  });
+});
+
+describe('saveProjectDebounced', () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+  });
+
+  it('grava na chave nova, e o que foi gravado volta a abrir', async () => {
+    // O par de ida e volta: gravar e ler tem de usar a MESMA chave. Com as duas
+    // divergindo, o autosave funcionaria e o editor abriria em branco toda vez —
+    // sem erro em lugar nenhum.
+    const spec = createEmptySpec('Ida e volta');
+    saveProjectDebounced(spec);
+    await new Promise((resolve) => setTimeout(resolve, 400));
+
+    expect(window.localStorage.getItem(KEY)).not.toBeNull();
+    expect(loadProject()?.project.id).toBe(spec.project.id);
   });
 });

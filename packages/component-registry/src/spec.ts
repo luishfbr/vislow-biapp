@@ -1,8 +1,22 @@
 import type { CellValue, ColumnType, ProjectIdentity } from '@vislow/config-schema';
 import type { NodeKind, RoleKind } from './types.js';
 
-/** Versao do formato da arvore. Distinta do `schemaVersion` do config plano v1. */
-export const SPEC_VERSION = '4.0.0';
+/**
+ * Versao do formato da arvore.
+ *
+ * MAJOR NOVO NA 5.0.0 porque houve REMOCAO: os tipos `kpi`, `barChart`,
+ * `lineChart`, `areaChart` e `pieChart` sairam do catalogo (RN-12 exige major
+ * para remocao de schema). Uma spec 4.0.0 que contenha qualquer um deles nao
+ * valida mais.
+ *
+ * E NAO HA MIGRACAO 4->5, por decisao explicita. A cadeia inteira de migracao
+ * (`migrate.ts`, v1->v3->v4) foi apagada junto, porque sem o ultimo salto ela
+ * produziria specs 4.0.0 que o validador garantidamente reprova — codigo vivo
+ * gerando saida invalida e o pior dos dois mundos. Em vez disso, `persistence.ts`
+ * mudou de CHAVE: o projeto antigo continua no navegador e nunca mais e lido.
+ * Nada e descartado em silencio porque nada e sequer tentado.
+ */
+export const SPEC_VERSION = '5.0.0';
 
 /**
  * Uma coluna da tabela de exemplo — que e, ao mesmo tempo, um CAMPO do visual.

@@ -10,47 +10,64 @@ ou em qualquer coisa que termine dentro do `.pbiviz`.
 
 ## 1. As invariantes do CSS
 
-### 1.1 Classe Tailwind é string literal completa
+### 1.1 Classe é string literal completa, com prefixo `vsl-`
 
 ```ts
-// ✅ o Tailwind lê a classe no fonte e gera o CSS
-export const SPACING_CLASS: Record<Spacing, string> = { md: 'pbi:p-4' };
+// ✅ a classe existe no styles.css e a guarda a encontra
+export const FONT_WEIGHT_CLASS: Record<FontWeight, string> = { bold: 'vsl-w-bold' };
 
-// ❌ a classe não existe no fonte; o CSS não é gerado, e nada reclama
-const cls = `pbi:p-${size}`;
+// ❌ o nome montado não existe no CSS, e nada reclama
+const cls = `vsl-w-${peso}`;
 ```
 
-O CSS é pré-compilado pelo CLI do Tailwind, que só enxerga o fonte do `visual-kit` — **nunca a spec do
-usuário**, que só existe depois. Uma classe construída por interpolação some sem erro dentro do Power BI. Use
-sempre strings literais completas em `visual-kit/src/tokens.ts`.
+Navegador nenhum reclama de classe inexistente: o estilo simplesmente **some dentro do Power BI**, sem erro e
+sem aviso. Use sempre strings literais completas em `visual-kit/src/tokens.ts`.
 
 O teste de cobertura de tokens rejeita classes contendo `$`, `{`, `}` ou crase, e falha nos **dois** sentidos:
 token sem classe e classe órfã sem token.
 
-### 1.2 O prefixo vem ANTES da variante
+> **Até a spec 4.0.0 a razão era outra.** O kit usava Tailwind, o CSS era gerado por análise estática do fonte,
+> e o prefixo `pbi:` era prefixo de **variante** do v4 — com a regra extra de que ele tinha de vir antes da
+> variante (`pbi:focus:ring-2`, nunca `focus:pbi:ring-2`; escrito ao contrário o CLI não gerava regra nenhuma e
+> não reclamava, e foi assim que o anel de foco do gráfico de barras da Fase 1 nunca existiu — achado 54). O
+> Tailwind saiu na 5.0.0, essa regra morreu com ele, e a regra da classe literal sobreviveu com um dono novo.
 
-Tailwind v4 usa prefixo em forma de variante: `pbi:flex`, não `pbi-flex`. E:
+### 1.2 O CSS é escrito à mão, e valor não mora nele
 
-```
-✅ pbi:focus:ring-2          ❌ focus:pbi:ring-2
-```
+`packages/visual-kit/src/styles.css` é autoral desde a spec 5.0.0. **Só entra ali escolha entre alternativas** —
+peso, alinhamento nos dois eixos, sombra, direção, transbordo — e medida nossa que o usuário não escolhe (o
+tamanho dos avisos do kit).
 
-Escrito ao contrário, o CLI **não reconhece a classe, não gera regra nenhuma e não reclama** (achado 54). O anel
-de foco do gráfico de barras da Fase 1 nunca existiu, e o código parecia acessível. A regra "use strings
-literais" não protege contra isso, porque a classe é literal e completa — só está na ordem errada.
+**Nenhuma cor.** A do usuário vai por `style` inline; a dos avisos passa por `hcInk`, para o alto contraste do
+host poder vencê-la, o que um `var()` em CSS estático não alcança.
 
-**Classe com variante se confere no `dist/styles.css`, não no olho.** Compile e leia os seletores gerados.
+A divisão não é estética: `config-schema/src/design.ts` guarda **valor** e o `styles.css` guarda **estrutura**.
+Os dois nunca falam da mesma coisa, e por isso não têm como se contradizer. No dia em que uma cor aparecer no
+CSS, ela passa a ter dois donos.
+
+**Nunca escreva regra para `html`, `body` ou seletor de elemento nu.** Este CSS é injetado dentro do relatório
+do host; um reset aqui vaza para o relatório inteiro. A guarda reprova.
 
 ### 1.3 O campo `style` do `pbiviz.json` é ignorado
 
 O CSS entra pelo `import` no `visual.ts` — e o build reporta sucesso mesmo sem ele (achado 20), gerando um
 pacote válido e sem estilo nenhum.
 
-A guarda é `packages/visual-kit/scripts/check-css.mjs`, passo do `build` do kit — vale local, não só no CI.
-**Ela confere o CSS de saída, e uma classe pode ter segunda origem no fonte** (achado 57): `pbi:p-4` também
-aparece literal em `states.tsx`, então quebrar só o mapa de tokens não a remove do bundle. Ao escolher classe
-para a lista da guarda, **prefira as que só o `tokens.ts` produz** — `pbi:rounded-xl`, `pbi:text-lg`,
-`pbi:shadow-sm`.
+A guarda é `packages/visual-kit/scripts/check-css.mjs`, passo do `build` do kit — vale local, não só no CI. Ela
+confere **os dois sentidos**: toda classe `vsl-` usada no fonte tem regra, e toda regra tem uso. O segundo
+sentido é o que impede o arquivo de virar depósito — regra órfã não quebra nada, só viaja no bundle para sempre.
+
+Ela **ignora comentário**, e isso foi descoberto quebrando-a de propósito: o `tokens.ts` documenta a regra da
+classe literal com um exemplo do que **não** fazer, e a guarda lia o exemplo como uso real e reprovava o build.
+É o espelho do problema antigo, em que o Tailwind varria o próprio script e gerava as regras a partir da lista
+de exigências — a guarda passava com o `tokens.ts` inteiro quebrado (achado 57).
+
+### 1.3.1 `build` apaga o `dist/` antes de compilar
+
+Não é higiene. O `tsc` **não remove** o que sumiu do `src/`, e o `stage-vendor` copia o `dist/` inteiro para
+dentro do visual: `charts.js` e `KpiNode.js` sobreviveram no pacote depois de apagados do fonte, importando um
+`recharts` que já não estava instalado. `stage-vendor.mjs` tem a guarda que morde nesse caso — ela olha o que de
+fato **viaja** para dentro do visual, e não o fonte.
 
 ### 1.4 Cor e medida nunca viram classe
 
@@ -169,7 +186,7 @@ Não existe `assets/icon.png` no ZIP — o ícone é a string `content.iconBase6
 portão** — roda em produção, a cada build, antes de o usuário baixar qualquer coisa.
 
 O que confere: GUID igual ao do projeto e presente como `var` no bundle · identidade coerente entre
-`package.json` e recurso · recurso declarado batendo com o presente · classes `pbi:` no bundle (senão o CSS não
+`package.json` e recurso · recurso declarado batendo com o presente · classes `vsl-` no bundle (senão o CSS não
 entrou) · SVG compilado sem `fill="var(` · e os dois orçamentos rígidos.
 
 ## 6. O gate de aceite
@@ -195,7 +212,7 @@ Rode com `pnpm check`.
 | T-03 | Identidade do `package.json` e do recurso coincidem; o recurso declarado é o presente no zip | ADR-11 |
 | T-04 | O GUID aparece como **variável** no bundle (`var {guid}`), senão o visual não carrega | RN-06, achado 13 |
 | T-05 | O GUID do pacote é o do projeto, sem reescrita, e o nome exibido é o que o usuário deu — com aspas, acentos e emoji | RN-01, ADR-08 |
-| T-06 | O bundle contém as classes `pbi:` — sem elas o visual renderiza sem estilo e o `pbiviz` reporta sucesso igual | ADR-02 |
+| T-06 | O bundle contém as classes `vsl-` — sem elas o visual renderiza sem estilo e o `pbiviz` reporta sucesso igual | ADR-02 |
 | T-07 | Dois projetos novos nunca compartilham GUID; o mesmo projeto reexportado mantém o seu | RN-01 |
 | T-08 | Pacote < 2 MB e `content.js` < 1 MB | RNF-04, RNF-05 |
 | T-09 | Renderiza dados, estado vazio ou card de erro — **nunca** tela branca | RN-04 |

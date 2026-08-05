@@ -10,8 +10,7 @@
     "powerbi-visuals-api": "5.11.1",
     "powerbi-visuals-utils-formattingutils": "6.1.2",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
-    "recharts": "3.10.1"
+    "react-dom": "19.2.8"
   },
   "devDependencies": {
     "@types/react": "19.2.7",

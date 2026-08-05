@@ -40,7 +40,7 @@ Em ordem de precedência. Quando dois conflitarem, o de cima vence.
 | Orquestração | Turborepo | — | A ordem de build vive no `turbo.json` (ADR-17) |
 | Linguagem | TypeScript | **5.9.3** | Imposto pela toolchain: `powerbi-visuals-tools` depende de `typescript ^5.9.3` e o `visual-kit` é compilado pelo `ts-loader` dela. TS 7 criaria duas semânticas de tipo sobre código compartilhado. |
 | UI | React | 19.2.8 | |
-| Estilo | Tailwind CSS | **4.3.3** | Prefixo em forma de variante: `pbi:flex` (ADR-06) |
+| Estilo (editor) | Tailwind CSS | **4.3.3** | Só em `apps/web`. O `visual-kit` tem CSS autoral, prefixo `vsl-` |
 | Editor | Next.js | 16.2.12 | |
 | Estado | Zustand | 5.0.14 | |
 | Validação | Ajv | 8.20.0 | **Importe `ajv/dist/2020.js`**, não o entrypoint padrão — ele é draft-07, não reconhece o dialeto 2020-12 declarado em `$schema` e **falha só em runtime** (achado 23). |

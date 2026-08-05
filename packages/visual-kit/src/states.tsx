@@ -9,17 +9,17 @@
  * selo de build precisam do `foreground` do host tanto quanto os dados. Sem
  * isso, cinza sobre preto e exatamente o que o modo existe para evitar.
  */
+import { INK, INK_MUTED } from '@vislow/config-schema';
 import { hcInk } from './highContrast.js';
-
-const SHELL =
-  'pbi:w-full pbi:h-full pbi:flex pbi:flex-col pbi:items-center pbi:justify-center pbi:p-4 pbi:text-center';
 
 /** RF-20 — roles obrigatorias nao preenchidas. Orienta, nao acusa. */
 export function EmptyState({ missing }: { missing: string[] }) {
   return (
-    <div className={SHELL} style={{ color: hcInk('#64748b') }}>
-      <div className="pbi:text-sm pbi:font-medium">Faltam campos para montar o visual</div>
-      <div className="pbi:text-xs pbi:mt-2">
+    <div className="vsl-notice" style={{ color: hcInk(INK_MUTED) }}>
+      <div className="vsl-notice-title" style={{ color: hcInk(INK) }}>
+        Faltam campos para montar o visual
+      </div>
+      <div className="vsl-notice-line">
         Arraste um campo para:{' '}
         {missing.map((role, i) => (
           <span key={role}>
@@ -48,15 +48,19 @@ export function ErrorCard({
   buildId?: string | undefined;
 }) {
   return (
-    <div className={SHELL} style={{ color: hcInk('#b91c1c') }}>
-      <div className="pbi:text-sm pbi:font-semibold">Nao foi possivel renderizar o visual</div>
+    // O vermelho e uma das TRES cores escritas em codigo neste pacote (as outras
+    // duas sao a tinta e a tinta apagada de `design.ts`). Nao vem do
+    // `design.ts` de proposito: a linguagem visual e o que o AUTOR compoe, e ele
+    // nao compoe a aparencia de um erro. Erro tem uma cor so, e nao e negociavel.
+    <div className="vsl-notice" style={{ color: hcInk('#b91c1c') }}>
+      <div className="vsl-notice-title">Não foi possível renderizar o visual</div>
       {detail !== undefined && detail !== '' && (
-        <div className="pbi:text-xs pbi:mt-2" style={{ color: hcInk('#7f1d1d') }}>
+        <div className="vsl-notice-line" style={{ color: hcInk('#7f1d1d') }}>
           {detail}
         </div>
       )}
-      <div className="pbi:text-xs pbi:mt-3" style={{ color: hcInk('#94a3b8') }}>
-        codigo: {code}
+      <div className="vsl-notice-line" style={{ color: hcInk(INK_MUTED) }}>
+        Código: {code}
         {buildId !== undefined && buildId !== '' && ` · build ${buildId}`}
       </div>
     </div>
@@ -75,7 +79,7 @@ export function ErrorCard({
 /** RF-25 — o dataReductionAlgorithm truncou o conjunto. */
 export function TruncationNotice({ shown, limit }: { shown: number; limit: number }) {
   return (
-    <div className="pbi:text-xs pbi:pt-1 pbi:shrink-0" style={{ color: hcInk('#94a3b8') }}>
+    <div className="vsl-footnote" style={{ color: hcInk(INK_MUTED) }}>
       Exibindo {shown} de mais de {limit} categorias
     </div>
   );

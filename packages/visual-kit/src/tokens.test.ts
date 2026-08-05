@@ -5,15 +5,19 @@ import { CLASS_MAPS, cx, px } from './tokens.js';
 /**
  * T-02 — o guardiao do ADR-02 / RN-05.
  *
- * Se alguem adicionar um token ao catalogo do schema sem adicionar a classe
- * correspondente aqui, o Tailwind nao geraria o CSS e o estilo sumiria em
- * silencio dentro do Power BI. Este teste transforma essa falha silenciosa
- * em falha de CI.
+ * Token no catalogo do schema sem classe correspondente aqui e estilo que some
+ * em silencio dentro do Power BI: o navegador ignora nome de classe inexistente
+ * sem dizer nada. Este teste transforma a falha silenciosa em falha de CI.
+ *
+ * Ele cobre a metade CATALOGO->MAPA. A outra metade, MAPA->CSS, e do
+ * `scripts/check-css.mjs`, que confere que toda classe usada tem regra e que
+ * toda regra tem uso.
  */
 describe('cobertura de tokens (T-02)', () => {
   const MAP_FOR: Record<TokenKind, keyof typeof CLASS_MAPS> = {
     fontWeight: 'fontWeight',
     align: 'align',
+    valign: 'valign',
     shadow: 'shadow',
   };
 
@@ -36,7 +40,12 @@ describe('cobertura de tokens (T-02)', () => {
     // ser enum e viraram pixel livre, aplicado por `style`. Reintroduzir um
     // deles como token seria voltar a prender o usuario em seis degraus — e o
     // caminho para isso e silencioso: bastaria acrescentar a chave aqui.
-    expect(Object.keys(TOKEN_CATALOG).sort()).toEqual(['align', 'fontWeight', 'shadow']);
+    expect(Object.keys(TOKEN_CATALOG).sort()).toEqual([
+      'align',
+      'fontWeight',
+      'shadow',
+      'valign',
+    ]);
   });
 });
 
@@ -64,10 +73,13 @@ describe('classes literais (invariante do ADR-02)', () => {
     }
   });
 
-  it('toda classe nao-vazia usa o prefixo pbi: do Tailwind v4', () => {
+  it('toda classe nao-vazia usa o prefixo vsl- do pacote', () => {
+    // Era `pbi:` ate a spec 4.0.0 — prefixo de VARIANTE do Tailwind v4, com a
+    // regra de vir antes da variante. O Tailwind saiu na 5.0.0 e o prefixo
+    // virou o namespace de um CSS escrito a mao.
     for (const cls of all.filter((c) => c !== '')) {
       for (const part of cls.split(' ')) {
-        expect(part, `classe sem prefixo: ${part}`).toMatch(/^pbi:/);
+        expect(part, `classe sem prefixo: ${part}`).toMatch(/^vsl-/);
       }
     }
   });

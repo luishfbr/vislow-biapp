@@ -1,28 +1,24 @@
-import {
-  isV1Config,
-  migrateToCurrent,
-  migrateV1,
-  validateSpec,
-  type VisualSpec,
-} from '@vislow/component-registry';
-import { validateConfig } from '@vislow/config-schema';
+import { validateSpec, type VisualSpec } from '@vislow/component-registry';
 
 /**
  * Persistencia local do projeto (RF-08).
  *
  * A chave carrega a versao do formato de ARMAZENAMENTO — distinta do
- * `schemaVersion` da spec. A v1 e o config plano do editor antigo; a v2 e a
- * arvore do ADR-08, com `dataRoles`; a v3 troca os papeis pela tabela de
- * exemplo. As tres ainda podem estar no `localStorage` de quem ja usou o
- * produto.
+ * `schemaVersion` da spec.
  *
- * A CHAVE DA v2 CONTINUA SENDO LIDA, e nao renomeada: quem tem projeto salvo
- * la precisa que ele abra. A v3 escreve na chave propria, entao um downgrade do
- * app nao encontra uma spec que ele nao entende.
+ * ==================== POR QUE A CHAVE PULOU PARA v5 =========================
+ * A spec 5.0.0 REMOVEU tipos de no, e nao existe migracao 4->5 (ver o cabecalho
+ * de `spec.ts`). Se este arquivo continuasse lendo `vislow:project:v3`, todo
+ * projeto ja salvo seria lido, reprovado pelo schema e DESCARTADO EM SILENCIO —
+ * que e o modo de falha que este repo persegue.
+ *
+ * Trocar a chave resolve pela raiz: o projeto antigo continua no `localStorage`,
+ * intacto, e simplesmente nunca mais e procurado. Nada e descartado porque nada
+ * e tentado. As chaves v1 e v2 sairam pelo mesmo motivo, junto com a cadeia de
+ * migracao que as lia.
+ * ============================================================================
  */
-const STORAGE_KEY = 'vislow:project:v3';
-const V2_KEY = 'vislow:project:v2';
-const LEGACY_KEY = 'vislow:project:v1';
+const STORAGE_KEY = 'vislow:project:v5';
 const SAVE_DEBOUNCE_MS = 300;
 
 let timer: ReturnType<typeof setTimeout> | undefined;
@@ -46,56 +42,30 @@ function readJson(key: string): unknown {
 }
 
 /**
- * Le o projeto salvo, migrando o formato antigo quando for o caso.
+ * Le o projeto salvo.
  *
- * Uma spec invalida — schema evoluiu, storage adulterado — e DESCARTADA em
- * silencio: e melhor comecar limpo do que abrir num estado que nao valida e
- * bloqueia o export. O preco disso e que uma migracao quebrada nao da erro na
- * tela: ela APAGA o projeto de quem abriu o editor. E por isso que
- * `migrate.test.ts` congela uma spec v2 real e a valida ponta a ponta.
+ * Uma spec invalida na PROPRIA chave — storage adulterado, ou um app mais novo
+ * que gravou ali — e descartada: e melhor comecar limpo do que abrir num estado
+ * que nao valida e bloqueia o export. Isso agora e um caso de borda de verdade,
+ * e nao mais o caminho normal de todo projeto salvo, porque nao ha conversao
+ * nenhuma acontecendo aqui.
  *
- * A migracao NAO apaga a chave antiga. Se a arvore migrada tiver algum problema
- * que so aparece depois, o original ainda esta la para diagnosticar — e o custo
- * e alguns KB de `localStorage`.
+ * `unknown`, e nao `VisualSpec`, na entrada de `validateSpec`: o que sai do
+ * `localStorage` e texto de origem desconhecida, e tipa-lo como spec seria
+ * afirmar antes de conferir — o unico efeito seria calar o compilador no lugar
+ * exato onde a conferencia acontece.
  */
 export function loadProject(): VisualSpec | null {
   if (typeof window === 'undefined') return null;
 
   try {
-    // A chave da v3 tambem passa pelo migrador: ate a spec 3.0.0 as medidas
-    // eram token (`padding: 'md'`), e a 4.0.0 so aceita pixel. Sem este passo,
-    // TODO projeto ja salvo seria reprovado pelo schema e descartado em
-    // silencio — a chave e a mesma, e o formato dentro dela mudou.
-    const current = readJson(STORAGE_KEY);
-    if (current !== null) return migrated(migrateToCurrent(current));
-
-    // Migrar preserva o `project.id`, e com ele a capacidade de ATUALIZAR o
-    // visual no Power BI em vez de duplicar (RF-10). E a unica parte
-    // insubstituivel de um projeto antigo.
-    const v2 = readJson(V2_KEY);
-    if (v2 !== null) return migrated(migrateToCurrent(v2));
-
-    const legacy = readJson(LEGACY_KEY);
-    if (legacy === null || !isV1Config(legacy)) return null;
-
-    const config = validateConfig(legacy);
-    if (config.kind === 'invalid') return null;
-
-    return migrated(migrateToCurrent(migrateV1(config.config)));
+    const stored = readJson(STORAGE_KEY);
+    if (stored === null) return null;
+    const result = validateSpec(stored);
+    return result.kind === 'valid' ? result.spec : null;
   } catch {
     return null;
   }
-}
-
-/**
- * `unknown`, e nao `VisualSpec`: `migrateToCurrent` devolve o que conseguiu
- * converter, e "conseguiu" so se sabe VALIDANDO. Tipar a entrada como spec aqui
- * seria afirmar antes de conferir — e o unico efeito seria calar o compilador
- * no lugar exato onde a conferencia acontece.
- */
-function migrated(candidate: unknown): VisualSpec | null {
-  const result = validateSpec(candidate);
-  return result.kind === 'valid' ? result.spec : null;
 }
 
 export function downloadJson(spec: VisualSpec): void {

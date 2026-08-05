@@ -67,11 +67,15 @@ sugestão da skill**; a tabela de precedência está em [docs/frontend.md](docs/
 
 As específicas de área estão nos docs acima. Estas seis quebram código em qualquer lugar do repo:
 
-- **Classe Tailwind é string literal completa.** Interpolação some sem erro dentro do Power BI — o CSS é
-  pré-compilado e só enxerga o fonte do `visual-kit`. **Cor e medida são as exceções**: valor livre, aplicado
-  por `style` inline, nunca por classe.
-- **O prefixo vem ANTES da variante:** `pbi:focus:ring-2`, nunca `focus:pbi:ring-2`. Ao contrário, o CLI não
-  gera regra nenhuma e não reclama. Classe com variante se confere no `dist/styles.css`, não no olho.
+- **Classe do `visual-kit` é string literal completa, e leva o prefixo `vsl-`.** Interpolação produz um nome que
+  não existe no `styles.css`, e navegador nenhum reclama de classe inexistente: o estilo some dentro do Power BI
+  sem erro. **Cor e medida são as exceções**: valor livre, aplicado por `style` inline, nunca por classe.
+  (O prefixo era `pbi:` até a spec 4.0.0, quando o kit ainda usava Tailwind — com ele morreu a regra de que o
+  prefixo vinha antes da variante.)
+- **O CSS do kit é escrito à mão** (`packages/visual-kit/src/styles.css`) e só contém escolha-entre-alternativas.
+  Valor mora em `packages/config-schema/src/design.ts`; estrutura, no CSS. Os dois nunca falam da mesma coisa,
+  e é isso que os impede de divergir. `scripts/check-css.mjs` confere nos **dois** sentidos: classe usada sem
+  regra, e regra sem uso.
 - **`innerHTML` é proibido** — pelo nosso ESLint e pelo lint oficial do `pbiviz`, que falha o build.
 - **Discriminante de união é string (`kind`), nunca booleano.** A toolchain do `pbiviz` compila sem
   `strictNullChecks`, e sem ela o TypeScript não estreita união por discriminante booleano.
@@ -93,8 +97,28 @@ O ciclo completo funciona no Power BI Desktop desde 2026-07-30: o usuário comp�
 relatório, mostra tooltip nativo, respeita alto contraste, é navegável por teclado e abre o menu de contexto**.
 
 Concluídos: fundação e primeiro editor (depois substituídos pelo pivô da ADR-08), registro de componentes, API
-de build, editor de composição, paridade de interatividade, faxina do caminho antigo, migração para Turborepo e
-o **canvas de posicionamento livre** (ADR-18). Pacote **221,1 KB**, `content.js` **751,3 KB**.
+de build, editor de composição, paridade de interatividade, faxina do caminho antigo, migração para Turborepo,
+o **canvas de posicionamento livre** (ADR-18) e o **kit autoral** (spec 5.0.0). Pacote **93,7 KB**,
+`content.js` **288,1 KB**.
+
+**O catálogo tem DOIS componentes desde 2026-08-05** (spec 5.0.0): `container` e `text`. KPI e os quatro
+gráficos foram removidos, e o Recharts saiu com eles — daí a queda de 62% no `content.js`. Removeção de
+schema exige major (RN-12), e **não há migração 4→5**: `migrate.ts` foi apagado e a chave do `localStorage`
+pulou para `vislow:project:v5`, então o projeto antigo continua no navegador e nunca mais é lido. Nada é
+descartado em silêncio porque nada é tentado.
+
+**Consequência a saber antes de diagnosticar qualquer coisa:** nenhum nó consome dados, então `usedRoles`
+devolve vazio e o `capabilities.json` sai com `dataRoles: []` — **o visual gerado não tem poço de campos no
+Power BI**. `spec.data`, o DataPanel, `dataFrame.ts` e `interaction.ts` continuam de pé, dormentes. A chamada
+`readFrame` no `update()` **fica**: é dentro dela que o alto contraste é aplicado. Filtro cruzado, tooltip
+nativo e teclado estão em quarentena declarada nos próprios arquivos de teste, e voltam com a Fase 4.
+
+**A linguagem visual do kit é "papel, não tinta"** (`packages/config-schema/src/design.ts`). Nenhum valor dela
+é cromático: numa ferramenta de composição a cor é do autor do relatório, e o que é nosso é o neutro exato em
+que ele a põe. A rampa tem cast **verde**, não azul, e `PAPER` não é branco — um componente Vislow se separa da
+tela do relatório por **tom e fio**, nunca por elevação, porque tom e fio sobrevivem a PDF e a impressão. A
+assinatura é tipografia óptica: entrelinha e tracking **respondem ao `fontSize`** (`leadingFor`/`trackingFor` em
+`visual-kit/src/tokens.ts`), sem controle nenhum a mais.
 
 O container tem duas disposições: `stack` empilha como sempre, `canvas` dá a cada filho uma caixa em `%` do pai,
 arrastável e redimensionável no preview. Raiz de projeto novo nasce canvas; spec já salva continua empilhando.
@@ -110,11 +134,15 @@ O preview desenha uma **prancheta de tamanho declarado** (`project.artboard`, 10
 1280×720), em pixel real e reduzida por escala para caber no painel. **Ela é do editor e não vai para o pacote**
 — um visual do Power BI não escolhe o próprio tamanho, e um teste do codegen reprova o build se ela vazar.
 
-**Toda medida é pixel livre** (spec 4.0.0). `padding`, `gap`, `radius`, `borderWidth`, `fontSize` e
-`valueFontSize` são `kind: 'length'` no registro — número inteiro, digitável, com arrasto no rótulo para
-ajustar. Chegam ao visual compilado por `style` inline, como a cor. O catálogo de tokens ficou só com o que é
-escolha entre alternativas: peso, alinhamento e sombra. Projeto salvo em 3.0.0 migra em `migrate.ts`, com
-fixture congelada — sem ela o `loadProject` apagaria o projeto de todo usuário em silêncio.
+**Toda medida é pixel livre** (desde a spec 4.0.0). `padding`, `gap`, `radius`, `borderWidth` e `fontSize` são
+`kind: 'length'` no registro — número inteiro, digitável, com arrasto no rótulo para ajustar. Chegam ao visual
+compilado por `style` inline, como a cor. O catálogo de tokens ficou só com o que é escolha entre alternativas:
+peso, alinhamento horizontal, alinhamento vertical e sombra.
+
+**A Caixa de Texto tem onze campos, e a escolha não foi estética:** eles cobrem os **seis** tipos de
+`FieldSpec` (`text`, `length`, `token`, `color`, `boolean`, `select`), então um componente só exercita ponta a
+ponta todo o caminho genérico que o painel, o schema e o codegen percorrem. O que passar nela passa para
+qualquer componente futuro.
 
 O projeto tem uma **tabela de dados de exemplo** (`spec.data`, spec 3.0.0): até 10 colunas e 50 linhas, cada
 coluna com um tipo declarado (`text`, `integer`, `decimal`, `percent`, `currency`, `date`, `boolean`). **A
@@ -126,7 +154,14 @@ trocável — um "Ano" é inteiro e ainda assim agrupa.
 **Os VALORES da tabela não entram no pacote**, pela mesma regra da prancheta: dois testes reprovam o vazamento,
 um no fonte gerado e outro no bundle compilado. O que viaja é só o esquema.
 
-**Próximo — Fase 4:** KPI Card com comparação, matriz manual MT-01…MT-14 (incluindo o Service) e E2E Playwright
-do editor.
+**Próximo — Sprint B, spec 5.1.0:** o **painel de formatação no visual gerado**. O nó ganha `name` (apelido, que
+vira o título do card) e `locked` (as chaves que o autor travou — guardar o que está travado faz "ausente = tudo
+destravado" cair de graça); o `capabilities` passa a emitir `objects`; o codegen emite `getFormattingModel`,
+escrito à mão contra os tipos que **já vêm no `powerbi-visuals-api@5.11.1`** — zero dependência nova, ADR-19
+intacto. Campo travado continua saindo literal no JSX e não tem por onde ler o `objects`: ignorar override vira
+propriedade estrutural, não verificação em runtime.
+
+**Depois — Fase 4:** KPI Card com comparação (que tira da quarentena os testes de interatividade e de
+`dataRoles`), matriz manual MT-01…MT-14 (incluindo o Service) e E2E Playwright do editor.
 
 O detalhe de cada sprint está em [docs/history.md](docs/history.md); não é preciso lê-lo para trabalhar.

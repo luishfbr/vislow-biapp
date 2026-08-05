@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isValidCell } from '@vislow/config-schema';
-import { createEmptySpec, createNode } from './factory.js';
+import { createEmptySpec } from './factory.js';
 import { assertValidSpec, validateSpec } from './schema.js';
 import { MAX_COLUMNS, MAX_ROWS, type VisualSpec } from './spec.js';
 import {
@@ -16,14 +16,27 @@ import {
   setColumnType,
 } from './table.js';
 
-/** Projeto com um grafico ligado nas duas colunas default (`regiao`/`receita`). */
-function specComGrafico(): VisualSpec {
-  const spec = createEmptySpec('Tabela');
-  const bar = createNode('barChart', { categoryRole: 'regiao', measureRole: 'receita' });
-  bar.rect = { x: 0, y: 0, w: 100, h: 100 };
-  spec.root.children = [bar];
-  return assertValidSpec(spec);
-}
+/**
+ * ==================== O QUE SAIU DAQUI NA SPEC 5.0.0 ========================
+ * Havia aqui uma fixture `specComGrafico()` — um grafico de barras ligado nas
+ * duas colunas default — e tres testes em cima dela:
+ *
+ *   - "apagar a coluna tira a celula de toda linha E desliga os nos"
+ *   - "trocar o tipo desliga os nos SO quando o papel muda junto"
+ *   - "desliga os nos, porque o campo passa a exigir o outro tipo"
+ *
+ * Os tres cobriam o `unbindRole`: apagar ou reclassificar uma coluna tem de
+ * APAGAR o prop do no que a referenciava, deixando-o pendente, em vez de guardar
+ * o nome de uma coluna que nao existe mais.
+ *
+ * Nenhum descritor declara campo de papel na 5.0.0, entao NAO HA COMO LIGAR uma
+ * coluna a um no — a fixture nao tem como existir e os tres ficaram sem sujeito.
+ * O `unbindRole` continua em `table.ts`, chamado por toda operacao de coluna, e
+ * volta a ter o que desligar com o KPI Card da Fase 4. O teste logo abaixo
+ * afirma a realidade de hoje, para que a lacuna seja uma decisao registrada e
+ * nao um teste que sumiu sem deixar rastro.
+ * ============================================================================
+ */
 
 /** Toda operacao tem de deixar a spec valida — e a invariante que paga o modulo. */
 function esperaValida(spec: VisualSpec | null): VisualSpec {
@@ -33,25 +46,6 @@ function esperaValida(spec: VisualSpec | null): VisualSpec {
     throw new Error(result.issues.map((i) => `${i.path}: ${i.message}`).join('; '));
   }
   return result.spec;
-}
-
-/**
- * Operacao que deu certo, mas cuja spec fica INVALIDA de proposito.
- *
- * E o caso de toda operacao que desliga no: `unbindRole` APAGA o prop, e o
- * schema exige todo campo do descritor. O no volta ao estado de recem-criado —
- * pendente na tela, export travado — em vez de guardar o nome de uma coluna que
- * nao existe mais. A alternativa (deixar o nome apagado no prop) produziria um
- * pacote pedindo ao Power BI uma coluna que nenhum no le.
- */
-function esperaPendente(spec: VisualSpec | null, campo: string): VisualSpec {
-  expect(spec).not.toBeNull();
-  const result = validateSpec(spec);
-  expect(result.kind).toBe('invalid');
-  if (result.kind === 'invalid') {
-    expect(result.issues.some((issue) => issue.path.endsWith(campo))).toBe(true);
-  }
-  return spec!;
 }
 
 describe('colunas', () => {
@@ -85,16 +79,23 @@ describe('colunas', () => {
     expect(addColumn(spec, 'Uma a mais', 'text')).toBeNull();
   });
 
-  it('apagar a coluna tira a celula de toda linha E desliga os nos', () => {
-    const antes = specComGrafico();
-    expect(bindingCount(antes, 'receita')).toBe(1);
-
-    const spec = esperaPendente(removeColumn(antes, 'receita'), 'measureRole');
+  it('apagar a coluna tira a celula de toda linha', () => {
+    const antes = assertValidSpec(createEmptySpec('Tabela'));
+    const spec = esperaValida(removeColumn(antes, 'receita'));
 
     expect(spec.data.columns.map((c) => c.name)).toEqual(['regiao']);
     for (const row of spec.data.rows) expect(row).toHaveLength(1);
-    expect(bindingCount(spec, 'receita')).toBe(0);
-    expect(spec.root.children?.[0]?.props.measureRole).toBeUndefined();
+  });
+
+  it('nenhum no consome coluna na 5.0.0 — a contagem de uso e sempre zero', () => {
+    // Nao e um teste vazio: e a AFIRMACAO de que o catalogo atual nao declara
+    // campo de papel. No dia em que o KPI Card voltar, este teste falha, e
+    // falhar aqui e o lembrete de descongelar os tres testes de `unbindRole`
+    // descritos no cabecalho deste arquivo.
+    const spec = createEmptySpec('Sem consumidor');
+    for (const column of spec.data.columns) {
+      expect(bindingCount(spec, column.name)).toBe(0);
+    }
   });
 
   it('a ultima coluna nao sai', () => {
@@ -127,16 +128,17 @@ describe('troca de tipo', () => {
     for (const row of spec.data.rows) expect(row[0]).toBeNull();
   });
 
-  it('trocar o tipo desliga os nos SO quando o papel muda junto', () => {
-    const antes = specComGrafico();
+  it('trocar o tipo troca o papel junto quando o tipo pede', () => {
+    const antes = assertValidSpec(createEmptySpec('Tabela'));
 
-    // currency -> decimal: os dois sao medida, a ligacao sobrevive.
-    const mesmoPapel = esperaValida(setColumnType(antes, 'receita', 'decimal'));
-    expect(bindingCount(mesmoPapel, 'receita')).toBe(1);
-
-    // currency -> text: vira agrupamento, e o campo exigia medida.
-    const outroPapel = esperaPendente(setColumnType(antes, 'receita', 'text'), 'measureRole');
-    expect(bindingCount(outroPapel, 'receita')).toBe(0);
+    // currency -> decimal: os dois sao medida.
+    expect(columnOf(esperaValida(setColumnType(antes, 'receita', 'decimal')), 'receita')?.kind).toBe(
+      'measure',
+    );
+    // currency -> text: vira agrupamento.
+    expect(columnOf(esperaValida(setColumnType(antes, 'receita', 'text')), 'receita')?.kind).toBe(
+      'grouping',
+    );
   });
 
   it('trocar para o mesmo tipo e operacao ilegal, nao no-op silencioso', () => {
@@ -154,10 +156,6 @@ describe('troca manual de papel', () => {
     expect(columnOf(spec, 'ano')?.type).toBe('integer'); // o tipo nao se mexe
   });
 
-  it('desliga os nos, porque o campo passa a exigir o outro tipo', () => {
-    const spec = esperaPendente(setColumnKind(specComGrafico(), 'receita', 'grouping'), 'measureRole');
-    expect(bindingCount(spec, 'receita')).toBe(0);
-  });
 });
 
 describe('linhas e celulas', () => {

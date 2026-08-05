@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createEmptySpec, createNode } from './factory.js';
+import { NODE_KINDS, defaultPropsFor } from './registry.js';
 import { assertValidSpec, validateSpec } from './schema.js';
 import type { SpecNode } from './spec.js';
 import {
@@ -23,40 +24,42 @@ import {
  *   root (container)
  *   ├── titulo (text)
  *   ├── linha (container)
- *   │   └── kpi
- *   └── barras (barChart)
+ *   │   └── nota (text)
+ *   └── rodape (text)
+ *
+ * O que esta sob teste aqui e a OPERACAO DE ARVORE — achar, inserir, mover,
+ * remover, reparentar. Ela nao olha o tipo do no, so a forma; a arvore precisa
+ * de folha e de galho, e nao de variedade. Ate a spec 4.0.0 a fixture usava um
+ * KPI e um grafico de barras, e a variedade era so aparencia.
  */
 function fixture(): SpecNode {
   const titulo = { ...createNode('text'), id: 'titulo' };
-  const kpi = { ...createNode('kpi', { measureRole: 'receita' }), id: 'kpi' };
-  const linha = { ...createNode('container'), id: 'linha', children: [kpi] };
-  const barras = {
-    ...createNode('barChart', { categoryRole: 'regiao', measureRole: 'receita' }),
-    id: 'barras',
-  };
-  return { ...createNode('container'), id: 'root', children: [titulo, linha, barras] };
+  const nota = { ...createNode('text'), id: 'nota' };
+  const linha = { ...createNode('container'), id: 'linha', children: [nota] };
+  const rodape = { ...createNode('text'), id: 'rodape' };
+  return { ...createNode('container'), id: 'root', children: [titulo, linha, rodape] };
 }
 
 const idsOf = (node: SpecNode | null): string[] => (node?.children ?? []).map((child) => child.id);
 
 describe('navegacao', () => {
   it('acha um no em qualquer profundidade', () => {
-    expect(findNode(fixture(), 'kpi')?.kind).toBe('kpi');
+    expect(findNode(fixture(), 'nota')?.kind).toBe('text');
     expect(findNode(fixture(), 'inexistente')).toBeNull();
   });
 
   it('devolve a cadeia da raiz ate o no', () => {
-    expect(ancestryOf(fixture(), 'kpi').map((node) => node.id)).toEqual(['root', 'linha', 'kpi']);
+    expect(ancestryOf(fixture(), 'nota').map((node) => node.id)).toEqual(['root', 'linha', 'nota']);
     expect(ancestryOf(fixture(), 'inexistente')).toEqual([]);
   });
 
   it('a raiz nao tem pai', () => {
     expect(parentOf(fixture(), 'root')).toBeNull();
-    expect(parentOf(fixture(), 'kpi')?.id).toBe('linha');
+    expect(parentOf(fixture(), 'nota')?.id).toBe('linha');
   });
 
   it('subtreeIds inclui o proprio no', () => {
-    expect(subtreeIds(fixture())).toEqual(new Set(['root', 'titulo', 'linha', 'kpi', 'barras']));
+    expect(subtreeIds(fixture())).toEqual(new Set(['root', 'titulo', 'linha', 'nota', 'rodape']));
   });
 });
 
@@ -66,14 +69,14 @@ describe('insercao', () => {
     expect(idsOf(insertChild(root, 'root', { ...createNode('text'), id: 'novo' }))).toEqual([
       'titulo',
       'linha',
-      'barras',
+      'rodape',
       'novo',
     ]);
     expect(idsOf(insertChild(root, 'root', { ...createNode('text'), id: 'novo' }, 0))).toEqual([
       'novo',
       'titulo',
       'linha',
-      'barras',
+      'rodape',
     ]);
   });
 
@@ -85,15 +88,15 @@ describe('insercao', () => {
   it('nao muta a arvore de entrada', () => {
     const root = fixture();
     insertChild(root, 'root', createNode('text'));
-    expect(idsOf(root)).toEqual(['titulo', 'linha', 'barras']);
+    expect(idsOf(root)).toEqual(['titulo', 'linha', 'rodape']);
   });
 });
 
 describe('remocao', () => {
   it('remove uma folha e um ramo inteiro', () => {
-    expect(idsOf(removeNode(fixture(), 'titulo'))).toEqual(['linha', 'barras']);
+    expect(idsOf(removeNode(fixture(), 'titulo'))).toEqual(['linha', 'rodape']);
     const semLinha = removeNode(fixture(), 'linha');
-    expect(findNode(semLinha!, 'kpi')).toBeNull();
+    expect(findNode(semLinha!, 'nota')).toBeNull();
   });
 
   it('rejeita remover a raiz — uma arvore sem raiz nao e representavel', () => {
@@ -103,43 +106,47 @@ describe('remocao', () => {
 
 describe('reordenacao', () => {
   it('sobe e desce entre irmaos', () => {
-    expect(idsOf(moveNode(fixture(), 'linha', -1))).toEqual(['linha', 'titulo', 'barras']);
-    expect(idsOf(moveNode(fixture(), 'linha', 1))).toEqual(['titulo', 'barras', 'linha']);
+    expect(idsOf(moveNode(fixture(), 'linha', -1))).toEqual(['linha', 'titulo', 'rodape']);
+    expect(idsOf(moveNode(fixture(), 'linha', 1))).toEqual(['titulo', 'rodape', 'linha']);
   });
 
   it('rejeita nas pontas, para o botao desabilitado nao mentir', () => {
     expect(moveNode(fixture(), 'titulo', -1)).toBeNull();
-    expect(moveNode(fixture(), 'barras', 1)).toBeNull();
+    expect(moveNode(fixture(), 'rodape', 1)).toBeNull();
     expect(moveNode(fixture(), 'root', -1)).toBeNull();
   });
 });
 
 describe('reparent', () => {
   it('move um no para outro container', () => {
-    const next = reparentNode(fixture(), 'barras', 'linha');
+    const next = reparentNode(fixture(), 'rodape', 'linha');
     expect(idsOf(next)).toEqual(['titulo', 'linha']);
-    expect(idsOf(findNode(next!, 'linha'))).toEqual(['kpi', 'barras']);
+    expect(idsOf(findNode(next!, 'linha'))).toEqual(['nota', 'rodape']);
   });
 
   it('rejeita soltar um container dentro de um descendente seu', () => {
     // Sem esta guarda o ramo inteiro se destacaria da arvore — o pedaco do
     // visual sumiria da tela sem erro nenhum.
-    expect(reparentNode(fixture(), 'linha', 'kpi')).toBeNull();
+    expect(reparentNode(fixture(), 'linha', 'nota')).toBeNull();
     expect(reparentNode(fixture(), 'root', 'linha')).toBeNull();
     expect(reparentNode(fixture(), 'linha', 'linha')).toBeNull();
   });
 
   it('rejeita destino que nao aceita filhos', () => {
-    expect(reparentNode(fixture(), 'barras', 'titulo')).toBeNull();
+    expect(reparentNode(fixture(), 'rodape', 'titulo')).toBeNull();
   });
 });
 
 describe('props', () => {
   it('aplica o patch preservando os demais campos', () => {
     const next = setNodeProps(fixture(), 'titulo', { content: 'Ola' });
+    // O campo NAO tocado sai do descritor, e nao de um numero escrito aqui: o
+    // que esta sob teste e "o patch preserva o resto", nao qual e o tamanho
+    // padrao. Escrito a mao, este teste quebraria toda vez que a linguagem
+    // visual mudasse um default — e quebrar por isso ensina a ignora-lo.
     expect(findNode(next!, 'titulo')?.props).toMatchObject({
       content: 'Ola',
-      fontSize: 18,
+      fontSize: defaultPropsFor('text').fontSize,
     });
   });
 
@@ -172,27 +179,27 @@ describe('geometria', () => {
   it('preserva props e filhos, e rejeita id inexistente', () => {
     const next = setNodeRect(fixture(), 'linha', { x: 0, y: 0, w: 50, h: 50 });
     expect(findNode(next!, 'linha')?.props).toMatchObject({ direction: 'column' });
-    expect(idsOf(findNode(next!, 'linha'))).toEqual(['kpi']);
+    expect(idsOf(findNode(next!, 'linha'))).toEqual(['nota']);
     expect(setNodeRect(fixture(), 'inexistente', { x: 0, y: 0, w: 10, h: 10 })).toBeNull();
   });
 
   it('as demais operacoes de arvore carregam o rect junto', () => {
     // Reordenar ou mudar de pai nao pode limpar a geometria: o no reapareceria
     // no canto superior esquerdo, e nada indicaria por que.
-    const comRect = setNodeRect(fixture(), 'barras', { x: 10, y: 20, w: 30, h: 40 });
-    const reordenado = moveNode(comRect!, 'barras', -1);
-    expect(findNode(reordenado!, 'barras')?.rect).toEqual({ x: 10, y: 20, w: 30, h: 40 });
+    const comRect = setNodeRect(fixture(), 'rodape', { x: 10, y: 20, w: 30, h: 40 });
+    const reordenado = moveNode(comRect!, 'rodape', -1);
+    expect(findNode(reordenado!, 'rodape')?.rect).toEqual({ x: 10, y: 20, w: 30, h: 40 });
 
-    const movido = reparentNode(comRect!, 'barras', 'linha');
-    expect(findNode(movido!, 'barras')?.rect).toEqual({ x: 10, y: 20, w: 30, h: 40 });
+    const movido = reparentNode(comRect!, 'rodape', 'linha');
+    expect(findNode(movido!, 'rodape')?.rect).toEqual({ x: 10, y: 20, w: 30, h: 40 });
   });
 });
 
 describe('selecao apos remocao', () => {
   it('cai no irmao seguinte, senao no anterior, senao no pai', () => {
     expect(selectionAfterRemoval(fixture(), 'titulo')).toBe('linha');
-    expect(selectionAfterRemoval(fixture(), 'barras')).toBe('linha');
-    expect(selectionAfterRemoval(fixture(), 'kpi')).toBe('linha');
+    expect(selectionAfterRemoval(fixture(), 'rodape')).toBe('linha');
+    expect(selectionAfterRemoval(fixture(), 'nota')).toBe('linha');
   });
 });
 
@@ -202,24 +209,29 @@ describe('as operacoes preservam a validade da spec', () => {
     const rootId = spec.root.id;
 
     const comTexto = insertChild(spec.root, rootId, createNode('text'));
-    const comBarras = insertChild(
-      comTexto!,
-      rootId,
-      createNode('barChart', { categoryRole: 'regiao', measureRole: 'receita' }),
-    );
-    const reordenado = moveNode(comBarras!, comBarras?.children?.[1]?.id ?? '', -1);
+    const comSegundo = insertChild(comTexto!, rootId, createNode('container'));
+    const reordenado = moveNode(comSegundo!, comSegundo?.children?.[1]?.id ?? '', -1);
 
     expect(assertValidSpec({ ...spec, root: reordenado }).root.children).toHaveLength(2);
   });
 
-  it('um grafico sem papel ligado e invalido de proposito', () => {
-    const spec = createEmptySpec('Papel pendente');
-    // `createNode` NAO preenche campo de papel: o usuario escolhe. Ate escolher,
-    // a spec nao passa — e o export fica bloqueado em vez de gerar um visual que
-    // pede uma coluna que ninguem ligou.
-    const root = insertChild(spec.root, spec.root.id, createNode('barChart'));
-    const result = validateSpec({ ...spec, root });
+  /**
+   * Ate a spec 4.0.0 havia aqui um teste chamado "um grafico sem papel ligado e
+   * invalido de proposito": `createNode` nao preenchia campo de papel, entao um
+   * grafico recem-criado reprovava no schema e o export ficava bloqueado ate o
+   * usuario ligar uma coluna.
+   *
+   * Na 5.0.0 nenhum descritor declara campo de papel e TODO no nasce valido. O
+   * teste abaixo afirma exatamente isso, para que a mudanca fique registrada
+   * como decisao e nao como teste que sumiu.
+   */
+  it('todo no nasce VALIDO — nao ha mais campo pendente', () => {
+    const spec = createEmptySpec('Nasce valido');
+    let root = spec.root;
+    for (const kind of NODE_KINDS) {
+      root = insertChild(root, spec.root.id, createNode(kind)) ?? root;
+    }
 
-    expect(result.kind).toBe('invalid');
+    expect(validateSpec({ ...spec, root }).kind).toBe('valid');
   });
 });

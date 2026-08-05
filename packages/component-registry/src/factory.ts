@@ -1,5 +1,5 @@
 import { createProjectId, INITIAL_PACKAGE_VERSION, type ColumnType } from '@vislow/config-schema';
-import { CONTAINER_CANVAS, defaultPropsFor, roleFieldsOf } from './registry.js';
+import { CONTAINER_CANVAS, defaultPropsFor } from './registry.js';
 import {
   ARTBOARD_DEFAULT,
   KIND_FOR_TYPE,
@@ -22,22 +22,15 @@ export function nextNodeId(kind: NodeKind): string {
 /**
  * Cria um no com os defaults do descritor.
  *
- * ATENCAO: campos de papel NAO recebem default — nao ha escolha sensata, quem
- * cria o no decide. Um no com papel nao ligado e **invalido de proposito**: o
- * editor mostra o campo pendente e o export fica bloqueado, em vez de gerar um
- * visual que pede uma coluna que ninguem escolheu.
+ * Todo no nasce VALIDO na spec 5.0.0. Ate a 4.0.0 nao era assim: campo de papel
+ * nao tem default — nao ha escolha sensata —, entao um grafico nascia pendente e
+ * de proposito, com o export bloqueado ate o usuario ligar uma coluna. Nenhum
+ * descritor declara campo de papel agora, e a funcao voltou a ser so os defaults.
+ * Quando o KPI Card da Fase 4 trouxer o papel de volta, o parametro de ligacao
+ * volta com ele.
  */
-export function createNode(
-  kind: NodeKind,
-  roleBindings: Record<string, string> = {},
-): SpecNode {
-  const props: Record<string, unknown> = { ...defaultPropsFor(kind) };
-  for (const field of roleFieldsOf(kind)) {
-    const bound = roleBindings[field.key];
-    if (bound !== undefined) props[field.key] = bound;
-  }
-
-  const node: SpecNode = { id: nextNodeId(kind), kind, props };
+export function createNode(kind: NodeKind): SpecNode {
+  const node: SpecNode = { id: nextNodeId(kind), kind, props: { ...defaultPropsFor(kind) } };
   if (kind === 'container') node.children = [];
   return node;
 }
@@ -63,30 +56,6 @@ export function cloneSubtree(node: SpecNode): SpecNode {
   if (node.rect) copy.rect = { ...node.rect };
   if (node.children) copy.children = node.children.map(cloneSubtree);
   return copy;
-}
-
-/**
- * Papeis que um no novo deve ligar: o primeiro declarado de cada tipo exigido.
- *
- * Existe para o editor. `createNode` sozinho deixa o campo em branco de
- * proposito, e isso e certo como default do dominio — mas na tela significaria
- * que todo grafico nasce no estado vazio, com o usuario tendo de ligar dois
- * campos antes de ver qualquer coisa. Ligar no palpite obvio e reversivel; a
- * tela vazia so parece defeito.
- *
- * Sem papel do tipo certo declarado, o campo continua pendente — que ai e a
- * informacao correta.
- */
-export function suggestRoleBindings(
-  kind: NodeKind,
-  columns: readonly DataColumn[],
-): Record<string, string> {
-  const bindings: Record<string, string> = {};
-  for (const field of roleFieldsOf(kind)) {
-    const match = columns.find((column) => column.kind === field.roleKind);
-    if (match) bindings[field.key] = match.name;
-  }
-  return bindings;
 }
 
 /**
@@ -179,9 +148,10 @@ export function createEmptySpec(name: string): VisualSpec {
   counter = 0;
 
   // A raiz de um projeto NOVO posiciona livremente; o default do descritor
-  // continua sendo empilhar, para que projeto ja salvo nao mude sozinho. E aqui
-  // que a diferenca aparece: quem comeca hoje comeca com uma prancheta, quem
-  // comecou antes continua com a composicao que montou.
+  // continua sendo empilhar. A diferenca nao e mais compatibilidade com spec
+  // salva (nao ha migracao na 5.0.0) — e que sao dois usos: a RAIZ e uma
+  // prancheta, onde se desenha; um container solto DENTRO de outro quase sempre
+  // e uma pilha, e nascer canvas obrigaria a posicionar cada filho a mao.
   const root = createNode('container');
   root.props.placement = CONTAINER_CANVAS;
 

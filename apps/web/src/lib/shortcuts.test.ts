@@ -120,22 +120,22 @@ describe('ferramentas por tecla nua', () => {
   });
 
   it('aceita minuscula: quem digita nao segura Shift para escolher ferramenta', () => {
-    expect(matchToolShortcut(chord({ key: 'b' }))).toBe('barChart');
+    expect(matchToolShortcut(chord({ key: 't' }))).toBe('text');
   });
 
   /**
-   * A guarda mais importante deste bloco. `Ctrl+B` e negrito, `Ctrl+P` e
-   * imprimir, `Cmd+T` e aba nova — roubar qualquer uma custaria mais do que a
+   * A guarda mais importante deste bloco. `Cmd+T` e aba nova, `Ctrl+P` e
+   * imprimir, `Ctrl+B` e negrito — roubar qualquer uma custaria mais do que a
    * ferramenta vale, e o sintoma seria o navegador "parando de funcionar".
    */
   it('NAO dispara com modificador', () => {
     for (const over of [{ ctrlKey: true }, { metaKey: true }, { altKey: true }]) {
-      expect(matchToolShortcut(chord({ key: 'B', ...over }))).toBeNull();
+      expect(matchToolShortcut(chord({ key: 'T', ...over }))).toBeNull();
     }
   });
 
   it('Shift sozinho nao atrapalha — CapsLock nao pode desligar a barra', () => {
-    expect(matchToolShortcut(chord({ key: 'B', shiftKey: true }))).toBe('barChart');
+    expect(matchToolShortcut(chord({ key: 'T', shiftKey: true }))).toBe('text');
   });
 
   it('tecla fora do catalogo nao vira ferramenta', () => {
