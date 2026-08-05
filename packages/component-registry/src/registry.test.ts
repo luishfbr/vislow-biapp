@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createDefaultConfig, TOKEN_CATALOG } from '@vislow/config-schema';
 import { createEmptySpec, createNode, DEFAULT_TABLE, nextNodeId } from './factory.js';
-import { isV1Config, migrateV1 } from './migrate.js';
+import { isV1Config, migrateToCurrent, migrateV1 } from './migrate.js';
 import { defaultPropsFor, NODE_DESCRIPTORS, NODE_KINDS, roleFieldsOf } from './registry.js';
 import { assertValidSpec, validateSpec, walk } from './schema.js';
 import {
@@ -434,26 +434,32 @@ describe('migracao v1 -> spec atual', () => {
     expect(v2.project.packageVersion).toBe(v1.project.packageVersion);
   });
 
+  // A `migrateV1` entrega uma arvore v3 — medidas em token. Quem a leva ate a
+  // spec atual e o encadeador, e e ele que os dois pontos de entrada chamam.
+  // Validar a saida crua da v1 testaria um formato intermediario que nunca e
+  // gravado em lugar nenhum.
   it('produz arvore valida a partir de um config de barras', () => {
-    const v2 = migrateV1(createDefaultConfig('Barras v1', 'bar'));
-    expect(() => assertValidSpec(v2)).not.toThrow();
-    expect(walk(v2).some(({ node }) => node.kind === 'barChart')).toBe(true);
+    const spec = migrateToCurrent(migrateV1(createDefaultConfig('Barras v1', 'bar')));
+    expect(() => { assertValidSpec(spec); }).not.toThrow();
+    expect(walk(spec as VisualSpec).some(({ node }) => node.kind === 'barChart')).toBe(true);
   });
 
   it('produz arvore valida a partir de um config de KPI', () => {
-    const v2 = migrateV1(createDefaultConfig('KPI v1', 'kpi'));
-    expect(() => assertValidSpec(v2)).not.toThrow();
-    expect(walk(v2).some(({ node }) => node.kind === 'kpi')).toBe(true);
+    const spec = migrateToCurrent(migrateV1(createDefaultConfig('KPI v1', 'kpi')));
+    expect(() => { assertValidSpec(spec); }).not.toThrow();
+    expect(walk(spec as VisualSpec).some(({ node }) => node.kind === 'kpi')).toBe(true);
   });
 
-  it('leva os tokens da moldura v1 para o container raiz', () => {
+  it('leva a moldura v1 para o container raiz, convertida em pixel', () => {
     const v1 = createDefaultConfig('Moldura', 'bar');
     v1.layout.padding = 'xl';
     v1.layout.surfaceColor = '#0f172a';
 
-    const v2 = migrateV1(v1);
-    expect(v2.root.props.padding).toBe('xl');
-    expect(v2.root.props.background).toBe('#0f172a');
+    const spec = migrateToCurrent(migrateV1(v1)) as VisualSpec;
+    // `xl` valia `p-8` no Tailwind, que sao 32px. O numero e historia, nao
+    // escolha: mudar aqui mudaria a aparencia de todo projeto v1 migrado.
+    expect(spec.root.props.padding).toBe(32);
+    expect(spec.root.props.background).toBe('#0f172a');
   });
 
   it('omite o texto quando o titulo estava desligado', () => {
@@ -469,5 +475,36 @@ describe('migracao v1 -> spec atual', () => {
     expect(isV1Config(createEmptySpec('v2'))).toBe(false);
     expect(isV1Config(null)).toBe(false);
     expect(isV1Config({})).toBe(false);
+  });
+});
+
+describe('T-XX: o atalho de ferramenta e unico e vem do catalogo', () => {
+  /**
+   * A guarda que torna seguro guardar o atalho no descritor.
+   *
+   * Sem ela, um tipo de no novo entraria no catalogo com a letra de outro e a
+   * barra de ferramentas passaria a armar o tipo errado — em silencio, porque
+   * dois botoes com a mesma tecla nao sao erro de compilacao nem de lint. E a
+   * mesma classe do achado 47: catalogo cresce, consumidor nao percebe.
+   */
+  it('nenhuma letra se repete entre os tipos', () => {
+    const letras = NODE_KINDS.map((kind) => NODE_DESCRIPTORS[kind].shortcut);
+    expect(new Set(letras).size).toBe(letras.length);
+  });
+
+  it('cada atalho e uma unica letra maiuscula', () => {
+    for (const kind of NODE_KINDS) {
+      expect(NODE_DESCRIPTORS[kind].shortcut, `atalho de ${kind}`).toMatch(/^[A-Z]$/);
+    }
+  });
+
+  /**
+   * `V` e a ferramenta de SELECAO, que nao e um tipo de no e por isso nao tem
+   * descritor. E a convencao de editor de desenho, e um tipo novo que a tomasse
+   * deixaria o usuario sem como voltar para selecionar.
+   */
+  it('nenhum tipo toma o V da ferramenta de selecao', () => {
+    const letras = NODE_KINDS.map((kind) => NODE_DESCRIPTORS[kind].shortcut);
+    expect(letras).not.toContain('V');
   });
 });

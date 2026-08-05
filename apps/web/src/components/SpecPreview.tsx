@@ -39,12 +39,14 @@ import { NODE_COMPONENTS } from '@/lib/nodeComponents';
  */
 function PendingNode({ label, problems }: { label: string; problems: string[] }) {
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded border-2 border-dashed border-amber-400 bg-amber-50/70 p-3 text-center dark:bg-amber-950/30">
-      <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
-        {label}: campo pendente
-      </span>
+    // Ambar LITERAL, sem token e sem `dark:`. Este no e desenhado DENTRO da
+    // prancheta, que e branca nos dois temas — `text-warning` viraria amber-400
+    // sobre branco quando o usuario poe o editor no escuro, e o aviso ficaria
+    // ilegivel exatamente onde ele precisa ser lido.
+    <div className="flex flex-1 flex-col items-center justify-center gap-1 rounded border-2 border-dashed border-amber-400 bg-amber-50/70 p-3 text-center">
+      <span className="text-xs font-semibold text-amber-700">{label}: campo pendente</span>
       {problems.map((problem) => (
-        <span key={problem} className="text-[10px] text-amber-600 dark:text-amber-400">
+        <span key={problem} className="text-micro text-amber-600">
           {problem}
         </span>
       ))}
@@ -60,9 +62,78 @@ function PendingNode({ label, problems }: { label: string; problems: string[] })
  * que era: desenho, e nada mais.
  */
 export interface PreviewEdit {
-  selectedId: string;
-  onSelect: (id: string) => void;
+  /** `null` quando nada esta selecionado — o clique no vazio limpa a selecao. */
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
   onChange: (id: string, rect: NodeRect) => void;
+  /**
+   * Duplica o no arrastado quando o gesto comeca com Alt, e devolve o id da
+   * copia — o gesto precisa dele para passar a arrastar ELA, e nao o original.
+   */
+  onDuplicate?: ((id: string) => string | null) | undefined;
+  /**
+   * Publica o tamanho de um container que posiciona, em pixel da prancheta.
+   * E o que permite ao painel da direita falar pixel: a spec guarda percentual
+   * do pai, e converter exige saber o tamanho do pai.
+   */
+  onMeasure?: ((containerId: string, size: { width: number; height: number }) => void) | undefined;
+  /** Zoom da camera, para tirar a ampliacao da medida publicada. */
+  scale?: number | undefined;
+  /**
+   * Abre e fecha um gesto continuo. Entre os dois, a escrita nao empilha
+   * historico nem revalida — um arrasto e UM passo de desfazer, nao duzentos.
+   */
+  onGestureStart?: (() => void) | undefined;
+  onGestureEnd?: (() => void) | undefined;
+  /**
+   * O container em que o ponteiro trabalha. So ELE mostra caixas selecionaveis.
+   *
+   * Sem isto todas as camadas ficam ativas ao mesmo tempo, e a de dentro cobre a
+   * de fora: clicar num container aninhado sempre pegava um filho dele, e o
+   * proprio container so era selecionavel pela arvore.
+   */
+  enteredId: string;
+  /** Duplo clique num container filho: desce um nivel. */
+  onEnter: (id: string) => void;
+}
+
+/**
+ * Cache de `onMeasure` amarrado ao container.
+ *
+ * A camada observa o proprio tamanho num `useEffect` que depende desta funcao.
+ * Uma closure nova a cada render faria o efeito desligar e religar o
+ * `ResizeObserver` — e ler o layout — a cada quadro de arrasto, que e
+ * exatamente quando isso mais custa. `renderNode` nao e componente e nao tem
+ * `useMemo`, entao a estabilidade vem daqui.
+ *
+ * `WeakMap` para nao segurar viva a spec de um projeto ja fechado.
+ */
+const measureCache = new WeakMap<
+  NonNullable<PreviewEdit['onMeasure']>,
+  Map<string, (size: { width: number; height: number }) => void>
+>();
+
+function measureOf(
+  containerId: string,
+  edit: PreviewEdit,
+): ((size: { width: number; height: number }) => void) | undefined {
+  const publish = edit.onMeasure;
+  if (!publish) return undefined;
+
+  let byId = measureCache.get(publish);
+  if (!byId) {
+    byId = new Map();
+    measureCache.set(publish, byId);
+  }
+
+  const cached = byId.get(containerId);
+  if (cached) return cached;
+
+  const bound = (size: { width: number; height: number }): void => {
+    publish(containerId, size);
+  };
+  byId.set(containerId, bound);
+  return bound;
 }
 
 function renderNode(
@@ -116,10 +187,22 @@ function renderNode(
   // desenha com os mesmos percentuais da spec, sem medir nada (ADR-18). Sendo
   // `absolute`, esta fora do fluxo e nao altera a medida de irmao nenhum — que
   // era a objecao da ADR-14.
-  if (edit && free) {
+  // UM NIVEL DE CADA VEZ. Antes a camada entrava em todo container que
+  // posiciona, e as de dentro cobriam as de fora — clicar num container
+  // aninhado sempre pegava um filho dele.
+  if (edit && free && node.id === edit.enteredId) {
     const placed = (node.children ?? []).flatMap((child) =>
       child.rect
-        ? [{ id: child.id, rect: child.rect, label: NODE_DESCRIPTORS[child.kind].label }]
+        ? [
+            {
+              id: child.id,
+              rect: child.rect,
+              label: NODE_DESCRIPTORS[child.kind].label,
+              // Entrar so faz sentido em quem POSICIONA: num container que
+              // empilha nao ha camada para mostrar depois de entrar.
+              enterable: positionsChildren(child),
+            },
+          ]
         : [],
     );
     if (placed.length > 0) {
@@ -130,6 +213,12 @@ function renderNode(
           selectedId={edit.selectedId}
           onSelect={edit.onSelect}
           onChange={edit.onChange}
+          onDuplicate={edit.onDuplicate}
+          onMeasure={measureOf(node.id, edit)}
+          scale={edit.scale ?? 1}
+          onGestureStart={edit.onGestureStart}
+          onGestureEnd={edit.onGestureEnd}
+          onEnter={edit.onEnter}
         />,
       );
     }

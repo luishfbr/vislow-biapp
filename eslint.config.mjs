@@ -101,6 +101,36 @@ export default defineConfig([
     rules: { '@typescript-eslint/no-extraneous-class': 'off' },
   },
 
+  // Componentes do shadcn/ui: codigo de TERCEIRO copiado para dentro do repo.
+  //
+  // O `shadcn add` reescreve estes arquivos por cima a cada componente novo e o
+  // `shadcn diff` compara com o upstream. Corrigi-los a mao para passar no
+  // `strictTypeChecked` transformaria toda atualizacao futura num conflito, e a
+  // correcao voltaria a ser desfeita sem ninguem notar — entao a folga fica aqui,
+  // na fronteira, e nao dentro dos arquivos.
+  //
+  // O que NAO sai: `no-restricted-properties` e `no-restricted-syntax` (RN-11).
+  // A proibicao de `innerHTML` nao tem excecao por origem do codigo — o lint
+  // oficial do `pbiviz` tambem nao abre essa.
+  {
+    files: ['apps/web/src/components/ui/**/*.{ts,tsx}'],
+    rules: {
+      '@typescript-eslint/no-unsafe-assignment': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+      '@typescript-eslint/no-unsafe-member-access': 'off',
+      '@typescript-eslint/no-unsafe-call': 'off',
+      '@typescript-eslint/no-unnecessary-condition': 'off',
+      '@typescript-eslint/no-unnecessary-type-parameters': 'off',
+      '@typescript-eslint/strict-boolean-expressions': 'off',
+      '@typescript-eslint/consistent-type-definitions': 'off',
+      '@typescript-eslint/array-type': 'off',
+      '@typescript-eslint/consistent-indexed-object-style': 'off',
+      '@typescript-eslint/prefer-nullish-coalescing': 'off',
+      '@typescript-eslint/restrict-template-expressions': 'off',
+      '@typescript-eslint/no-non-null-assertion': 'off',
+    },
+  },
+
   // Testes: as mesmas regras, com folgas pontuais.
   {
     files: ['**/*.test.{ts,tsx}'],

@@ -26,6 +26,21 @@ function kindsOf(node: SpecNode): string[] {
   return [node.kind, ...(node.children ?? []).flatMap(kindsOf)];
 }
 
+/**
+ * O no selecionado, exigindo que haja um.
+ *
+ * Lanca em vez de devolver `null` porque quem chama esta afirmando que a acao
+ * anterior selecionou algo — e "a selecao ficou vazia" tem de reprovar o teste
+ * com essa frase, nao virar `undefined` num `toMatchObject` que passa.
+ */
+function selected(): SpecNode {
+  const id = store().selectedId;
+  if (id === null) throw new Error('esperava uma selecao, e nao ha nenhuma');
+  const node = findNode(store().spec.root, id);
+  if (!node) throw new Error(`selecao orfa: ${id}`);
+  return node;
+}
+
 beforeEach(() => {
   store().newProject('Projeto de teste');
 });
@@ -36,8 +51,11 @@ describe('projeto novo', () => {
     expect(selectCanExport(useEditorStore.getState())).toBe(true);
   });
 
-  it('seleciona a raiz', () => {
-    expect(store().selectedId).toBe(store().spec.root.id);
+  it('abre SEM selecao, com o painel falando do projeto', () => {
+    // Nao e detalhe: com a raiz selecionada nao havia como distinguir "a raiz
+    // esta selecionada" de "nada esta", e o clique no vazio nao tinha para onde
+    // levar a selecao.
+    expect(store().selectedId).toBeNull();
   });
 
   it('nome curto demais bloqueia o export sem invalidar a arvore', () => {
@@ -81,8 +99,7 @@ describe('adicionar componentes', () => {
     store().addNode('barChart');
     expect(store().issues).toEqual([]);
 
-    const bar = findNode(store().spec.root, store().selectedId);
-    expect(bar?.props).toMatchObject({ categoryRole: 'regiao', measureRole: 'receita' });
+    expect(selected().props).toMatchObject({ categoryRole: 'regiao', measureRole: 'receita' });
   });
 
   it('sem coluna do tipo certo, o campo fica pendente e o export trava', () => {
@@ -103,9 +120,18 @@ describe('reordenar e remover', () => {
   });
 
   it('a raiz nao pode ser removida', () => {
+    store().select(store().spec.root.id);
     store().removeSelected();
     expect(store().spec.root).toBeDefined();
     expect(kindsOf(store().spec.root)).toEqual(['container']);
+  });
+
+  it('sem selecao, apagar nao apaga nada', () => {
+    store().addNode('text');
+    store().select(null);
+    store().removeSelected();
+
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text']);
   });
 
   it('remover leva a selecao para um vizinho, nunca para o vazio', () => {
@@ -113,7 +139,45 @@ describe('reordenar e remover', () => {
     store().addNode('kpi');
     store().removeSelected();
 
-    expect(findNode(store().spec.root, store().selectedId)).not.toBeNull();
+    expect(selected()).toBeDefined();
+  });
+});
+
+describe('duplicar', () => {
+  it('a copia entra logo depois do original e passa a ser a selecao', () => {
+    store().addNode('text');
+    store().addNode('kpi');
+
+    const copia = store().duplicateNode();
+
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'kpi', 'kpi']);
+    expect(store().selectedId).toBe(copia);
+  });
+
+  it('a copia tem id PROPRIO, em toda a descendencia', () => {
+    // Id repetido nao e reprovado pelo padrao de id, mas `findNode` para no
+    // primeiro que casa — editar a copia acertaria o original, em silencio.
+    store().addNode('container');
+    store().addNode('text');
+    store().select(store().spec.root.children?.[0]?.id ?? null);
+
+    store().duplicateNode();
+
+    const ids: string[] = [];
+    const walk = (node: SpecNode): void => {
+      ids.push(node.id);
+      for (const child of node.children ?? []) walk(child);
+    };
+    walk(store().spec.root);
+
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(validateSpec(store().spec).kind).toBe('valid');
+  });
+
+  it('a raiz nao duplica', () => {
+    store().select(store().spec.root.id);
+    expect(store().duplicateNode()).toBeNull();
+    expect(kindsOf(store().spec.root)).toEqual(['container']);
   });
 });
 
@@ -142,8 +206,7 @@ describe('tabela de exemplo', () => {
 
     store().removeColumn('receita');
 
-    const kpi = findNode(store().spec.root, store().selectedId);
-    expect(kpi?.props.measureRole).toBeUndefined();
+    expect(selected().props.measureRole).toBeUndefined();
     // Pendente, nao quebrado: o editor mostra o campo vazio e trava o export.
     expect(selectCanExport(useEditorStore.getState())).toBe(false);
   });
@@ -232,13 +295,15 @@ describe('importar projeto', () => {
     expect(store().spec).toBe(atual);
   });
 
-  it('aceita uma spec valida e seleciona a raiz', () => {
+  it('aceita uma spec valida e abre sem selecao', () => {
+    // Herdar a selecao da spec anterior apontaria para um no que ja nao existe;
+    // cair na raiz esconderia que o projeto acabou de ser trocado inteiro.
     store().addNode('barChart');
     const exportada = structuredClone(store().spec);
 
     store().newProject('Vazio');
     expect(store().importSpec(exportada)).toEqual({ ok: true });
-    expect(store().selectedId).toBe(store().spec.root.id);
+    expect(store().selectedId).toBeNull();
   });
 });
 
@@ -264,5 +329,224 @@ describe('o roteiro do teste manual produz uma spec compilavel', () => {
     // A MESMA funcao que o `BuildsController` chama antes de enfileirar.
     expect(validateSpec(store().spec).kind).toBe('valid');
     expect(selectCanExport(useEditorStore.getState())).toBe(true);
+  });
+});
+
+describe('desfazer e refazer', () => {
+  it('volta a edicao anterior e refaz de novo', () => {
+    store().addNode('text');
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text']);
+
+    store().undo();
+    expect(kindsOf(store().spec.root)).toEqual(['container']);
+
+    store().redo();
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text']);
+  });
+
+  it('sem historico, desfazer nao faz nada', () => {
+    const antes = store().spec;
+    store().undo();
+    expect(store().spec).toBe(antes);
+  });
+
+  it('UM ARRASTO E UM PASSO, nao duzentos', () => {
+    // Cada `pointermove` chama `setRect`. Sem o gesto delimitado, `Ctrl+Z`
+    // andaria um pixel de cada vez e desfazer um arrasto exigiria centenas de
+    // toques — que e o mesmo que nao ter desfazer.
+    store().addNode('kpi');
+    const id = store().selectedId ?? '';
+    const original = findNode(store().spec.root, id)?.rect;
+
+    store().beginGesture();
+    for (let x = 10; x <= 60; x += 1) store().setRect(id, { x, y: 10, w: 20, h: 20 });
+    store().endGesture();
+
+    expect(findNode(store().spec.root, id)?.rect?.x).toBe(60);
+    store().undo();
+    expect(findNode(store().spec.root, id)?.rect).toEqual(original);
+  });
+
+  it('durante o gesto NAO revalida nem empilha', () => {
+    // Era o custo que cada evento de ponteiro pagava: `validateSpec` da spec
+    // inteira mais um `saveProjectDebounced`, centenas de vezes por arrasto.
+    store().addNode('kpi');
+    const id = store().selectedId ?? '';
+    const passos = store().past.length;
+
+    store().beginGesture();
+    store().setRect(id, { x: 30, y: 30, w: 20, h: 20 });
+    store().setRect(id, { x: 40, y: 30, w: 20, h: 20 });
+    expect(store().past.length).toBe(passos);
+
+    store().endGesture();
+    expect(store().past.length).toBe(passos + 1);
+  });
+
+  it('gesto que nao mudou nada nao gasta um passo', () => {
+    // Um clique que so seleciona abre e fecha um gesto. Empilhar ali faria
+    // `Ctrl+Z` nao fazer nada visivel, e o usuario apertaria de novo achando
+    // que o atalho falhou — e ai perderia a edicao de verdade.
+    store().addNode('text');
+    const passos = store().past.length;
+
+    store().beginGesture();
+    store().endGesture();
+
+    expect(store().past.length).toBe(passos);
+  });
+
+  it('editar depois de desfazer abandona o ramo refeito', () => {
+    store().addNode('text');
+    store().addNode('kpi');
+    store().undo();
+    expect(store().future.length).toBe(1);
+
+    store().addNode('barChart');
+    expect(store().future).toEqual([]);
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'barChart']);
+  });
+
+  it('desfazer a criacao de um no limpa a selecao que apontava para ele', () => {
+    // Sem isto o painel de propriedades continuaria editando um no que ja nao
+    // esta na arvore — e a edicao iria para lugar nenhum, sem erro.
+    store().addNode('text');
+    const criado = store().selectedId;
+    expect(criado).not.toBeNull();
+
+    store().undo();
+    expect(store().selectedId).toBeNull();
+  });
+
+  it('a spec depois de desfazer continua valida', () => {
+    store().addNode('barChart');
+    store().setProp(store().selectedId ?? '', 'strokeWidth', 4);
+    store().undo();
+    store().undo();
+
+    expect(validateSpec(store().spec).kind).toBe('valid');
+  });
+
+  it('projeto novo zera o historico', () => {
+    // Desfazer nao pode ressuscitar o projeto anterior: ele tem outra
+    // identidade (RN-01) e nao e mais o que esta aberto.
+    store().addNode('text');
+    store().newProject('Outro');
+
+    expect(store().past).toEqual([]);
+    store().undo();
+    expect(kindsOf(store().spec.root)).toEqual(['container']);
+  });
+});
+
+describe('criar pela paleta', () => {
+  it('o componente nasce NA CAIXA que o gesto desenhou', () => {
+    // Pelo dialogo o no cai numa caixa automatica em cascata, nunca onde a
+    // pessoa esta olhando — e cada componente custava um arrasto de correcao
+    // logo depois de criado.
+    store().addNodeAt('kpi', { x: 25, y: 40, w: 30, h: 20 });
+
+    expect(selected().kind).toBe('kpi');
+    expect(selected().rect).toEqual({ x: 25, y: 40, w: 30, h: 20 });
+  });
+
+  it('caixa que transborda o pai e presa, nao recusada', () => {
+    // Desenhar puxando para fora da prancheta e um gesto comum. Recusar
+    // deixaria o arrasto sem resultado nenhum, sem dizer por que.
+    store().addNodeAt('text', { x: 80, y: 80, w: 50, h: 50 });
+
+    const rect = selected().rect;
+    expect((rect?.x ?? 0) + (rect?.w ?? 0)).toBeLessThanOrEqual(100);
+    expect((rect?.y ?? 0) + (rect?.h ?? 0)).toBeLessThanOrEqual(100);
+    expect(validateSpec(store().spec).kind).toBe('valid');
+  });
+
+  it('liga os papeis, como qualquer outro caminho de criacao', () => {
+    store().addNodeAt('barChart', { x: 0, y: 0, w: 50, h: 50 });
+    expect(store().issues).toEqual([]);
+    expect(selected().props).toMatchObject({ categoryRole: 'regiao', measureRole: 'receita' });
+  });
+
+  it('numa raiz que EMPILHA, o no entra sem caixa', () => {
+    // Ali quem decide o tamanho e a cadeia de flex. Gravar um `rect` produziria
+    // uma geometria que nao desenha nada — e o `validateSpec` reprova filho de
+    // container empilhado com caixa.
+    store().setProp(store().spec.root.id, 'placement', 'stack');
+    store().addNodeAt('kpi', { x: 25, y: 40, w: 30, h: 20 });
+
+    expect(selected().kind).toBe('kpi');
+    expect(selected().rect).toBeUndefined();
+    expect(validateSpec(store().spec).kind).toBe('valid');
+  });
+
+  it('armar e desarmar a paleta', () => {
+    store().armPalette('kpi');
+    expect(store().paletteKind).toBe('kpi');
+    store().armPalette(null);
+    expect(store().paletteKind).toBeNull();
+  });
+});
+
+describe('entrar e sair de container aninhado', () => {
+  /** Raiz canvas com um container filho, que por sua vez tem um KPI. */
+  function aninhado(): { filho: string } {
+    store().addNode('container');
+    const filho = store().selectedId ?? '';
+    store().setProp(filho, 'placement', 'canvas');
+    store().addNode('kpi');
+    return { filho };
+  }
+
+  it('entrar troca o nivel e limpa a selecao', () => {
+    // Manter selecionado um irmao de fora deixaria as setas do teclado mexendo
+    // num no que ja nao esta sob o ponteiro.
+    const { filho } = aninhado();
+    store().enterContainer(filho);
+
+    expect(store().enteredId).toBe(filho);
+    expect(store().selectedId).toBeNull();
+  });
+
+  it('so da para entrar em quem POSICIONA', () => {
+    // Num container que empilha nao ha camada para mostrar depois de entrar, e
+    // o usuario ficaria num nivel sem nada clicavel, sem saber como sair.
+    store().addNode('container');
+    const empilha = store().selectedId ?? '';
+    expect(store().spec.root.children?.[0]?.props.placement).toBe('stack');
+
+    store().enterContainer(empilha);
+    expect(store().enteredId).toBeNull();
+  });
+
+  it('nao entra num id que nao existe', () => {
+    store().enterContainer('inexistente');
+    expect(store().enteredId).toBeNull();
+  });
+
+  it('sair sobe um nivel SELECIONANDO o container de onde saiu', () => {
+    // E o no que o usuario acabou de terminar de editar, e o proximo gesto
+    // quase sempre e sobre ele.
+    const { filho } = aninhado();
+    store().enterContainer(filho);
+
+    expect(store().exitContainer()).toBe(true);
+    expect(store().enteredId).toBeNull();
+    expect(store().selectedId).toBe(filho);
+  });
+
+  it('na raiz, sair nao faz nada e AVISA que nao fez', () => {
+    // O `false` e o que deixa o Esc decidir o proximo passo em vez de engolir a
+    // tecla — sem ele, quem chama nao teria como distinguir "subiu" de "ja
+    // estava no topo".
+    expect(store().exitContainer()).toBe(false);
+    expect(store().enteredId).toBeNull();
+  });
+
+  it('projeto novo volta para a raiz', () => {
+    const { filho } = aninhado();
+    store().enterContainer(filho);
+    store().newProject('Outro');
+
+    expect(store().enteredId).toBeNull();
   });
 });

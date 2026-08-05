@@ -1,4 +1,10 @@
-import type { Align, Border, FontSize, FontWeight, Radius, Shadow, Spacing } from './tokens.js';
+import type {
+  LegacyBorder,
+  LegacyFontSize,
+  LegacyRadius,
+  LegacySpacing,
+} from './legacyTokens.js';
+import type { Align, FontWeight, Shadow } from './tokens.js';
 
 /** Cor no formato `#RRGGBB`. Ver COLOR_PATTERN em tokens.ts. */
 export type HexColor = string;
@@ -23,10 +29,10 @@ export interface ProjectIdentity {
 }
 
 export interface LayoutConfig {
-  padding: Spacing;
-  radius: Radius;
+  padding: LegacySpacing;
+  radius: LegacyRadius;
   shadow: Shadow;
-  border: Border;
+  border: LegacyBorder;
   surfaceColor: HexColor;
   borderColor: HexColor;
 }
@@ -34,7 +40,7 @@ export interface LayoutConfig {
 export interface HeaderConfig {
   show: boolean;
   text: string;
-  fontSize: FontSize;
+  fontSize: LegacyFontSize;
   fontWeight: FontWeight;
   align: Align;
   textColor: HexColor;
@@ -42,19 +48,19 @@ export interface HeaderConfig {
 
 export interface BarConfig {
   accentColor: HexColor;
-  barRadius: Radius;
+  barRadius: LegacyRadius;
   showGridLines: boolean;
   gridColor: HexColor;
   showValueLabels: boolean;
   valueLabelColor: HexColor;
-  valueLabelSize: FontSize;
+  valueLabelSize: LegacyFontSize;
   categoryLabelColor: HexColor;
 }
 
 export interface KpiConfig {
   accentColor: HexColor;
-  valueFontSize: FontSize;
-  labelFontSize: FontSize;
+  valueFontSize: LegacyFontSize;
+  labelFontSize: LegacyFontSize;
   labelColor: HexColor;
   showComparison: boolean;
   positiveColor: HexColor;

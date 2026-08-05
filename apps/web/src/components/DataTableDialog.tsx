@@ -9,7 +9,9 @@ import {
   type CellValue,
   type ColumnType,
 } from '@vislow/config-schema';
+import { Plus, X } from 'lucide-react';
 import { useEffect, useId, useRef, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { COLUMN_MARK, COLUMN_TYPE_OPTIONS, acceptsHint, cellAlignment } from '@/lib/columnMarks';
 import { useEditorStore } from '@/store/useEditorStore';
 
@@ -30,19 +32,17 @@ import { useEditorStore } from '@/store/useEditorStore';
  */
 
 const CELL =
-  'w-full bg-transparent px-2 py-1 text-sm outline-none focus:bg-sky-50 ' +
-  'focus:ring-2 focus:ring-inset focus:ring-sky-500 dark:focus:bg-sky-950';
+  'w-full bg-transparent px-2 py-1 text-ui outline-none ' +
+  // Anel PARA DENTRO: a celula encosta na vizinha, e um anel externo seria
+  // recortado pela borda da tabela. `focus-visible` e nao `focus` — clicar
+  // numa celula nao precisa acender anel, so navegar por teclado precisa.
+  'focus-visible:bg-primary/10 focus-visible:ring-3 focus-visible:ring-inset focus-visible:ring-ring/50';
 
-const ICON_BUTTON =
-  'inline-flex h-6 w-6 items-center justify-center rounded text-[11px] text-slate-400 ' +
-  'hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40 ' +
-  'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500 dark:hover:bg-red-950';
+/** Remover coluna ou linha: destrutivo, mas discreto ate o ponteiro chegar. */
+const REMOVER = 'text-muted-foreground hover:bg-destructive/10 hover:text-destructive';
 
-const ADD =
-  'rounded-md border border-dashed border-slate-300 px-2 py-1 text-[11px] font-medium text-slate-600 ' +
-  'hover:border-sky-400 hover:text-sky-700 focus-visible:outline-2 focus-visible:outline-offset-2 ' +
-  'focus-visible:outline-sky-500 disabled:cursor-not-allowed disabled:opacity-40 ' +
-  'dark:border-slate-600 dark:text-slate-300';
+/** Acrescentar coluna ou linha: tracejado, como o "Editar dados" do painel. */
+const ACRESCENTAR = 'border-dashed';
 
 export function DataTableDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -66,41 +66,44 @@ export function DataTableDialog({ open, onClose }: { open: boolean; onClose: () 
       ref={dialog}
       onClose={onClose}
       aria-labelledby="data-table-title"
-      className="m-auto w-[64rem] max-w-[calc(100vw-3rem)] rounded-lg bg-white p-0 text-slate-800 shadow-xl backdrop:bg-slate-900/40 dark:bg-slate-900 dark:text-slate-100"
+      className="m-auto w-[64rem] max-w-[calc(100vw-3rem)] rounded-lg bg-card p-0 text-foreground shadow-xl backdrop:bg-black/50"
       // Clique no backdrop fecha. O alvo so e o proprio `<dialog>` quando o
       // clique caiu FORA do conteudo — dentro dele, o alvo e algum filho.
       onClick={(event) => {
         if (event.target === dialog.current) onClose();
       }}
     >
-      <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4 dark:border-slate-700">
+      <header className="flex items-start justify-between gap-4 border-b border-border px-5 py-4">
         <div>
-          <h2 id="data-table-title" className="text-sm font-semibold">
+          <h2 id="data-table-title" className="text-title font-semibold">
             Dados de exemplo
           </h2>
-          <p className="mt-1 max-w-xl text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+          <p className="mt-1 max-w-xl text-label leading-relaxed text-muted-foreground">
             Componha o visual contra os seus próprios números. As linhas ficam no editor; as colunas
             viram os campos que o visual exige no Power BI, com o tipo que você declarar aqui.
           </p>
         </div>
-        <button
-          type="button"
+        <Button
+          variant="ghost"
+          size="icon-sm"
           onClick={onClose}
           aria-label="Fechar"
-          className="shrink-0 rounded px-1.5 py-0.5 text-sm text-slate-400 hover:bg-slate-100 hover:text-slate-700 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+          className="shrink-0"
         >
-          ✕
-        </button>
+          <X />
+        </Button>
       </header>
 
-      <div className="max-h-[60vh] overflow-auto">
+      {/* `overscroll-contain`: rolar ate o fim da planilha nao pode continuar
+          rolando a pagina atras do dialogo. */}
+      <div className="max-h-[60vh] overflow-auto overscroll-contain">
         <table className="w-full border-collapse">
           <thead>
             <tr>
               {/* Canto vazio, acima da numeracao das linhas. */}
               <th
                 scope="col"
-                className="sticky left-0 top-0 z-30 w-10 border-b border-r border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950"
+                className="sticky left-0 top-0 z-30 w-10 border-b border-r border-border bg-muted"
               >
                 <span className="sr-only">Linha</span>
               </th>
@@ -109,19 +112,21 @@ export function DataTableDialog({ open, onClose }: { open: boolean; onClose: () 
               ))}
               <th
                 scope="col"
-                className="sticky top-0 z-20 w-32 border-b border-slate-200 bg-slate-50 p-2 align-top dark:border-slate-700 dark:bg-slate-950"
+                className="sticky top-0 z-20 w-32 border-b border-border bg-muted p-2 align-top"
               >
-                <button
-                  type="button"
-                  className={ADD}
+                <Button
+                  variant="outline"
+                  size="xs"
+                  className={ACRESCENTAR}
                   disabled={cheio}
                   title={cheio ? `O limite é de ${String(MAX_COLUMNS)} colunas.` : undefined}
                   onClick={() => {
                     addColumn(`Coluna ${String(columns.length + 1)}`, 'text');
                   }}
                 >
-                  + coluna
-                </button>
+                  <Plus />
+                  Coluna
+                </Button>
               </th>
             </tr>
           </thead>
@@ -132,15 +137,15 @@ export function DataTableDialog({ open, onClose }: { open: boolean; onClose: () 
               // propria, ela E a posicao. Uma chave sintetica sobreviveria a
               // remocao no meio e levaria o rascunho da celula junto, para a
               // linha errada.
-              <tr key={r} className="odd:bg-slate-50/60 dark:odd:bg-slate-950/40">
+              <tr key={r} className="odd:bg-muted/40">
                 <th
                   scope="row"
-                  className="sticky left-0 z-10 border-r border-slate-200 bg-inherit px-2 text-right text-[10px] font-normal tabular-nums text-slate-400 dark:border-slate-700"
+                  className="sticky left-0 z-10 border-r border-border bg-inherit px-2 text-right font-mono text-micro font-normal tabular-nums text-muted-foreground"
                 >
                   {r + 1}
                 </th>
                 {columns.map((column, c) => (
-                  <td key={column.name} className="border-b border-slate-100 p-0 dark:border-slate-800">
+                  <td key={column.name} className="border-b border-border p-0">
                     <Cell
                       row={r}
                       column={c}
@@ -150,18 +155,19 @@ export function DataTableDialog({ open, onClose }: { open: boolean; onClose: () 
                     />
                   </td>
                 ))}
-                <td className="border-b border-slate-100 px-2 text-center dark:border-slate-800">
-                  <button
-                    type="button"
-                    className={ICON_BUTTON}
+                <td className="border-b border-border px-2 text-center">
+                  <Button
+                    variant="ghost"
+                    size="icon-xs"
+                    className={REMOVER}
                     disabled={rows.length <= 1}
                     aria-label={`Remover a linha ${String(r + 1)}`}
                     onClick={() => {
                       removeRow(r);
                     }}
                   >
-                    ✕
-                  </button>
+                    <X />
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -169,26 +175,24 @@ export function DataTableDialog({ open, onClose }: { open: boolean; onClose: () 
         </table>
       </div>
 
-      <footer className="flex items-center gap-3 border-t border-slate-200 px-5 py-3 dark:border-slate-700">
-        <button
-          type="button"
-          className={ADD}
+      <footer className="flex items-center gap-3 border-t border-border px-5 py-3">
+        <Button
+          variant="outline"
+          size="xs"
+          className={ACRESCENTAR}
           disabled={rows.length >= MAX_ROWS}
           title={rows.length >= MAX_ROWS ? `O limite é de ${String(MAX_ROWS)} linhas.` : undefined}
           onClick={addRow}
         >
-          + linha
-        </button>
-        <span className="text-[10px] tabular-nums text-slate-500 dark:text-slate-400">
+          <Plus />
+          Linha
+        </Button>
+        <span className="font-mono text-micro tabular-nums text-muted-foreground">
           {columns.length}/{MAX_COLUMNS} colunas · {rows.length}/{MAX_ROWS} linhas
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          className="ml-auto rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-sky-500"
-        >
+        <Button size="sm" onClick={onClose} className="ml-auto">
           Concluir
-        </button>
+        </Button>
       </footer>
     </dialog>
   );
@@ -221,7 +225,7 @@ function ColumnHeader({ column }: { column: DataColumn }) {
   return (
     <th
       scope="col"
-      className="sticky top-0 z-20 min-w-40 border-b border-slate-200 bg-slate-50 p-2 text-left align-top dark:border-slate-700 dark:bg-slate-950"
+      className="sticky top-0 z-20 min-w-40 border-b border-border bg-muted p-2 text-left align-top"
     >
       <div className="flex items-center gap-1.5">
         <button
@@ -235,10 +239,10 @@ function ColumnHeader({ column }: { column: DataColumn }) {
           onClick={() => {
             setColumnKind(column.name, medida ? 'grouping' : 'measure');
           }}
-          className={`shrink-0 rounded px-1 py-0.5 font-mono text-[10px] leading-none focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-sky-500 ${
+          className={`shrink-0 rounded px-1 py-0.5 font-mono text-micro leading-none outline-none focus-visible:ring-3 focus-visible:ring-ring/50 ${
             medida
-              ? 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-950 dark:text-sky-300'
-              : 'bg-slate-200 text-slate-500 hover:bg-slate-300 dark:bg-slate-800 dark:text-slate-400'
+              ? 'bg-primary/10 text-primary hover:bg-primary/20'
+              : 'bg-muted text-muted-foreground hover:bg-muted/70'
           }`}
         >
           {medida && <span className="mr-0.5">Σ</span>}
@@ -254,12 +258,13 @@ function ColumnHeader({ column }: { column: DataColumn }) {
           onChange={(event) => {
             setColumnLabel(column.name, event.target.value);
           }}
-          className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-xs font-semibold text-slate-800 outline-none hover:border-slate-300 focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:text-slate-100 dark:hover:border-slate-600 dark:focus:ring-sky-900"
+          className="min-w-0 flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-body font-semibold text-foreground outline-none hover:border-input focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         />
 
-        <button
-          type="button"
-          className={ICON_BUTTON}
+        <Button
+          variant="ghost"
+          size="icon-xs"
+          className={REMOVER}
           disabled={ultima}
           aria-label={`Remover a coluna ${column.displayName}`}
           title={
@@ -271,8 +276,8 @@ function ColumnHeader({ column }: { column: DataColumn }) {
             removeColumn(column.name);
           }}
         >
-          ✕
-        </button>
+          <X />
+        </Button>
       </div>
 
       <select
@@ -282,7 +287,9 @@ function ColumnHeader({ column }: { column: DataColumn }) {
         onChange={(event) => {
           setColumnType(column.name, event.target.value as ColumnType);
         }}
-        className="mt-1 w-full rounded border border-slate-300 bg-white px-1 py-0.5 text-[11px] text-slate-700 outline-none focus:border-sky-500 focus:ring-2 focus:ring-sky-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200 dark:focus:ring-sky-900"
+        // `bg-card`, e nao transparente: `<select>` nativo precisa de fundo
+        // explicito — sem ele a lista de opcoes desenha sobre o que esta atras.
+        className="mt-1 w-full rounded border border-input bg-card px-1 py-0.5 text-label text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
       >
         {COLUMN_TYPE_OPTIONS.map((option) => (
           <option key={option.value} value={option.value}>
@@ -294,7 +301,7 @@ function ColumnHeader({ column }: { column: DataColumn }) {
       {/* O tipo e uma restricao de VERDADE do lado do Power BI. Sem este aviso,
           o usuario descobriria no Desktop que a coluna dele foi recusada, sem
           nenhuma pista de que a causa foi uma escolha feita nesta tela. */}
-      <p id={id} className="mt-1 text-[10px] font-normal leading-tight text-slate-500 dark:text-slate-400">
+      <p id={id} className="mt-1 text-micro font-normal leading-tight text-muted-foreground">
         {acceptsHint(column.type)}
       </p>
     </th>

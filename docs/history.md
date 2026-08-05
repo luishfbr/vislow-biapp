@@ -1031,6 +1031,123 @@ ali. O do host, no visual compilado, não é afetado.
 
 ---
 
+### Sistema de design — shadcn sobre Base UI — ✅ **CONCLUÍDO em 2026-08-04**
+
+O editor tinha crescido sem sistema. Seis idiomas de botão conviviam (`TOOL`, `ACTION`, `ICON_BUTTON`, `ADD`,
+`ITEM`, mais inline nos rodapés de diálogo), três convenções de anel de foco apareciam em elementos adjacentes, e
+mais da metade da tipografia era número mágico em valor arbitrário. Nada disso quebrava nada — era só caro de
+manter e desigual de olhar.
+
+**A escolha foi shadcn no estilo `base-nova`, que é construído sobre `@base-ui/react`, não sobre Radix.** A
+consequência é maior do que parece e não estava escrita em lugar nenhum: quase todo exemplo de shadcn que se acha
+na internet é da variante Radix, e as APIs divergem — `render` contra `asChild`, `Positioner`+`Popup` contra
+`Content`, `data-open` contra `data-state="open"`. Copiar um trecho de fora não compila, e o erro não aponta para
+a causa.
+
+**A rampa não é a de fábrica.** O `baseColor` do `components.json` diz `neutral`, mas os valores foram reafinados
+à mão para slate + sky, com cada `oklch` anotado com o nome Tailwind de origem. E ganhou um token que o shadcn não
+tem: **`--warning`**. O editor tem **três** estados de problema, não dois — um campo pendente é o estado normal de
+quem está compondo, e mapeá-lo em `--destructive` pintaria de vermelho a tela inteira de um projeto novo.
+
+**A folga do ESLint ficou na fronteira, não dentro dos arquivos.** `components/ui/**` é código regerável por
+`shadcn diff`, então treze regras de tipagem são desligadas lá — mas `no-restricted-properties` e
+`no-restricted-syntax` **não saem**: a proibição de `innerHTML` (RN-11) não tem exceção por origem do código, e o
+lint oficial do `pbiviz` também não perdoa.
+
+**O que ficou aberto, e vira o rebranding:** a adoção parou em torno de 5% da superfície. Os painéis, os quatro
+diálogos e as 767 linhas de `controls/Field.tsx` continuam escritos à mão — e `controls/Field.tsx` mantém uma
+constante `INPUT` cujo comentário pede sincronia manual com `ui/input.tsx`, o que faz do comentário o acoplamento.
+O `ui/separator.tsx` foi instalado e nunca importado; o `Header` desenha o divisor dele à mão.
+
+---
+
+### Rebranding, sprint 2 — o shell — ✅ **CONCLUÍDO em 2026-08-04**
+
+O shell era um flex de três colunas com larguras mágicas (`w-72`, `w-80`), `shrink-0` nas duas, e **um único**
+prefixo de breakpoint em todo o `apps/web`. Abaixo de ~900px o canvas era esmagado; abaixo de ~700px as colunas
+transbordavam sem quebra e sem rolagem.
+
+**A regra nova é uma frase: esquerda = o que existe, direita = o que está selecionado.** É o modelo do Figma, e
+é o que faz "onde acho isso?" ter uma resposta em vez de várias. A paleta saiu da coluna esquerda — onde
+disputava altura com a árvore — e virou barra de ferramentas no topo, com o modelo de ferramenta armada.
+
+**Três caminhos de inserção viraram dois.** Clicar na ficha, arrastar a ficha e o `Ctrl+K` faziam o mesmo
+trabalho por três códigos de gesto diferentes. O arrastar-da-ficha saiu; o `Ctrl+K` fica, e continua sendo o
+caminho quando o catálogo crescer demais para caber na barra.
+
+**O bug de colapso deixou de ser improvável e passou a ser inalcançável.** A coluna esquerda era
+`overflow-hidden` com três faixas fixas e uma elástica: numa tela baixa a árvore encolhia para perto de zero e
+não havia o que rolar — nem na faixa, que já não tinha altura, nem na coluna, que não rolava. Agora as duas
+faixas dividem a altura por um divisor arrastável com `minSize` declarado.
+
+**Uma dependência nova, e só uma:** `react-resizable-panels`. O Base UI não tem primitivo de divisão de painel,
+e foi o único item do sprint que não saiu de um `shadcn add`.
+
+**A regra do enquadramento mudou de propósito, e não por acidente.** Ela dizia "uma vez, na primeira medida", e
+isso continua valendo para `resize`. Mas recolher uma coluna devolve ~20% da largura de uma vez, e manter o
+enquadramento anterior deixaria a prancheta encostada num canto — o usuário pediu espaço e recebeu espaço
+vazio. O gatilho é um **contador** (`layoutEpoch`), nunca a medida do painel: o painel muda de tamanho durante a
+animação inteira, e reagir à medida reenquadraria a cada quadro.
+
+**A assinatura é a barra do pacote**, no rodapé: componentes, campos, pendências à esquerda; versão e hora do
+último export à direita. Ela existe porque o Vislow não é um editor de desenho — é um editor cuja saída é um
+binário que passa por um portão —, e responde à pergunta do achado 40. **Não é o `BuildStamp` voltando:** aquele
+era do visual compilado e continua fora.
+
+**Corrigido depois de visto na tela:** os gatilhos de mostrar/ocultar coluna nasceram flutuando em `absolute`
+sobre a área de trabalho, com a justificativa de que assim ficariam no mesmo lugar aberta ou recolhida. Ficavam
+no mesmo lugar **cobrindo o conteúdo da coluna**. Foram para a barra do topo, junto do seletor de tema, e o
+teste passou a reprovar `absolute` e `z-` naquele componente — a regressão aqui não é o botão sumir, é alguém
+reancorá-lo "para ficar mais perto do painel".
+
+**Aberto, deliberadamente:** o `ProjectMenu` continua sendo um popover escrito à mão (vira `DropdownMenu` no
+sprint 3), e a URL continua sem refletir estado nenhum — sem link profundo para seleção, container ou painel.
+Esse segundo item é decisão de produto, não de layout: um editor com desfazer e escrita com debounce precisa
+decidir antes se a URL é fonte ou espelho.
+
+### Rebranding, sprint 3 — os painéis — ✅ **CONCLUÍDO em 2026-08-04**
+
+O sprint da faxina por dentro, sobre o shell que o sprint 2 deixou de pé.
+
+**O `ProjectMenu` deixou de reimplementar um menu.** Eram ~90 das suas 197 linhas gastas em foco em roda por
+`querySelectorAll`, escuta de `pointerdown` no documento, `Escape` e devolução de foco ao gatilho — tudo já
+resolvido pelo `ui/dropdown-menu.tsx`, que estava instalado e que o `ThemeToggle` já usava. Vieram de brinde o
+portal e a detecção de colisão: o menu antigo era um `absolute right-0 z-10` dentro do flex da barra.
+
+**As duas ações que apagam o histórico passaram a confirmar.** `newProject` e `importSpec` zeram `past` e
+`future` — depois delas não existe `Ctrl+Z` que traga o projeto de volta —, e disparavam direto de um item de
+menu de três linhas. A guarda é negativa e foi verificada mordendo: religando o `onClick` na ação do store,
+três testes caem. O rótulo do botão repete o verbo ("Descartar e começar"), porque "Confirmar" obriga a reler a
+pergunta para saber o que vai acontecer. **Exportar não pergunta** — confirmação em ação inofensiva é o que
+ensina a clicar em "sim" sem ler, e é o que faz a confirmação da ação perigosa deixar de proteger.
+
+**Uma moldura de diálogo, no lugar de quatro.** Havia quatro larguras (`30rem`, `30rem`, `32rem`, `64rem`),
+**três** fórmulas de folga lateral, e teto de altura em só dois dos quatro — os outros dois transbordavam numa
+janela baixa sem nada para rolar. `DialogFrame` dá tamanho nomeado e teto obrigatório. Continua sendo `<dialog>`
+nativo: Esc, backdrop, retenção de foco e camada superior vêm do navegador, e o `BuildProgressDialog` continua
+recusando Esc enquanto compila, com o teste negativo intacto.
+
+**`PanelSection` matou a string de cabeçalho copiada em quatro arquivos** (`TreePanel`, `DataPanel`,
+`PropertiesPanel` e `controls/Field`, duas vezes). "Copiada" é o estado anterior a "divergente".
+
+**O `controls/Field.tsx` passou a compor com `cn()`.** O `${INPUT} bg-card` dependia de ordem de fonte para
+sobrepor o `bg-transparent`; agora é resolução de conflito do tailwind-merge. E toda medida do painel virou
+mono alinhada à direita — o painel da direita lê como folha de especificação, não como formulário com números
+dentro. O gesto de arrasto do `NumberInput`, o `begin/endGesture` e o knob branco do `ToggleField` não foram
+tocados.
+
+**Estados vazios desenhados**, item próprio do Definition of Done: `EmptyState` compartilhado, e o primeiro uso
+é o `DataPanel` sem colunas — sem coluna não há campo, sem campo o export fica bloqueado, e nada na tela dizia
+por quê.
+
+**Dois achados da auditoria de linha de base fechados:** `overscroll-contain` no corpo rolável da planilha, e o
+anel de foco de verdade na célula (que tinha `outline-none` com só uma troca de fundo como substituto).
+
+**Um erro de processo, registrado porque custou trabalho:** usei `git checkout <arquivo>` para desfazer uma
+sabotagem deliberada de teste, e ele reverteu para a versão **commitada** — apagando a reescrita inteira do
+`ProjectMenu` daquele sprint. Num repositório com trabalho não commitado, `git checkout` não desfaz a última
+edição: desfaz tudo desde o último commit.
+
 ## 8. Anexo A — achados numerados
 
 Correções aplicadas na v2.0 sobre o rascunho v1.0, com a razão de cada uma.
@@ -1157,3 +1274,11 @@ O gate da Fase 1 foi executado antes da Fase 0 e **aprovado**. Achados que alter
 | 58 | **`pnpm test` incluía o gate de aceite, que se auto-pulava.** `compiledVisual.e2e.test.ts` casava com o `include` do vitest e usava `describe.skipIf` quando o `vendor/` não estava preparado. O mesmo comando levava 3 s ou 1 min conforme o estado do disco. | O teste mais importante do projeto podia não rodar sem que nada na saída dissesse isso — e `VISLOW_REQUIRE_BUILD=1`, a defesa, só existia no CI. Localmente, "`pnpm test` passou" não significava nada sobre o artefato. | Split por convenção de nome (ADR-17): `*.e2e.test.ts` sai da suíte rápida e entra na do gate, cuja tarefa declara `stage:vendor` como dependência e é `cache: false`. O `skipIf` virou `throw` no carregamento. `VISLOW_REQUIRE_BUILD` deixou de existir — a ordenação declarada tornou a variável desnecessária. Efeito colateral medido: a suíte rápida caiu de 16,3 s para 1,71 s. |
 | 59 | **Scripts `.mjs` de build rodavam com zero regras de ESLint.** O bloco de configuração do `eslint.config.mjs` casava `*.{mjs,ts}` (só a raiz) e `**/*.config.{mjs,ts}` — nenhum dos dois alcança `packages/*/scripts/`. | `stage-vendor.mjs` prepara o template do worker e `check-css.mjs` é a guarda do ADR-02: dois scripts críticos de build sem lint nenhum, e o `pnpm lint` verde não indicava a lacuna. Descoberto por sondagem com `eslint --print-config`, que respondeu `0 regras`. | `packages/*/scripts/**/*.{mjs,ts}` somado ao bloco de configuração — lint sem informação de tipos, como os demais arquivos que não pertencem a tsconfig de pacote. Passou de 0 para 64 regras; ambos os scripts já estavam limpos. |
 
+
+### A12 — Achados do sistema de design (2026-08-04)
+
+| # | Achado | Impacto | Correção |
+|---|---|---|---|
+| 60 | **A rampa slate + sky reprova em contraste nos dois papéis mais visíveis do produto.** Medido: `sky-600` com rótulo branco dá **4.10** contra o piso de 4.5 de texto AA; `sky-500` sobre a prancheta dá **2.77** contra o piso de 3.0 de elemento gráfico. | A alça de seleção, a linha de encaixe e o anel de foco do canvas ficam abaixo do mínimo exatamente sobre o fundo em que sempre aparecem — a prancheta é **sempre branca**, por decisão, e não segue o tema. Passou despercebido porque toda a conferência de contraste tinha sido feita contra o chrome (onde sky passa folgado, 7.26) e nunca contra a prancheta. Nenhum teste olhava para cor. | Encontrado por medição ao planejar o rebranding, **ainda não corrigido neste sprint**. A rampa índigo do Sprint 1 do rebranding resolve os dois: 6.29 com rótulo branco e 4.47 sobre a prancheta. A correção só conta com a guarda junto — `lib/tokens.contrast.test.ts` lê os hexes dos dois temas e reprova abaixo dos pisos, senão a próxima troca de paleta repete o erro em silêncio. |
+| 61 | **O acento precisa de três paradas, não de uma.** O Vislow desenha sobre dois fundos ao mesmo tempo: o chrome (escuro) e a prancheta (branca, sempre). Um token só não atende os dois — a parada que passa em texto branco sobre si mesma é escura demais para se ver sobre branco, e a que se vê sobre branco é clara demais para carregar rótulo branco. | É a causa-raiz do achado 60. Tratar `--primary` como se fosse um valor só é o que produziu as duas reprovações de uma vez. | Três papéis declarados: superfície com rótulo branco (600), alça e guia sobre a prancheta (500), acento sobre o chrome (400). Registrado em docs/frontend.md junto da rampa. |
+| 62 | **Nenhum `Intl.` no editor inteiro**, numa interface toda em português. `BuildProgressDialog` formata o tamanho do pacote com `toFixed(0)` e `lib/buildProgress.ts` formata o tempo com `toFixed(1)`, ambos com separador decimal de código, não de locale. | Baixo e cosmético, mas é o app dizendo "221.1 KB" para um usuário que escreve 221,1 — e o formato fixo em código é anti-padrão declarado nas Web Interface Guidelines. Não apareceu antes porque nenhuma auditoria tinha sido rodada sobre o editor. | Encontrado na auditoria de linha de base; correção no Sprint 1 do rebranding, em `lib/formatNumber.ts`, sem React e testável sozinho como `canvasGeometry.ts` e `viewport.ts`. |

@@ -1,5 +1,4 @@
-import type { FontSize } from '@vislow/config-schema';
-import { FONT_SIZE_CLASS, cx } from '../tokens.js';
+import { px } from '../tokens.js';
 import { hcAccent, hcInk } from '../highContrast.js';
 import { EmptyState } from '../states.js';
 import { sumOf, type DataFrame } from './frame.js';
@@ -22,7 +21,8 @@ export function KpiNode({
   frame: DataFrame;
   measureRole: string;
   label: string;
-  valueFontSize: FontSize;
+  /** Em PIXEL. Vai por `style`, nunca por classe — ver `tokens.ts`. */
+  valueFontSize: number;
   valueColor: string;
   labelColor: string;
 }) {
@@ -36,9 +36,15 @@ export function KpiNode({
   return (
     <div className="pbi:flex-1 pbi:min-h-0 pbi:min-w-0 pbi:flex pbi:flex-col pbi:items-center pbi:justify-center">
       <div
-        className={cx('pbi:truncate', 'pbi:max-w-full', 'pbi:font-bold', FONT_SIZE_CLASS[valueFontSize])}
-        // RF-21: alto contraste vence a cor do usuario. Ver `highContrast.ts`.
-        style={{ color: hcAccent(valueColor) }}
+        className="pbi:truncate pbi:max-w-full pbi:font-bold"
+        style={{
+          // RF-21: alto contraste vence a cor do usuario. Ver `highContrast.ts`.
+          color: hcAccent(valueColor),
+          fontSize: px(valueFontSize),
+          // Mesma razao do `TextNode`: a altura de linha vinha com a classe
+          // `pbi:text-*`, e sem ela o numero herdaria a do host.
+          lineHeight: 1.2,
+        }}
         title={aggregate.formatted}
       >
         {aggregate.formatted}

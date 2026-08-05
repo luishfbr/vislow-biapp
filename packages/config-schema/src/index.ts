@@ -3,6 +3,7 @@
 // reexportar arrastaria o JSZip para la, em silencio, contra o orcamento do
 // RNF-04. Quem inspeciona pacote usa `@vislow/config-schema/packaging`.
 export * from './tokens.js';
+export * from './legacyTokens.js';
 export * from './cell.js';
 export * from './types.js';
 export * from './schema.js';

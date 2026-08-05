@@ -10,11 +10,12 @@ import {
   type SpecNode,
 } from '@vislow/component-registry';
 import { COLUMN_TYPE_LABEL } from '@vislow/config-schema';
-import { useMemo } from 'react';
+import { PanelSectionHeading } from '@/components/PanelSection';
+import { useMemo, type ReactNode } from 'react';
 import {
   ArtboardField,
   ColorField,
-  NumberField,
+  NumberInput,
   RectField,
   SelectField,
   TextField,
@@ -40,12 +41,16 @@ function Control({
   roles,
   error,
   onChange,
+  onGestureStart,
+  onGestureEnd,
 }: {
   field: FieldSpec;
   node: SpecNode;
   roles: readonly DataColumn[];
   error: string | undefined;
   onChange: (value: unknown) => void;
+  onGestureStart: () => void;
+  onGestureEnd: () => void;
 }) {
   const raw = node.props[field.key];
 
@@ -89,7 +94,7 @@ function Control({
           }
           error={error}
           value={typeof raw === 'string' ? raw : ''}
-          placeholder="Escolha um campo..."
+          placeholder="Escolha um campo…"
           // O TIPO entra no rotulo: e ele que decide o que o Power BI vai
           // aceitar neste campo, e a lista e o unico lugar em que o usuario
           // escolhe entre colunas sem enxergar a tabela.
@@ -136,9 +141,13 @@ function Control({
         />
       );
 
+    // Os dois passam pelo MESMO controle; so muda o sufixo. Um campo em pixel e
+    // um campo sem unidade se comportam igual — digitar, arrastar o rotulo,
+    // setas de 1 em 1 —, e dar formas diferentes a eles obrigaria o usuario a
+    // aprender duas vezes o mesmo gesto.
     case 'number':
       return (
-        <NumberField
+        <NumberInput
           label={field.label}
           hint={field.hint}
           error={error}
@@ -146,6 +155,24 @@ function Control({
           min={field.min}
           max={field.max}
           onChange={onChange}
+          onGestureStart={onGestureStart}
+          onGestureEnd={onGestureEnd}
+        />
+      );
+
+    case 'length':
+      return (
+        <NumberInput
+          label={field.label}
+          hint={field.hint}
+          error={error}
+          value={typeof raw === 'number' ? raw : field.default}
+          min={field.min}
+          max={field.max}
+          unit="px"
+          onChange={onChange}
+          onGestureStart={onGestureStart}
+          onGestureEnd={onGestureEnd}
         />
       );
   }
@@ -180,6 +207,30 @@ function isVisible(field: FieldSpec, node: SpecNode): boolean {
   return value === field.showWhen.equals;
 }
 
+/** Moldura comum aos dois estados do painel, para o cabecalho nao divergir. */
+function Panel({ eyebrow, title, hint, children }: {
+  eyebrow: string;
+  title: string;
+  hint: string;
+  children: ReactNode;
+}) {
+  return (
+    <aside className="flex h-full flex-col overflow-y-auto border-l border-border bg-card p-4">
+      <header className="mb-3">
+        <PanelSectionHeading>{eyebrow}</PanelSectionHeading>
+        {/* `truncate` + `title`: o nome do projeto e do usuario e o painel tem
+            20rem. Sem isto, um nome longo empurra a coluna e o resto do
+            cabecalho sai de posicao. */}
+        <p className="mt-0.5 truncate text-sm font-medium text-foreground" title={title}>
+          {title}
+        </p>
+        <p className="text-label leading-tight text-muted-foreground">{hint}</p>
+      </header>
+      {children}
+    </aside>
+  );
+}
+
 export function PropertiesPanel() {
   const spec = useEditorStore((s) => s.spec);
   const issues = useEditorStore((s) => s.issues);
@@ -187,8 +238,32 @@ export function PropertiesPanel() {
   const setProp = useEditorStore((s) => s.setProp);
   const setRect = useEditorStore((s) => s.setRect);
   const setArtboard = useEditorStore((s) => s.setArtboard);
+  // O registro inteiro, e nao um tamanho por seletor: e uma REFERENCIA vinda do
+  // estado (o zustand v5 compara por `Object.is`), e ela so muda quando alguma
+  // medida muda de fato — o que acontece ao redimensionar a janela, nao a cada
+  // edicao. Um seletor que indexasse aqui construiria valor a cada chamada.
+  const containerSizes = useEditorStore((s) => s.containerSizes);
+  const beginGesture = useEditorStore((s) => s.beginGesture);
+  const endGesture = useEditorStore((s) => s.endGesture);
 
   const byNode = useMemo(() => issuesByNode(spec, issues), [spec, issues]);
+
+  // Sem selecao, o painel fala do PROJETO. A prancheta vive aqui e nao mais nas
+  // propriedades da raiz: ela nunca foi propriedade de um no — nao vem do
+  // descritor, nao vai para o pacote, e e a moldura em que TUDO e desenhado.
+  // Este e tambem o estado em que o editor abre.
+  if (!node) {
+    return (
+      <Panel
+        eyebrow="Projeto"
+        title={spec.project.name}
+        hint="Nada selecionado. Clique num componente da prancheta para editar."
+      >
+        <ArtboardField value={artboardOf(spec)} onChange={setArtboard} />
+      </Panel>
+    );
+  }
+
   const descriptor = NODE_DESCRIPTORS[node.kind];
   const problems = byNode.get(node.id);
 
@@ -199,32 +274,18 @@ export function PropertiesPanel() {
   const placed = parent && positionsChildren(parent) ? node.rect : undefined;
   const rectError = problems?.all.find((issue) => issue.path.endsWith('.rect'))?.message;
 
+  // O tamanho do PAI em pixel — e ele que converte o percentual da spec no pixel
+  // que o campo mostra. Publicado pela camada de manipulacao, que ja cobre
+  // exatamente este container.
+  const parentSize = parent ? containerSizes[parent.id] : undefined;
+
   return (
-    <aside className="flex h-full w-80 shrink-0 flex-col overflow-y-auto border-l border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-      <header className="mb-3">
-        <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-          Propriedades
-        </h2>
-        <p className="mt-0.5 text-sm font-medium text-slate-800 dark:text-slate-100">
-          {descriptor.label}
-        </p>
-        <p className="text-[11px] leading-tight text-slate-500">{descriptor.hint}</p>
-      </header>
-
-      {/* A prancheta ocupa o mesmo lugar que a geometria, e pelo mesmo motivo:
-          nao vem do descritor e nao e propriedade do componente. Os dois nunca
-          aparecem juntos — a raiz nao tem pai, entao nao tem caixa; quem tem
-          caixa nao e a raiz. */}
-      {node.id === spec.root.id && (
-        <div className="mb-2 border-b border-slate-100 pb-1 dark:border-slate-800">
-          <ArtboardField value={artboardOf(spec)} onChange={setArtboard} />
-        </div>
-      )}
-
+    <Panel eyebrow="Propriedades" title={descriptor.label} hint={descriptor.hint}>
       {placed && (
-        <div className="mb-2 border-b border-slate-100 pb-1 dark:border-slate-800">
+        <div className="mb-2 border-b border-border pb-1">
           <RectField
             value={placed}
+            parent={parentSize}
             error={rectError}
             onChange={(axis, v) => {
               setRect(node.id, { ...placed, [axis]: v });
@@ -233,7 +294,7 @@ export function PropertiesPanel() {
         </div>
       )}
 
-      <div className="divide-y divide-slate-100 dark:divide-slate-800">
+      <div className="divide-y divide-border">
         {descriptor.fields.filter((field) => isVisible(field, node)).map((field) => (
           <Control
             key={field.key}
@@ -244,9 +305,11 @@ export function PropertiesPanel() {
             onChange={(value) => {
               setProp(node.id, field.key, value);
             }}
+            onGestureStart={beginGesture}
+            onGestureEnd={endGesture}
           />
         ))}
       </div>
-    </aside>
+    </Panel>
   );
 }

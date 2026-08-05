@@ -2,7 +2,7 @@ import type { CellValue, ColumnType, ProjectIdentity } from '@vislow/config-sche
 import type { NodeKind, RoleKind } from './types.js';
 
 /** Versao do formato da arvore. Distinta do `schemaVersion` do config plano v1. */
-export const SPEC_VERSION = '3.0.0';
+export const SPEC_VERSION = '4.0.0';
 
 /**
  * Uma coluna da tabela de exemplo — que e, ao mesmo tempo, um CAMPO do visual.
@@ -78,6 +78,18 @@ export const KIND_FOR_TYPE: Record<ColumnType, RoleKind> = {
   percent: 'measure',
   currency: 'measure',
 };
+
+/**
+ * Limites do nome do projeto.
+ *
+ * Estao aqui, e nao em literal dentro do `specSchema`, porque tem DOIS
+ * consumidores: o JSON Schema, que reprova a spec, e o formulario do editor, que
+ * precisa dizer ao usuario o que falta antes de ele chegar no export. Os numeros
+ * escritos duas vezes seriam a lista paralela de sempre — divergiriam no dia em
+ * que alguem afrouxasse um lado.
+ */
+export const PROJECT_NAME_MIN_LENGTH = 3;
+export const PROJECT_NAME_MAX_LENGTH = 50;
 
 /** Teto de colunas. Era o `maxItems` de `dataRoles` e continua valendo. */
 export const MAX_COLUMNS = 10;

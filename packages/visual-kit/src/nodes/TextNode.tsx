@@ -1,5 +1,5 @@
-import type { Align, FontSize, FontWeight } from '@vislow/config-schema';
-import { ALIGN_CLASS, FONT_SIZE_CLASS, FONT_WEIGHT_CLASS, cx } from '../tokens.js';
+import type { Align, FontWeight } from '@vislow/config-schema';
+import { ALIGN_CLASS, FONT_WEIGHT_CLASS, cx, px } from '../tokens.js';
 import { hcInk } from '../highContrast.js';
 
 /**
@@ -16,22 +16,24 @@ export function TextNode({
   color,
 }: {
   content: string;
-  fontSize: FontSize;
+  /** Em PIXEL. Vai por `style`, nunca por classe — ver `tokens.ts`. */
+  fontSize: number;
   fontWeight: FontWeight;
   align: Align;
   color: string;
 }) {
   return (
     <div
-      className={cx(
-        'pbi:shrink-0',
-        'pbi:truncate',
-        FONT_SIZE_CLASS[fontSize],
-        FONT_WEIGHT_CLASS[fontWeight],
-        ALIGN_CLASS[align],
-      )}
-      // RF-21: alto contraste vence a cor do usuario. Ver `highContrast.ts`.
-      style={{ color: hcInk(color) }}
+      className={cx('pbi:shrink-0', 'pbi:truncate', FONT_WEIGHT_CLASS[fontWeight], ALIGN_CLASS[align])}
+      style={{
+        // RF-21: alto contraste vence a cor do usuario. Ver `highContrast.ts`.
+        color: hcInk(color),
+        fontSize: px(fontSize),
+        // A altura de linha vinha junto com `pbi:text-*`; sem a classe, o texto
+        // herdaria a do host. `1.2` e o que as classes do Tailwind davam nos
+        // tamanhos de titulo, que e o uso deste no.
+        lineHeight: 1.2,
+      }}
       title={content}
     >
       {content}

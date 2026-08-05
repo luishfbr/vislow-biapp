@@ -7,18 +7,19 @@
  * Power BI em vez de duplicar (RF-10). A identidade e a parte insubstituivel; o
  * resto e aparencia.
  *
- * Dois saltos hoje:
+ * Tres saltos hoje:
  *   v1 -> config plano do editor pre-ADR-08;
- *   v2 -> arvore com `dataRoles`, antes de a tabela de exemplo existir.
+ *   v2 -> arvore com `dataRoles`, antes de a tabela de exemplo existir;
+ *   v3 -> medidas como TOKEN (`padding: 'md'`), antes de virarem pixel livre.
  *
  * ATENCAO: `loadProject` DESCARTA em silencio a spec que nao valida. Uma
  * migracao errada aqui nao da erro na tela — ela apaga o projeto do usuario. E
- * por isso que `migrate.test.ts` congela uma fixture v2 real em vez de construir
- * uma com as funcoes de hoje, que evoluem junto com o codigo e esconderiam a
- * quebra.
+ * por isso que `migrate.test.ts` congela fixtures reais em vez de construi-las
+ * com as funcoes de hoje, que evoluem junto com o codigo e esconderiam a quebra.
  */
 import type { CellValue, VisualConfig } from '@vislow/config-schema';
 import { createNode, DEFAULT_TABLE } from './factory.js';
+import { NODE_DESCRIPTORS } from './registry.js';
 import {
   KIND_FOR_TYPE,
   SPEC_VERSION,
@@ -27,7 +28,160 @@ import {
   type SpecNode,
   type VisualSpec,
 } from './spec.js';
-import type { RoleKind } from './types.js';
+import type { NodeKind, RoleKind } from './types.js';
+
+/**
+ * A versao que as migracoes ANTERIORES a ultima produzem.
+ *
+ * `migrateV2ToV3` nao pode carimbar `SPEC_VERSION`: o que ela devolve tem
+ * medidas em token, e portanto ainda nao e a spec atual. Carimbar a versao de
+ * destino ali faria a saida MENTIR sobre o proprio formato — e o encadeador,
+ * que confere a forma e nao o numero, migraria certo enquanto o arquivo
+ * gravado dissesse outra coisa.
+ */
+const V3_VERSION = '3.0.0';
+
+/**
+ * ============================ TOKEN -> PIXEL (v3 -> v4) ======================
+ *
+ * Os numeros NAO sao escolhidos agora: sao os pixels que cada classe do Tailwind
+ * ja produzia no visual compilado. Migrar tem de deixar a composicao do usuario
+ * IDENTICA na tela — se `md` virasse 12 em vez de 16, todo projeto salvo mudaria
+ * de aparencia no dia em que ele abrisse o editor, e ele leria isso como o
+ * produto tendo estragado o trabalho dele.
+ *
+ * Os mapas ficam AQUI, e nao no `visual-kit`, porque descrevem um formato que
+ * nao existe mais. Deixa-los junto do codigo vivo convidaria alguem a "atualizar
+ * o valor de `md`" — e o valor de `md` e historia, nao decisao.
+ * =============================================================================
+ */
+const SPACING_PX: Record<string, number> = {
+  none: 0,
+  xs: 4,
+  sm: 8,
+  md: 16,
+  lg: 24,
+  xl: 32,
+};
+
+const RADIUS_PX: Record<string, number> = {
+  none: 0,
+  sm: 2,
+  md: 6,
+  lg: 8,
+  xl: 12,
+  // `rounded-full` era 9999px — a receita de "pilula". Em pixel o teto do campo
+  // e 200, e 200 arredonda por completo qualquer caixa plausivel.
+  full: 200,
+};
+
+const BORDER_PX: Record<string, number> = {
+  none: 0,
+  thin: 1,
+  medium: 2,
+};
+
+const FONT_SIZE_PX: Record<string, number> = {
+  xs: 12,
+  sm: 14,
+  base: 16,
+  lg: 18,
+  xl: 20,
+  '2xl': 24,
+  '4xl': 36,
+};
+
+/**
+ * Onde cada token vira pixel, por chave de prop.
+ *
+ * `border` sai e `borderWidth` entra: o campo virou medida, e o nome antigo se
+ * leria como um enum cujo segundo valor foi escolhido.
+ */
+const LENGTH_MIGRATIONS: { from: string; to: string; table: Record<string, number> }[] = [
+  { from: 'padding', to: 'padding', table: SPACING_PX },
+  { from: 'gap', to: 'gap', table: SPACING_PX },
+  { from: 'radius', to: 'radius', table: RADIUS_PX },
+  { from: 'border', to: 'borderWidth', table: BORDER_PX },
+  { from: 'fontSize', to: 'fontSize', table: FONT_SIZE_PX },
+  { from: 'valueFontSize', to: 'valueFontSize', table: FONT_SIZE_PX },
+];
+
+/**
+ * Reconhece a v3 pela FORMA: alguma medida ainda e string.
+ *
+ * Mesma regra do `isV2Spec` — a versao escrita no arquivo e justamente o campo
+ * que um arquivo editado a mao tem mais chance de trazer errado. E o teste e
+ * barato: na v4 nenhuma dessas chaves e string em no nenhum.
+ */
+export function isV3Spec(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const root = (value as { root?: unknown }).root;
+  return typeof root === 'object' && root !== null && hasTokenLength(root as SpecNode);
+}
+
+function hasTokenLength(node: SpecNode): boolean {
+  // O tipo promete `props`, mas o valor vem de JSON de fora — de um arquivo que
+  // o usuario pode ter editado. `as SpecNode` calou o compilador na fronteira;
+  // aqui a conferencia e de verdade.
+  const props = (node as { props?: Record<string, unknown> }).props ?? {};
+  for (const { from } of LENGTH_MIGRATIONS) {
+    if (typeof props[from] === 'string') return true;
+  }
+  return (node.children ?? []).some(hasTokenLength);
+}
+
+/**
+ * v3 -> v4: cada medida em token vira pixel.
+ *
+ * Token desconhecido cai no DEFAULT DO CAMPO, e nao em zero: um `padding`
+ * inventado por edicao manual vira o espacamento padrao, que e o que o usuario
+ * veria num no novo — e nao um componente colado nas bordas, que se leria como
+ * defeito do editor.
+ */
+export function migrateV3ToV4(spec: VisualSpec): VisualSpec {
+  return { ...spec, schemaVersion: SPEC_VERSION, root: pixelize(spec.root) };
+}
+
+function pixelize(node: SpecNode): SpecNode {
+  // Reconstruido por FILTRO, e nao mutado com `delete`: `border` tem de sumir
+  // junto com a entrada de `borderWidth`, e o schema tem
+  // `additionalProperties: false` — a chave antiga sobrevivente reprova a spec
+  // inteira, e `loadProject` a descarta em silencio.
+  const retired = new Set(
+    LENGTH_MIGRATIONS.filter(({ from }) => typeof node.props[from] === 'string').map((m) => m.from),
+  );
+  const props: Record<string, unknown> = Object.fromEntries(
+    Object.entries(node.props).filter(([key]) => !retired.has(key)),
+  );
+
+  for (const { from, to, table } of LENGTH_MIGRATIONS) {
+    const current = node.props[from];
+    if (typeof current !== 'string') continue;
+    props[to] = table[current] ?? defaultLengthFor(node.kind, to);
+  }
+
+  const children = node.children?.map(pixelize);
+  return children ? { ...node, props, children } : { ...node, props };
+}
+
+function defaultLengthFor(kind: NodeKind, key: string): number {
+  const field = NODE_DESCRIPTORS[kind].fields.find((f) => f.key === key);
+  return field?.kind === 'length' ? field.default : 0;
+}
+
+/**
+ * Leva qualquer formato conhecido ate a spec atual.
+ *
+ * UM ponto de entrada, e nao uma cadeia montada a mao em cada chamador: o
+ * `localStorage` e o import de arquivo precisam concordar sobre quais saltos
+ * existem e em que ordem, e duas copias da cadeia divergem no salto seguinte —
+ * um deles ganharia o v3 e o outro nao, e so um dos dois caminhos apagaria o
+ * projeto do usuario.
+ */
+export function migrateToCurrent(value: unknown): unknown {
+  const afterV2 = isV2Spec(value) ? migrateV2ToV3(value) : value;
+  return isV3Spec(afterV2) ? migrateV3ToV4(afterV2 as VisualSpec) : afterV2;
+}
 
 /** Reconhece um documento no formato v1 sem confiar apenas no schemaVersion. */
 export function isV1Config(value: unknown): value is VisualConfig {
@@ -125,7 +279,11 @@ export function migrateV1(config: VisualConfig): VisualSpec {
   root.children = children;
 
   return {
-    schemaVersion: SPEC_VERSION,
+    // A v1 produz uma arvore com medidas em TOKEN: e uma spec v3, e o
+    // encadeador leva ela ate a atual. Emitir `SPEC_VERSION` aqui pularia o
+    // salto v3 -> v4 e entregaria `padding: 'md'` a um schema que so aceita
+    // inteiro — o projeto seria descartado em silencio.
+    schemaVersion: V3_VERSION,
     // Preservado integralmente — e o ponto da migracao.
     project: { ...config.project },
     data: {
@@ -162,7 +320,7 @@ export function migrateV2ToV3(spec: V2Spec): VisualSpec {
   // migrado seria REPROVADO, e `loadProject` o descartaria em silencio. Foi
   // exatamente assim que a primeira versao desta funcao quebrou.
   return {
-    schemaVersion: SPEC_VERSION,
+    schemaVersion: V3_VERSION,
     project: spec.project,
     data: legacyTable(columns),
     root: spec.root,

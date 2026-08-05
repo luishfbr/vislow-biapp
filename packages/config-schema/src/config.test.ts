@@ -3,7 +3,7 @@ import { createDefaultConfig, DEFAULT_BAR, withChartType } from './defaults.js';
 import { bumpPackageVersion, createProjectId, slugify } from './identity.js';
 import { checkCompatibility } from './migrations.js';
 import { PROJECT_ID_PATTERN, SCHEMA_VERSION } from './schema.js';
-import { TOKEN_CATALOG } from './tokens.js';
+import { LEGACY_RADIUS, LEGACY_SPACING } from './legacyTokens.js';
 import { assertValidConfig, isValidConfig, validateConfig } from './validate.js';
 import type { VisualConfig } from './types.js';
 
@@ -106,9 +106,13 @@ describe('RN-03/RN-05 fronteira de validacao', () => {
     expect(isValidConfig(cfg)).toBe(false);
   });
 
-  it('aceita todos os valores do catalogo de tokens', () => {
-    for (const padding of TOKEN_CATALOG.spacing) {
-      for (const radius of TOKEN_CATALOG.radius) {
+  it('aceita todos os valores dos enums CONGELADOS do formato v1', () => {
+    // `LEGACY_*`, e nao `TOKEN_CATALOG`: o catalogo vivo deixou de governar
+    // medida na spec 4.0.0. O formato v1 nao mudou — ele esta gravado na
+    // maquina de quem usou o editor antigo, e um enum a menos aqui reprovaria
+    // um arquivo que era valido, apagando o projeto dele.
+    for (const padding of LEGACY_SPACING) {
+      for (const radius of LEGACY_RADIUS) {
         const cfg = base();
         cfg.layout.padding = padding;
         cfg.layout.radius = radius;

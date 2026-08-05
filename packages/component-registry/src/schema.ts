@@ -26,6 +26,8 @@ import {
   MAX_COLUMNS,
   MAX_ROWS,
   NODE_ID_PATTERN,
+  PROJECT_NAME_MAX_LENGTH,
+  PROJECT_NAME_MIN_LENGTH,
   RECT_MIN_SIZE,
   ROLE_NAME_PATTERN,
   SPEC_VERSION,
@@ -48,6 +50,11 @@ function fieldSchema(field: FieldSpec): Record<string, unknown> {
       return { type: 'string', maxLength: field.maxLength };
     case 'number':
       return { type: 'number', minimum: field.min, maximum: field.max };
+    // `integer`, e nao `number`: meio pixel de espacamento nao e uma escolha
+    // que alguem faz — e o resto de uma conta, ou um engano de digitacao. E o
+    // fonte gerado fica com `padding={13}` em vez de `padding={13.000000001}`.
+    case 'length':
+      return { type: 'integer', minimum: field.min, maximum: field.max };
     case 'select':
       return { enum: [...field.options] };
     case 'role':
@@ -135,7 +142,11 @@ export const specSchema = {
       required: ['id', 'name', 'packageVersion'],
       properties: {
         id: { type: 'string', pattern: PROJECT_ID_PATTERN },
-        name: { type: 'string', minLength: 3, maxLength: 50 },
+        name: {
+          type: 'string',
+          minLength: PROJECT_NAME_MIN_LENGTH,
+          maxLength: PROJECT_NAME_MAX_LENGTH,
+        },
         packageVersion: { type: 'string', pattern: PACKAGE_VERSION_PATTERN },
         artboard: artboardSchema,
       },

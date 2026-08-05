@@ -1,14 +1,6 @@
-import type { Border, Radius, Shadow, Spacing } from '@vislow/config-schema';
+import type { Shadow } from '@vislow/config-schema';
 import type { ReactNode } from 'react';
-import {
-  BORDER_CLASS,
-  DIRECTION_CLASS,
-  GAP_CLASS,
-  RADIUS_CLASS,
-  SHADOW_CLASS,
-  SPACING_CLASS,
-  cx,
-} from '../tokens.js';
+import { DIRECTION_CLASS, SHADOW_CLASS, cx, px } from '../tokens.js';
 import { hcLine, hcSurface } from '../highContrast.js';
 
 /**
@@ -25,7 +17,7 @@ export function Container({
   gap,
   padding,
   radius,
-  border,
+  borderWidth,
   shadow,
   background,
   borderColor,
@@ -41,16 +33,18 @@ export function Container({
    */
   placement: 'stack' | 'canvas';
   direction: 'row' | 'column';
-  gap: Spacing;
-  padding: Spacing;
-  radius: Radius;
-  border: Border;
+  /** Todas as medidas em PIXEL. Vao por `style`, nunca por classe. */
+  gap: number;
+  padding: number;
+  radius: number;
+  borderWidth: number;
   shadow: Shadow;
   background: string;
   borderColor: string;
   children?: ReactNode;
 }) {
   const free = placement === 'canvas';
+  const width = px(borderWidth);
 
   return (
     <div
@@ -63,15 +57,26 @@ export function Container({
         'pbi:min-w-0',
         free ? 'pbi:relative' : 'pbi:flex',
         !free && DIRECTION_CLASS[direction],
-        !free && GAP_CLASS[gap],
-        SPACING_CLASS[padding],
-        RADIUS_CLASS[radius],
-        BORDER_CLASS[border],
         SHADOW_CLASS[shadow],
       )}
-      // RF-21: em alto contraste a paleta do host sobrepoe a cor escolhida. A
-      // variavel e definida no elemento raiz do visual — ver `highContrast.ts`.
-      style={{ backgroundColor: hcSurface(background), borderColor: hcLine(borderColor) }}
+      style={{
+        // RF-21: em alto contraste a paleta do host sobrepoe a cor escolhida. A
+        // variavel e definida no elemento raiz do visual — ver `highContrast.ts`.
+        backgroundColor: hcSurface(background),
+        borderColor: hcLine(borderColor),
+        padding: px(padding),
+        borderRadius: px(radius),
+        borderWidth: width,
+        // EXPLICITO, e nao herdado: o preflight do Tailwind nao e carregado no
+        // visual compilado (`styles.css` importa so `theme` e `utilities`), e
+        // sem preflight o `border-style` default do CSS e `none` — a borda teria
+        // espessura e nao desenharia nada. Enquanto `borderWidth` era classe,
+        // `pbi:border` cuidava disso sozinha.
+        borderStyle: width > 0 ? 'solid' : 'none',
+        // O `gap` do flex reservaria espaco entre filhos que sairam da cadeia:
+        // num canvas eles sao absolutos, e o container nem e flex.
+        ...(free ? {} : { gap: px(gap) }),
+      }}
     >
       {children}
     </div>

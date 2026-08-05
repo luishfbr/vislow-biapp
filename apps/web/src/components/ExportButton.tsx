@@ -1,6 +1,9 @@
 'use client';
 
+import { Download } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { requestBuild, type BuildPhase } from '@/lib/buildApi';
 import { triggerDownload } from '@/lib/persistence';
 import { selectCanExport, useEditorStore } from '@/store/useEditorStore';
@@ -47,7 +50,18 @@ export function ExportButton() {
     };
   }, [busy]);
 
+  /**
+   * O botao e `aria-disabled`, nao `disabled`, e essa guarda e o preco disso.
+   *
+   * A troca existe porque o motivo de nao dar para exportar so serve enquanto
+   * nao da: elemento `disabled` nao recebe evento de ponteiro em navegador
+   * nenhum, entao o tooltip nunca abriria justamente no estado em que a frase
+   * importa. `aria-disabled` anuncia a mesma coisa ao leitor de tela e mantem o
+   * foco e o hover — mas o clique CHEGA, e quem recusa e este `return`.
+   */
   const handleExport = async () => {
+    if (disabled) return;
+
     const result = await requestBuild(spec, setPhase);
 
     if (result.kind === 'error') {
@@ -68,33 +82,39 @@ export function ExportButton() {
     <>
       <div className="flex items-center gap-2">
         {lastFileName !== '' && (
-          <button
-            type="button"
+          <Button
+            variant="link"
+            size="sm"
             onClick={() => {
               setInstructionsOpen(true);
             }}
-            className="text-[11px] text-sky-700 underline decoration-dotted hover:text-sky-800 dark:text-sky-400"
           >
             Como importar
-          </button>
+          </Button>
         )}
 
-        <button
-          type="button"
-          onClick={() => {
-            void handleExport();
-          }}
-          disabled={disabled}
-          aria-busy={busy}
-          title={
-            canExport
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                onClick={() => {
+                  void handleExport();
+                }}
+                aria-disabled={disabled}
+                aria-busy={busy}
+                className="aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              >
+                <Download aria-hidden />
+                Baixar .pbiviz
+              </Button>
+            }
+          />
+          <TooltipContent>
+            {canExport
               ? 'Compila o visual no servidor e baixa o pacote'
-              : 'Resolva os campos pendentes para exportar'
-          }
-          className="rounded-md bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:cursor-not-allowed disabled:bg-slate-300 dark:disabled:bg-slate-700"
-        >
-          Baixar .pbiviz
-        </button>
+              : 'Resolva os campos pendentes para exportar'}
+          </TooltipContent>
+        </Tooltip>
       </div>
 
       <BuildProgressDialog

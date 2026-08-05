@@ -37,6 +37,8 @@ adapta.**
 | Família tipográfica característica | Só no editor. O `visual-kit` **não tem token de família** — a face vem do host. Precisar de uma é feature de schema primeiro, nunca webfont externa: o visual roda offline e contra orçamento de 1 MB |
 | Micro-interação com estado | No `visual-kit`, sem hooks — classe, ou cálculo no render |
 | Wrapper clicável para seleção | Em container que empilha, não: quebra a medida do `ResponsiveContainer` (ADR-14). Em canvas, a camada é filha `absolute` e está fora do fluxo (ADR-18) |
+| Componente pronto copiado da internet | Só no estilo `base-nova`. Os primitivos daqui são **Base UI, não Radix** — trecho Radix não compila, e o erro não aponta para a causa. Ver [1.3](#13-o-sistema-de-design-do-editor-componentsui) |
+| Paleta escrita direto no componente | Token em `globals.css`. E o editor tem **três** estados de problema, não dois: `--warning` âmbar (campo pendente, o estado normal de quem está compondo) não é `--destructive` |
 
 ### 1.2 O que a auditoria não dispensa
 
@@ -47,21 +49,84 @@ O `web-design-guidelines` cobre UI genérica da web. Ele **não sabe** o que o P
 - **O estado vazio e o de erro.** O visual nunca renderiza em branco (RN-04). Um design que só previu o caminho
   feliz está incompleto, por mais bonito que esteja.
 
+### 1.3 O sistema de design do editor (`components/ui/**`)
+
+O editor usa shadcn no estilo **`base-nova`**, que é construído sobre **`@base-ui/react`**. Isto vale só para
+`apps/web`: o `visual-kit` continua sem dependência de UI e sem hooks (ver [3.1](#31-o-kit-não-usa-hooks)).
+
+**Não existe Radix neste repositório** — `grep '@radix-ui' pnpm-lock.yaml` devolve zero. Quase todo exemplo de
+shadcn que se acha na internet é da variante Radix, e as APIs divergem em silêncio:
+
+| Radix (não use) | Base UI (é o que temos) |
+|---|---|
+| `asChild` | `render={<Componente />}` |
+| `<X.Content>` | `<X.Positioner>` + `<X.Popup>` |
+| `data-state="open"` | `data-open` |
+
+- **Os arquivos de `apps/web/src/components/ui/**` são código de terceiro.** `shadcn add` e `shadcn diff` os
+  reescrevem. Por isso o `eslint.config.mjs` tem um recorte só para eles — a folga fica na fronteira, não dentro
+  dos arquivos. **O que não sai do recorte:** `no-restricted-properties` e `no-restricted-syntax`. A proibição de
+  `innerHTML` (RN-11) não tem exceção por origem do código, e o lint oficial do `pbiviz` também não perdoa.
+- **Editar um arquivo de `ui/` à mão perde a edição no próximo `shadcn diff`.** Divergência intencional mora num
+  wrapper fora de `ui/`.
+- **`components.json` diz `baseColor: "neutral"` e isso está desatualizado** — a rampa real foi reafinada à mão.
+  Um `shadcn add` que reemita variável de CSS vai emitir a paleta errada: confira o diff de `globals.css` toda
+  vez que rodar o CLI.
+- **Ícone que depende do tema troca por CSS, nunca por JS.** O `ThemeToggle` usa `dark:hidden` e
+  `hidden dark:block`. Ler `resolvedTheme` devolve `undefined` no servidor, e o preço é mismatch de hidratação ou
+  um piscar atrás de um `mounted`.
+- **`attribute="class"` no `ThemeProvider` é contrato com o `@custom-variant dark` do `globals.css`.** Mudar um
+  sem o outro desliga o modo escuro inteiro, sem erro.
+- **O par de `themeColor` em `layout.tsx` é hex literal, gêmeo manual de `--background`** — a `<meta>` é lida
+  antes de existir CSS. Mudar a rampa exige mudar o par junto, e nenhum teste guarda isso.
+- **Teste que monta popup do Base UI ou consumidor do next-themes precisa do stub de `window.matchMedia`.** O
+  jsdom não implementa; sem o stub o componente simplesmente não monta, e a mensagem não diz o motivo. Precedente
+  em `Header.test.tsx`.
+- **Versão fixa, sem `^` nem `~`**, como todo o resto do repo (engineering.md §2).
+
 ## 2. O editor (`apps/web`)
 
 ```
 ┌───────────────────────────────────────────────────────────────────────────────┐
-│  [Vislow]   Nome do visual: [__________]   v1.0.0.0   [ Baixar .pbiviz ]      │
+│ Vislow │ ↖ │ ▭ ▤ ▦ T ⬤ ⊞ ⌾ │  Nome: [________]  │ ☀ ⋯ │ [ Baixar .pbiviz ]  │
 ├──────────────────┬────────────────────────────────────┬───────────────────────┤
-│  COMPONENTES     │        PREVIEW (visual-kit)        │  PROPRIEDADES         │
-│  COMPOSIÇÃO ↑↓✕  │  render ao vivo com sampleFrame    │  ┌ na raiz ────────┐  │
-│  CAMPOS DO VISUAL│   prancheta em px, escalada        │  │ PRANCHETA       │  │
-│  PROJETO         │                                    │  │ L 1280 ┃ A 720  │  │
-│                  │   escala 62% · dados de exemplo    │  │ [16:9][4:3][1:1]│  │
-│                  │                                    │  └─────────────────┘  │
-│                  │                                    │  (do descritor)       │
-└──────────────────┴────────────────────────────────────┴───────────────────────┘
+│  COMPOSIÇÃO ↑↓✕  │        PREVIEW (visual-kit)        │  PROPRIEDADES         │
+│  (camadas)       │  render ao vivo com sampleFrame    │  ┌ sem seleção ────┐  │
+│╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌│   prancheta em px, escalada        │  │ PRANCHETA       │  │
+│  DADOS DE EXEMPLO│                                    │  │ L 1280 ┃ A 720  │  │
+│  (campos)        │              ╭───────────────╮     │  │ [16:9][4:3][1:1]│  │
+│                  │              │ − 62 % + ⛶   │     │  └─────────────────┘  │
+├──────────────────┴──────────────╰───────────────╯─────┴───────────────────────┤
+│ 7 componentes · 4 campos · 2 pendências      v1.0.0.0 · exportado 14:32        │
+└───────────────────────────────────────────────────────────────────────────────┘
+   ↕ arrastável         ↕ divisor arrastável              ↕ arrastável
 ```
+
+**A regra do shell é uma só: esquerda = o que EXISTE, direita = o que está SELECIONADO** (ou o projeto, quando
+`selectedId` é `null`). A paleta deixou de ser um painel e virou barra de ferramentas no topo — no modelo de
+editor de desenho, uma ferramenta fica armada e o próximo arrasto na prancheta desenha a caixa.
+
+**A barra do rodapé é do EDITOR e nunca do pacote.** Ela responde à pergunta do achado 40 — "o arquivo que
+importei no Desktop veio desta tela?" — e não reintroduz o `BuildStamp`, que foi removido do visual compilado a
+pedido em 2026-08-03. A hora do último export é de sessão, não persistida: um horário lido do `localStorage` no
+dia seguinte responderia com confiança a pergunta errada.
+
+**Mostrar/ocultar coluna mora na barra do topo** (`PanelToggles`), junto do seletor de tema — os dois mudam a
+vista, não o projeto. A primeira versão flutuava em `absolute` sobre a área de trabalho e, com a coluna aberta,
+cobria o conteúdo dela; ancorar na borda do canvas só mudaria o problema de lugar, porque na faixa estreita a
+coluna aberta vira gaveta sobre o canvas. **Controle de vista que precisa de `absolute` para existir está no
+lugar errado**, e `PanelToggles.test.tsx` reprova `absolute` e `z-` no componente.
+
+**Três faixas de largura, declaradas em `app/page.tsx`:** ≥1280 acrescenta o rótulo do campo de nome; ≥1024 tem
+as duas colunas ancoradas, arrastáveis e recolhíveis; ≥768 põe a prancheta em largura cheia e transforma coluna
+aberta em **gaveta sobre** ela, recolhida por padrão; abaixo de 768 o editor não se oferece
+(`SmallScreenNotice`). O painel de propriedades é instrumento de precisão — grade de duas colunas, arrasto de
+4px por passo no rótulo, alças de 8px — e nada disso sobrevive a um alvo de toque de 44px sem virar outro
+produto.
+
+**A escolha coluna-ou-gaveta é a única responsividade em JavaScript** (`lib/useMediaQuery.ts`). O resto é
+classe, e é assim que tem de ser. A exceção existe porque o grupo de painéis calcula largura em JS: se a coluna
+é coluna ou gaveta é decisão de **estrutura**, e o CSS não tem como devolver essa resposta ao grupo.
 
 **Nada nesta tela é escrito à mão por tipo ou por propriedade.** Paleta, painel e preview saem todos de
 `NODE_DESCRIPTORS` (ADR-09) — a mesma fonte do schema e do codegen. Um tipo novo aparece nos três lugares no
@@ -80,13 +145,14 @@ commit em que passa a existir. **Uma lista paralela é a quinta cópia do catál
 O preview desenha uma **prancheta de tamanho declarado** (`project.artboard`, 100×100 a 1920×1080, padrão
 1280×720), reduzida por escala uniforme para caber no painel.
 
-**O controle mora nas propriedades da RAIZ** (`ArtboardField`), no mesmo lugar e pelo mesmo motivo que a
-geometria: não vem do descritor e não é propriedade do componente. Os dois nunca aparecem juntos — a raiz não
-tem pai, logo não tem caixa; quem tem caixa não é a raiz. **Só na raiz**: um container aninhado tem `rect`, e
-oferecer a prancheta em cada container mostraria um único valor em vários lugares.
+**O controle mora no painel do PROJETO** — o estado do painel da direita quando não há nada selecionado. Ele
+nunca foi propriedade de um nó: não vem do descritor, não vai para o pacote, e é a moldura em que tudo é
+desenhado. (Até 2026-08-04 ele ficava nas propriedades da raiz, porque não existia "nada selecionado" — a
+seleção era `string` e caía na raiz.)
 
-**A escala fica sob o preview, não no painel.** Ela descreve o painel e não o projeto — muda ao redimensionar a
-janela, sem ninguém ter editado nada. Quem *muda* o tamanho é a prancheta; a escala só relata o que coube.
+**A escala fica sob o preview, não no painel.** Ela descreve a câmera e não o projeto — muda ao redimensionar a
+janela e ao girar a roda, sem ninguém ter editado nada. Quem *muda* o tamanho é a prancheta; a escala só relata
+o que se está vendo.
 
 - **Ela não vai para o pacote.** Um visual do Power BI não escolhe o próprio tamanho — quem arrasta a moldura é
   o autor do relatório, e o `visual.tsx` gerado continua `w-full h-full`. `codegen.test.ts` reprova o build se
@@ -102,12 +168,42 @@ janela, sem ninguém ter editado nada. Quem *muda* o tamanho é a prancheta; a e
 - **O arrasto sobrevive à escala sem saber dela.** O `CanvasOverlay` divide o deslocamento do ponteiro pela caixa
   lida no `pointerdown`, e `getBoundingClientRect` já devolve a caixa **transformada**: as duas medidas vivem no
   mesmo espaço e a razão não muda.
-- **Nunca amplia.** Prancheta menor que o painel fica pequena — ampliar 100×100 até preencher faria um texto de
-  12px parecer título, que é a mentira que declarar o tamanho existe para evitar.
+- **O ENQUADRAMENTO nunca amplia** (`fitToPane` → `fitScale`, teto de 1). Prancheta menor que o painel fica
+  pequena — ampliar 100×100 até preencher faria um texto de 12px parecer título, que é a mentira que declarar o
+  tamanho existe para evitar. O **zoom** amplia até 400%, porque ali a ampliação é escolha visível e não efeito
+  colateral do enquadramento.
 - **O campo é opcional no schema.** Projeto salvo antes dele continua válido e recebe o default por
   `artboardOf(spec)` — nunca leia `project.artboard` direto, pelo mesmo motivo do `hostOf(frame)`.
 - **`clampArtboard` prende, `validateSpec` reprova** — a mesma divisão do `clampRect`: quem chama o primeiro é
   um campo de formulário, e digitar 5000 quer dizer "o maior que der".
+
+### 2.1.1 A câmera
+
+`lib/viewport.ts` — `{ scale, tx, ty }`, escala de 10% a 400%, deslocamento em pixel de tela. Antes de
+2026-08-04 não havia câmera: a escala era só "cabe no painel" e travava em 100%, então numa prancheta de 1920
+nada podia ser inspecionado de perto e julgar um detalhe exigia exportar.
+
+- **`zoomAt` mantém fixo o ponto sob o cursor.** É o que separa um zoom utilizável de um inútil — ampliando pelo
+  centro, quem quer olhar um canto amplia e depois procura, a cada entalhe da roda.
+- **No limite, a prancheta não desliza.** A roda continua girando depois de bater no teto; sem a guarda, cada
+  entalhe extra recalcularia o deslocamento com escala igual e a prancheta sairia andando sob o cursor parado.
+- **Ela é estado do PAINEL.** Não entra na spec nem no `localStorage`, pelo mesmo motivo que a escala nunca
+  entrou — nem depois de o `useUiStore` passar a persistir largura e recolhimento de painel. Abrir o editor no
+  enquadramento de ontem, num projeto cuja prancheta pode ter mudado de tamanho, responde à pergunta errada.
+- **O enquadramento acontece na primeira medida — e de novo quando o SHELL muda de forma.** Reenquadrar a cada
+  `resize` desfaria o zoom do usuário toda vez que ele abrisse o console ou encaixasse a aba, e essa parte não
+  mudou. O que mudou, com os painéis recolhíveis (2026-08-04), é que recolher uma coluna devolve ~20% da largura
+  de uma vez: manter o enquadramento anterior deixaria a prancheta encostada num canto com um vazio do outro
+  lado — o usuário pediu espaço e recebeu espaço vazio.
+  - **O gatilho é o `layoutEpoch` do `useUiStore`, um CONTADOR — nunca a medida do painel.** O painel muda de
+    tamanho durante a animação inteira; reagir à medida reenquadraria a cada quadro. O contador sobe uma vez por
+    gesto, e **só** em recolher/expandir: arrastar um divisor não o move, porque arrastar muda a largura e não a
+    forma. `useUiStore.test.ts` guarda as duas metades dessa regra, incluindo a idempotência do `collapseBoth`
+    — sem ela, cada travessia de breakpoint na faixa estreita desfaria o zoom.
+- **`pane` fica fora das dependências do efeito de reenquadrar, de propósito.** Ele muda junto, um quadro
+  depois, e incluí-lo dispararia o efeito uma segunda vez com a medida nova.
+- **Ctrl/⌘+roda amplia; roda sozinha desloca.** A pinça do trackpad chega ao navegador como `wheel` com
+  `ctrlKey` e não tem evento próprio — tratar tudo como zoom faria a rolagem de dois dedos ampliar sem parar.
 
 ### 2.2 Estado
 
@@ -244,8 +340,44 @@ do componente.
   dizer "encosta na borda", nunca "cancela o gesto".
 - **A matemática mora em `lib/canvasGeometry.ts`**, sem React. Encaixe, arrasto, redimensionamento e teclado se
   testam direto; no componente sobra o encanamento do gesto, que jsdom mal exercita.
-- **O passo do teclado é o mesmo da grade do arrasto.** Duas constantes fariam o teclado desalinhar o que o
-  mouse alinhou, com meia célula de erro invisível.
+- **NÃO EXISTE GRADE OBRIGATÓRIA** (desde 2026-08-04). Até então todo gesto era arredondado numa grade de 24×16
+  células do pai: numa prancheta de 1280×720 o componente só pousava de 53px em 53px na horizontal e de 45 em 45
+  na vertical, não havia como encostar uma caixa na outra, e o Alt — que soltava — era o inverso do que um
+  editor de desenho faz. O valor livre é o **padrão**; o encaixe é uma atração curta por aresta ou centro de
+  irmão, e só acontece quando a caixa chega perto.
+- **A tolerância do encaixe é em PIXEL DE TELA** (`SNAP_PX = 6`), convertida para % pela caixa do container que
+  o gesto já leu. Quem julga "está perto" é o olho, e o olho mede na tela: uma tolerância fixa em % do pai gruda
+  com força diferente conforme o tamanho do container.
+- **O passo do teclado é em pixel da prancheta** — 1px, 10px com Shift. "Uma seta anda um pixel" é uma promessa
+  conferível; "uma seta anda 4,17% do pai", que era o passo da grade, não é promessa nenhuma.
+- **Modificadores:** `Shift` tranca o eixo ao mover e preserva a proporção ao redimensionar; `Ctrl/⌘` solta do
+  encaixe; `Alt` **duplica arrastando**. Alt mudou de significado quando ganhou a duplicação — é o que ele faz
+  em todo editor de desenho, então quem trocou de lugar foi o escape do encaixe.
+- **O painel fala PIXEL, a spec guarda `%`** (`lib/units.ts`). Ninguém compõe pensando em "37,5% do pai", mas a
+  spec não pode virar pixel: um visual do Power BI não escolhe o próprio tamanho. O tamanho do pai vem do
+  `ResizeObserver` da própria camada de manipulação, publicado numa fatia do store **fora da spec** — medida de
+  tela não é do projeto, e passá-la pelo `commit` revalidaria tudo a cada pixel de resize.
+
+### 3.6.1 Um nível de cada vez
+
+A camada de manipulação entra **só no container em que o ponteiro está trabalhando** (`enteredId`; `null` é a
+raiz). Antes, ela entrava em todo container que posiciona e as de dentro cobriam as de fora: clicar num
+container aninhado sempre pegava um filho dele, e o próprio container só era selecionável pela árvore.
+
+Um clique pega o container, **duplo clique entra**, `Esc` sobe — e sair seleciona o container de onde se saiu,
+que é o nó que o usuário acabou de terminar de editar. Só dá para entrar em quem **posiciona**: num container
+que empilha não há camada para mostrar depois de entrar, e o usuário ficaria num nível sem nada clicável.
+
+### 3.6.2 Desfazer é um gesto, não um evento de ponteiro
+
+`beginGesture`/`endGesture` delimitam um arrasto ou um *scrubbing*. Entre os dois a escrita é **transitória**:
+aplica na tela, mas não empilha histórico, não revalida a spec inteira e não agenda gravação. Sem isso um único
+arrasto empilharia duzentos passos — um por `pointermove` — e `Ctrl+Z` andaria um pixel de cada vez. É também o
+que paga a dívida de performance que cada `pointermove` carregava desde que o canvas existe.
+
+**Gesto que não mudou nada não empilha.** Um clique que só seleciona abre e fecha um gesto; gastar um passo ali
+faria `Ctrl+Z` não fazer nada visível, e o usuário apertaria de novo achando que o atalho falhou — e aí perderia
+a edição de verdade.
 
 ### 3.7 Classes Tailwind e cores
 

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { DialogFooter, DialogFrame, DialogHeader } from '@/components/DialogFrame';
+import { Button } from '@/components/ui/button';
 
 /**
  * Instrucoes de importacao no Power BI (RF-13).
@@ -43,12 +44,12 @@ export function ImportSteps() {
     <ol className="flex flex-col gap-3 px-5 py-4">
       {STEPS.map((step, index) => (
         <li key={step.title} className="flex gap-3">
-          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-700 dark:bg-sky-950 dark:text-sky-300">
+          <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-primary/10 text-label font-semibold text-primary">
             {index + 1}
           </span>
           <div>
             <p className="text-xs font-medium">{step.title}</p>
-            <p className="mt-0.5 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+            <p className="mt-0.5 text-label leading-relaxed text-muted-foreground">
               {step.detail}
             </p>
           </div>
@@ -65,40 +66,19 @@ export interface ImportInstructionsProps {
 }
 
 export function ImportInstructions({ open, filename, onClose }: ImportInstructionsProps) {
-  const dialog = useRef<HTMLDialogElement>(null);
-
-  useEffect(() => {
-    const node = dialog.current;
-    if (!node) return;
-    if (open && !node.open) node.showModal();
-    if (!open && node.open) node.close();
-  }, [open]);
-
   return (
-    <dialog
-      ref={dialog}
-      onClose={onClose}
-      aria-labelledby="import-instructions-title"
-      className="m-auto w-[32rem] max-w-[calc(100vw-2rem)] rounded-lg bg-white p-0 text-slate-800 shadow-xl backdrop:bg-slate-900/40 dark:bg-slate-900 dark:text-slate-100"
-    >
-      <div className="border-b border-slate-200 px-5 py-4 dark:border-slate-700">
-        <h2 id="import-instructions-title" className="text-sm font-semibold">
-          Pacote gerado
-        </h2>
-        <p className="mt-1 break-all font-mono text-[11px] text-slate-500">{filename}</p>
-      </div>
+    <DialogFrame open={open} onClose={onClose} labelledBy="import-instructions-title">
+      <DialogHeader id="import-instructions-title" title="Pacote gerado">
+        <p className="mt-1 break-all font-mono text-label text-muted-foreground">{filename}</p>
+      </DialogHeader>
 
       <ImportSteps />
 
-      <div className="flex justify-end border-t border-slate-200 px-5 py-3 dark:border-slate-700">
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-md bg-sky-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-sky-700"
-        >
+      <DialogFooter>
+        <Button size="sm" onClick={onClose}>
           Entendi
-        </button>
-      </div>
-    </dialog>
+        </Button>
+      </DialogFooter>
+    </DialogFrame>
   );
 }

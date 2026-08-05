@@ -1,6 +1,15 @@
 'use client';
 
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { FileDown, FilePlus2, FileUp, MoreHorizontal } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
+import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { downloadJson } from '@/lib/persistence';
 import { useEditorStore } from '@/store/useEditorStore';
 
@@ -8,87 +17,35 @@ import { useEditorStore } from '@/store/useEditorStore';
  * Acoes de PROJETO — novo, exportar JSON, importar JSON.
  *
  * Saiu da coluna esquerda porque nao pertencia a ela: aquela coluna e sobre a
- * composicao (o que existe e a que dados se liga), e tres botoes de arquivo
- * ocupavam nela o espaco vertical que a arvore e os campos disputam a cada nova
- * linha. Sao acoes raras — uma por sessao, no maximo — e acao rara paga aluguel
- * caro num painel permanente.
+ * composicao, e tres botoes de arquivo ocupavam nela o espaco vertical que a
+ * arvore e os campos disputam a cada nova linha. Sao acoes raras — uma por
+ * sessao, no maximo — e acao rara paga aluguel caro num painel permanente.
  *
  * Nao confundir com o export do visual: o botao ao lado baixa o `.pbiviz`, que e
  * o produto. Aqui e o PROJETO, o JSON que se reabre no editor.
+ *
+ * ATE 2026-08-04 ESTE ARQUIVO REIMPLEMENTAVA UM MENU. Eram ~90 linhas de foco em
+ * roda por `querySelectorAll`, escuta de `pointerdown` no documento, tratamento
+ * de `Escape` e devolucao de foco ao gatilho — tudo ja resolvido pelo
+ * `ui/dropdown-menu.tsx`, que estava instalado e que o `ThemeToggle` ja usava. De
+ * quebra vieram o portal e a deteccao de colisao: o menu antigo era um
+ * `absolute right-0 z-10` dentro do flex da barra, sujeito a recorte.
+ *
+ * As DUAS acoes que apagam o historico agora confirmam. Ver `ConfirmDialog`.
  */
 
-const ITEM =
-  'w-full px-3 py-2 text-left text-xs text-slate-700 hover:bg-slate-100 ' +
-  'focus-visible:bg-slate-100 focus-visible:outline-2 focus-visible:-outline-offset-2 ' +
-  'focus-visible:outline-sky-600 dark:text-slate-200 ' +
-  'dark:hover:bg-slate-800 dark:focus-visible:bg-slate-800';
+type Pendente = 'novo' | 'importar';
 
 export function ProjectMenu() {
   const spec = useEditorStore((s) => s.spec);
   const newProject = useEditorStore((s) => s.newProject);
   const importSpec = useEditorStore((s) => s.importSpec);
 
-  const [open, setOpen] = useState(false);
+  const [pendente, setPendente] = useState<Pendente | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
-  const container = useRef<HTMLDivElement>(null);
-  const trigger = useRef<HTMLButtonElement>(null);
-  const menu = useRef<HTMLDivElement>(null);
 
-  const items = (): HTMLButtonElement[] =>
-    Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
-
-  /**
-   * Setas percorrem o menu, como `role="menu"` promete.
-   *
-   * Lido do DOM em vez de uma lista de refs: sao os mesmos botoes que o JSX
-   * acima escreve, e uma segunda lista para mante-los em ordem seria a copia que
-   * esquece o item seguinte.
-   */
-  const moveFocus = (event: KeyboardEvent<HTMLDivElement>) => {
-    const all = items();
-    const current = all.indexOf(document.activeElement as HTMLButtonElement);
-    const go = (index: number) => {
-      event.preventDefault();
-      all[(index + all.length) % all.length]?.focus();
-    };
-
-    if (event.key === 'ArrowDown') go(current + 1);
-    else if (event.key === 'ArrowUp') go(current - 1);
-    else if (event.key === 'Home') go(0);
-    else if (event.key === 'End') go(all.length - 1);
-  };
-
-  const close = (returnFocus: boolean) => {
-    setOpen(false);
-    // Foco de volta no gatilho quando o menu fecha por teclado: sem isto o foco
-    // cai no `<body>` e a proxima tecla nao tem onde ir.
-    if (returnFocus) trigger.current?.focus();
-  };
-
-  useEffect(() => {
-    if (!open) return;
-
-    const onPointerDown = (event: PointerEvent) => {
-      if (!container.current?.contains(event.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (event: globalThis.KeyboardEvent) => {
-      if (event.key === 'Escape') close(true);
-    };
-
-    // O primeiro item recebe o foco na abertura: quem abriu o menu pelo teclado
-    // esta a uma seta de distancia do resto, e nao a um Tab pelo header inteiro.
-    items()[0]?.focus();
-
-    document.addEventListener('pointerdown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('pointerdown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
-
-  const handleFile = async (file: File) => {
+  const handleFile = async (file: File): Promise<void> => {
     setImportError(null);
     try {
       const result = importSpec(JSON.parse(await file.text()));
@@ -102,97 +59,109 @@ export function ProjectMenu() {
   };
 
   return (
-    <div ref={container} className="relative">
-      <button
-        ref={trigger}
-        type="button"
-        onClick={() => {
-          setOpen((value) => !value);
-        }}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-label="Acoes do projeto"
-        title="Acoes do projeto"
-        className="rounded-md border border-slate-300 px-2.5 py-1.5 text-sm leading-none text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
-      >
-        <span aria-hidden>⋯</span>
-      </button>
-
-      {open && (
-        <div
-          ref={menu}
-          role="menu"
-          aria-label="Acoes do projeto"
-          onKeyDown={moveFocus}
-          className="absolute right-0 z-10 mt-1 w-56 overflow-hidden rounded-md border border-slate-200 bg-white py-1 shadow-lg dark:border-slate-700 dark:bg-slate-900"
-        >
-          <button
-            type="button"
-            role="menuitem"
-            className={ITEM}
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Ações do projeto"
+              title="Ações do projeto"
+            >
+              <MoreHorizontal />
+            </Button>
+          }
+        />
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem
             onClick={() => {
-              newProject('Meu visual');
-              close(true);
+              setPendente('novo');
             }}
           >
+            <FilePlus2 />
             Novo projeto
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={ITEM}
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => {
               downloadJson(spec);
-              close(true);
             }}
           >
+            <FileDown />
             Exportar projeto (.json)
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className={ITEM}
+          </DropdownMenuItem>
+          <DropdownMenuItem
             onClick={() => {
-              fileInput.current?.click();
-              close(false);
+              setPendente('importar');
             }}
           >
+            <FileUp />
             Importar projeto (.json)
-          </button>
-        </div>
-      )}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+
+      <ConfirmDialog
+        open={pendente === 'novo'}
+        title="Começar um projeto novo?"
+        description="A composição atual, os dados de exemplo e o histórico de desfazer são descartados. Exporte o projeto (.json) antes se quiser voltar a ele."
+        confirmLabel="Descartar e começar"
+        onConfirm={() => {
+          setPendente(null);
+          newProject('Meu visual');
+        }}
+        onCancel={() => {
+          setPendente(null);
+        }}
+      />
+
+      <ConfirmDialog
+        open={pendente === 'importar'}
+        title="Importar um projeto?"
+        description="O arquivo escolhido substitui a composição atual e o histórico de desfazer. Exporte o projeto (.json) antes se quiser voltar a ele."
+        confirmLabel="Escolher arquivo"
+        onConfirm={() => {
+          setPendente(null);
+          // O seletor de arquivo abre DEPOIS da confirmacao, e nao antes: um
+          // dialogo de arquivo do sistema por cima de um dialogo modal e um lugar
+          // de onde e facil sair sem saber o que foi cancelado.
+          fileInput.current?.click();
+        }}
+        onCancel={() => {
+          setPendente(null);
+        }}
+      />
 
       <input
         ref={fileInput}
         type="file"
         accept="application/json,.json"
         className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
+        onChange={(event) => {
+          const file = event.target.files?.[0];
           if (file) void handleFile(file);
-          e.target.value = '';
+          // Zerado para que escolher o MESMO arquivo de novo volte a disparar
+          // `change` — sem isto, corrigir o arquivo e reimportar nao faria nada.
+          event.target.value = '';
         }}
       />
 
       {importError !== null && (
-        // Ancorado no gatilho, e nao dentro do menu: o menu ja fechou quando o
-        // arquivo foi escolhido, e um erro que some junto com ele nao seria lido.
-        <div
-          role="alert"
-          className="absolute right-0 z-10 mt-1 w-64 rounded-md border border-red-200 bg-white px-3 py-2 text-[11px] text-red-600 shadow-lg dark:border-red-900 dark:bg-slate-900 dark:text-red-400"
-        >
-          {importError}
-          <button
-            type="button"
-            onClick={() => {
-              setImportError(null);
-            }}
-            className="mt-1 block text-[10px] text-slate-500 underline"
-          >
-            Fechar
-          </button>
-        </div>
+        <ConfirmDialog
+          open
+          destructive={false}
+          showCancel={false}
+          title="Não deu para importar"
+          description={importError}
+          confirmLabel="Entendi"
+          onConfirm={() => {
+            setImportError(null);
+          }}
+          onCancel={() => {
+            setImportError(null);
+          }}
+        />
       )}
-    </div>
+    </>
   );
 }
