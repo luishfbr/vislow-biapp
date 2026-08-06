@@ -369,12 +369,16 @@ export function PropertiesPanel() {
       )}
 
       {sectionsOf(descriptor.fields.filter((field) => isVisible(field, node))).map((section) => (
-        <section key={section.name} className="divide-y divide-border">
+        <section key={section.name}>
           {/* Sem nome, sem cabecalho: `container` e `text` nao declaram secao, e
               o painel deles continua sendo a lista corrida de sempre. */}
           {section.name !== '' && (
             <PanelSectionHeading className="mb-1.5 mt-3">{section.name}</PanelSectionHeading>
           )}
+          {/* O `divide-y` embrulha SO os campos. Com o cabecalho dentro dele, a
+              linha caia entre o titulo e o primeiro campo, e a fronteira entre
+              secoes ficava sem linha nenhuma — as reguas nos lugares errados. */}
+          <div className="divide-y divide-border">
           {section.fields.map((field) => (
           <Control
             key={field.key}
@@ -404,6 +408,7 @@ export function PropertiesPanel() {
             onGestureEnd={endGesture}
           />
           ))}
+          </div>
         </section>
       ))}
     </Panel>
