@@ -51,7 +51,30 @@ export interface UiState {
    * meio do gesto. Ver docs/frontend.md §2.1.1.
    */
   layoutEpoch: number;
+  /**
+   * Faz o host do preview reportar a PRIMEIRA linha como selecionada (spec 5.3.0).
+   *
+   * Existe porque o esmaecimento e um estado visual GRANDE — numa Lista de
+   * Ranking pode ser quase a tela inteira — e ate aqui ele era invisivel no
+   * editor: `sampleFrame` nao define `frame.host`, entao `hostOf` cai no
+   * `INERT_HOST`, `hasSelection` e sempre falso e o autor so descobria como fica
+   * exportando e importando no Power BI Desktop.
+   *
+   * E um INTERRUPTOR, e nao clique na linha, por duas razoes. Pressionar um no ja
+   * seleciona E arrasta no mesmo gesto no canvas; somar "e tambem alterna o
+   * filtro" faria o autor bagunçar selecoes toda vez que movesse a lista — e,
+   * como a camada de manipulacao so da `pointerEvents: auto` aos filhos do
+   * container ENTRADO, o clique passaria em alguns niveis da arvore e nao em
+   * outros. Comportamento que depende da profundidade e indistinguivel de bug.
+   * Alem disso nao ha relatorio para filtrar no editor: o clique prometeria um
+   * efeito que nao existe.
+   *
+   * NAO E PERSISTIDO, pela mesma regra da camera: abrir o editor amanha com uma
+   * selecao falsa aplicada e sem lembrar por que confunde mais do que ajuda.
+   */
+  simulateSelection: boolean;
 
+  toggleSimulateSelection: () => void;
   setLeftWidth: (value: number) => void;
   setRightWidth: (value: number) => void;
   setLayersHeight: (value: number) => void;
@@ -140,6 +163,14 @@ export const useUiStore = create<UiState>((set, get) => {
   return {
     ...DEFAULTS,
     layoutEpoch: 0,
+    simulateSelection: false,
+
+    // Nao chama `save()`: fora do recorte persistido de proposito. E tambem nao
+    // mexe no `layoutEpoch` — a moldura nao mudou de tamanho, so o que ha dentro
+    // dela, e reenquadrar aqui desfaria o zoom do autor por nada.
+    toggleSimulateSelection: () => {
+      set((s) => ({ simulateSelection: !s.simulateSelection }));
+    },
 
     // O SERVIDOR sempre monta com os padroes, e o `hydrate` traz o guardado
     // depois — ler o `localStorage` no corpo do store divergiria do HTML gerado

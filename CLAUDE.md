@@ -98,26 +98,58 @@ relatório, mostra tooltip nativo, respeita alto contraste, é navegável por te
 
 Concluídos: fundação e primeiro editor (depois substituídos pelo pivô da ADR-08), registro de componentes, API
 de build, editor de composição, paridade de interatividade, faxina do caminho antigo, migração para Turborepo,
-o **canvas de posicionamento livre** (ADR-18), o **kit autoral** (spec 5.0.0) e o **KPI Card** (spec 5.2.0).
-Pacote **95,2 KB**, `content.js` **292,4 KB**.
+o **canvas de posicionamento livre** (ADR-18), o **kit autoral** (spec 5.0.0), o **KPI Card** (spec 5.2.0) e a
+**Lista de Ranking** (spec 5.3.0), que devolveu o filtro cruzado.
+Pacote **96,8 KB**, `content.js` **297,5 KB** — a Lista custou 5,1 KB, sem dependência nova.
 
-**O catálogo tem TRÊS componentes desde 2026-08-06** (spec 5.2.0): `container`, `text` e `kpi`. Entre
+**O catálogo tem QUATRO componentes desde 2026-08-06** (spec 5.3.0): `container`, `text`, `kpi` e `ranking`.
+A **Lista de Ranking** é o primeiro nó a declarar `roleKind: 'grouping'`, e esse único fato **destravou a
+cadeia inteira que estava construída e morta**: `usedRoles` passa a emitir um papel `Grouping`, o
+`capabilities.json` ganha `categorical.categories` e o `dataReductionAlgorithm`, o host passa a entregar
+`categories`, `buildIdentities` deixa de devolver `{}`, e com isso **RF-18 (filtro cruzado) e RF-25
+(truncamento) voltaram a funcionar e a ter teste**. `seriesOf`, `select`, `isSelected`, `truncationOf` e a
+variável `--vislow-hc-selected` ganharam o primeiro chamador desde o Sprint 6. **Nada em `capabilities.ts`,
+`dataFrame.ts` ou `interaction.ts` precisou mudar** — só faltava o sujeito.
+
+Três decisões da Lista que não são estéticas:
+
+- **A barra fica ATRÁS do texto** (`barMode: 'behind'`, padrão). Não gasta largura numa coluna separada, então
+  o rótulo fica com a linha inteira — que é onde lista de ranking falha, no nome comprido.
+- **Em alto contraste o preenchimento da barra usa `hcSurface` e a regra de baixo usa `hcAccent`**, e parece
+  trocado de propósito. O host dá **uma** cor de frente: barra em `accent` com texto em `ink` por cima faria o
+  texto sumir dentro da própria barra. Ligado o modo, o campo colapsa para o fundo e sobra um **sublinhado
+  proporcional** — o dado continua codificado e o texto continua legível.
+- **O realce de ponteiro é um ELEMENTO com cor inline**, e a regra CSS só alterna a opacidade dele. `:hover`
+  não alcança `style` inline, e o `styles.css` não pode conter cor — inverter quem guarda o quê é a saída.
+
+O editor ganhou o interruptor **"Simular seleção"** (`useUiStore`, móvel, não persistido): o esmaecimento é um
+estado visual grande que o autor precisa desenhar, e ele era invisível no editor porque `sampleFrame` não
+define `frame.host`. É interruptor e **não** clique na linha — pressionar um nó já seleciona e arrasta no mesmo
+gesto, e o `pointerEvents` do overlay faria o clique passar em alguns níveis da árvore e não em outros.
+
+`number` deixou de ser a variante dormente de `FieldSpec` (`maxRows`, `dimOpacity`): o catálogo agora exercita
+**as oito** ponta a ponta.
+
+Entre
 2026-08-05 e essa data foram só dois — a poda da 5.0.0 tirou o KPI e os quatro gráficos, e o Recharts saiu
 com eles (daí a queda de 62% no `content.js`, que o KPI não desfez: ele custou 4,3 KB). Remoção de schema
 exige major (RN-12), e **não há migração 4→5**: `migrate.ts` foi apagado e a chave do `localStorage` pulou
 para `vislow:project:v5`, então o projeto antigo continua no navegador e nunca mais é lido. Nada é descartado
-em silêncio porque nada é tentado. A 5.2.0 é aditiva e **não** mexe nessa chave.
+em silêncio porque nada é tentado. A 5.2.0 e a 5.3.0 são aditivas e **não** mexem nessa chave.
 
-**O poço de campos VOLTOU com o KPI.** Ele é o único nó que consome dados, e declara **dois papéis de
-medida**: `valueRole` (obrigatório) e `compareRole` (opcional). Uma árvore só de `container` e `text` continua
-gerando o pacote de antes, com `dataRoles: []`.
+**Dois nós consomem dados.** O KPI declara **dois papéis de medida** — `valueRole` (obrigatório) e
+`compareRole` (opcional). A Lista de Ranking declara **um de agrupamento e um de medida**, os dois
+obrigatórios. Uma árvore só de `container` e `text` continua gerando o pacote de antes, com `dataRoles: []`.
 
-**O que isso descongelou e o que continua congelado**, e vale saber antes de procurar teste que não existe:
-`dataRoles`, `requiredTypes`, a proibição de `min`, o estado vazio (RF-20), o tooltip nativo (RF-19), o menu de
-contexto (RF-24) e o teclado como *alcançável e rotulado* (RF-23 parcial) voltaram. **Filtro cruzado (RF-18) e
-aviso de truncamento (RF-25) continuam sem sujeito** — os dois dependem de `column.category`, e um card de
-número único não declara agrupamento nem tem marca para clicar. A quarentena restante está declarada em
-`compiledVisual.e2e.test.ts`.
+**A quarentena acabou.** `dataRoles`, `requiredTypes`, a proibição de `min`, o estado vazio (RF-20), o tooltip
+nativo (RF-19), o menu de contexto (RF-24) e o teclado (RF-23) voltaram com o KPI; **filtro cruzado (RF-18) e
+truncamento (RF-25) voltaram com a Lista**, e os dois têm teste que executa o `content.js` minificado e afirma
+o que o visual **pede ao host**. Sobra um item declarado sem sujeito, e por construção: a **ponta SVG do alto
+contraste**, porque `var()` não é substituído em atributo de apresentação de SVG e os dois nós de dados de
+hoje são HTML puro. Ela volta com o primeiro nó que emitir SVG.
+
+`registry.test.ts` tem um alarme para isso não regredir: se o último campo `roleKind: 'grouping'` sair do
+catálogo, o produto perde cross-filter inteiro e em silêncio — o teste é o barulho.
 
 **Achado aberto (RF-17):** o `format` da coluna chega ao número, mas os **separadores saem em `en-US`** mesmo
 com `host.locale` em pt-BR. O `formattingService` só conhece culturas se
@@ -205,8 +237,12 @@ Duas consequências que valem saber antes de mexer:
   é o codegen que o lê para decidir se embrulha os filhos em `CanvasSlot`.
 
 **Próximo — o que resta da Fase 4:** matriz manual MT-01…MT-14 (incluindo o Service), E2E Playwright do editor
-e a decisão sobre o separador de locale da RF-17 (o achado aberto acima). Filtro cruzado (RF-18) e truncamento
-(RF-25) esperam o primeiro nó que declare papel de **agrupamento** — não há como devolvê-los com um card de
-número único.
+e a decisão sobre o separador de locale da RF-17 (o achado aberto acima).
+
+**Próximo do lote de componentes** (decidido no `grilling` de 2026-08-06, ver
+[docs/history.md](docs/history.md)): **Medidor de Meta** (spec 5.4.0 — só medida, com `targetMode` para meta
+vinda de campo ou número fixo) e **Nota/Callout** (spec 5.5.0 — sem dado). Depois deles, gráfico de barras com
+eixo, agora sobre a fiação de seleção já provada. Widget com estado local (abas, acordeão) só entra com **ADR
+próprio**: o kit não usa hooks, estado de visual não entra em bookmark e um popover não transborda o tile.
 
 O detalhe de cada sprint está em [docs/history.md](docs/history.md); não é preciso lê-lo para trabalhar.

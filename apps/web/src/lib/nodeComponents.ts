@@ -1,5 +1,5 @@
 import type { NodeKind } from '@vislow/component-registry';
-import { Container, KpiCard, TextBox } from '@vislow/visual-kit/nodes';
+import { Container, KpiCard, RankingList, TextBox } from '@vislow/visual-kit/nodes';
 import type { ReactNode } from 'react';
 
 /**
@@ -22,6 +22,7 @@ const COMPONENTS = {
   container: Container,
   text: TextBox,
   kpi: KpiCard,
+  ranking: RankingList,
   // `satisfies` cobra a cobertura EXATA das chaves: um `kind` novo no registro
   // sem componente aqui nao compila, e uma chave a mais tambem nao.
 } satisfies Record<NodeKind, unknown>;

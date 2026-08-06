@@ -1,7 +1,7 @@
 'use client';
 
 import { NODE_DESCRIPTORS, NODE_KINDS, type NodeKind } from '@vislow/component-registry';
-import { Frame, MousePointer2, TrendingUp, Type } from 'lucide-react';
+import { ChartBarBig, Frame, MousePointer2, TrendingUp, Type } from 'lucide-react';
 import { useRef, type ComponentType, type KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { SELECT_SHORTCUT } from '@/lib/shortcuts';
@@ -30,6 +30,11 @@ const ICONS: Record<NodeKind, ComponentType<{ className?: string }>> = {
   // A seta de tendencia, e nao um velocimetro: o que distingue este card de uma
   // caixa de texto com um numero dentro e a COMPARACAO, e e ela que o icone diz.
   kpi: TrendingUp,
+  // Barras HORIZONTAIS de comprimentos diferentes, e nao uma lista numerada: o
+  // que distingue este no dos outros e mostrar varias categorias em PROPORCAO
+  // umas com as outras. Uma lista numerada diria "varios itens" e omitiria a
+  // unica parte que importa.
+  ranking: ChartBarBig,
 };
 
 export function Toolbar() {

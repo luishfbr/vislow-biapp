@@ -53,6 +53,24 @@ const VALUE_LABELS: Record<string, string> = {
   both: 'Diferenca e percentual',
   absolute: 'So a diferenca',
   percent: 'So o percentual',
+  // Ordenacao da Lista de Ranking. "Como vem do modelo" e nao "Nenhuma": a lista
+  // sempre sai em ALGUMA ordem, e dizer "nenhuma" sugeriria que ela vem embaralhada.
+  value: 'Pelo valor',
+  category: 'Pelo rotulo',
+  model: 'Como vem do modelo',
+  desc: 'Maior primeiro',
+  asc: 'Menor primeiro',
+  // Onde a barra fica. `none` ja existe la em cima, como "Nenhuma", e serve.
+  behind: 'Atras do texto',
+  beside: 'Ao lado do texto',
+  // Contra o que a barra mede 100%.
+  max: 'O maior da lista',
+  total: 'A soma de todos',
+  // Posicao do numero na linha. NAO reusa `right`/`below`: este mapa e plano por
+  // string de valor, e `below` ja e "Abaixo do numero" no KPI — reusar poria o
+  // rotulo errado no dropdown dentro do relatorio de outra pessoa.
+  inline: 'Na mesma linha',
+  stacked: 'Abaixo do rotulo',
 };
 
 export interface ValueOption {

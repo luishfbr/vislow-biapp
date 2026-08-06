@@ -22,3 +22,4 @@ export * from './Container.js';
 export * from './CanvasSlot.js';
 export * from './TextBox.js';
 export * from './KpiCard.js';
+export * from './RankingList.js';

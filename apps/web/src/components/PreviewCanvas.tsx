@@ -2,8 +2,10 @@
 
 import { artboardOf } from '@vislow/component-registry';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { SelectionSimControl } from '@/components/SelectionSimControl';
 import { ZoomControl } from '@/components/ZoomControl';
 import type { Pane } from '@/lib/artboard';
+import { hasSelectableMarks } from '@/lib/previewHost';
 import {
   ZOOM_STEP,
   fitToPane,
@@ -96,6 +98,12 @@ export function PreviewCanvas() {
   const enterContainer = useEditorStore((s) => s.enterContainer);
 
   const layoutEpoch = useUiStore((s) => s.layoutEpoch);
+  const simulateSelection = useUiStore((s) => s.simulateSelection);
+  const toggleSimulateSelection = useUiStore((s) => s.toggleSimulateSelection);
+  // Percorre a arvore, entao memoizado pela spec. Devolve booleano e nao objeto,
+  // entao nao ha o risco de re-render em laco dos seletores de zustand — mas
+  // recalcular a cada movimento de ponteiro no canvas seria desperdicio.
+  const selectable = useMemo(() => hasSelectableMarks(spec), [spec]);
 
   const paneRef = useRef<HTMLDivElement>(null);
   // `null` ate a primeira medicao. Distinto de zero de proposito: o painel de
@@ -463,7 +471,7 @@ export function PreviewCanvas() {
             visibility: viewport ? 'visible' : 'hidden',
           }}
         >
-          <SpecPreview spec={spec} edit={edit} />
+          <SpecPreview spec={spec} edit={edit} simulateSelection={simulateSelection} />
         </div>
 
         {/* O retangulo em desenho. Fica FORA da prancheta transformada e usa
@@ -492,6 +500,14 @@ export function PreviewCanvas() {
 
           O aviso de "dados de exemplo" foi para a barra do pacote, junto com o
           resto do que e verdade sobre o projeto. */}
+      {/* So aparece quando ha marca que a selecao possa esmaecer. Numa arvore de
+          container e texto o interruptor nao mudaria pixel nenhum, e um controle
+          inerte na tela e a mesma falha de `direction` num container que
+          posiciona livremente. */}
+      {selectable && (
+        <SelectionSimControl active={simulateSelection} onToggle={toggleSimulateSelection} />
+      )}
+
       <ZoomControl
         scale={scale}
         onZoom={(factor) => {

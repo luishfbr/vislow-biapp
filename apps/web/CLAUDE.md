@@ -3,9 +3,21 @@
 Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige as duas skills** — plano com
 `frontend-design` antes do JSX, auditoria com `web-design-guidelines` sobre o diff.
 
-- **O catálogo tem TRÊS tipos: `container`, `text` e `kpi`.** Os quatro gráficos saíram na spec 5.0.0, e com
-  eles o Recharts; o KPI voltou na 5.2.0 e é o **único nó que consome dados**. Não há migração 4→5: a chave do
-  `localStorage` é `vislow:project:v5` e a antiga nunca é lida — a 5.2.0 é aditiva e não mexe nela.
+- **O catálogo tem QUATRO tipos: `container`, `text`, `kpi` e `ranking`.** Os quatro gráficos saíram na spec
+  5.0.0, e com eles o Recharts; o KPI voltou na 5.2.0 e a **Lista de Ranking** na 5.3.0. Os dois consomem
+  dados; só a Lista declara **agrupamento**, e é ela que devolveu o filtro cruzado ao produto. Não há migração
+  4→5: a chave do `localStorage` é `vislow:project:v5` e a antiga nunca é lida — 5.2.0 e 5.3.0 são aditivas e
+  não mexem nela.
+- **O interruptor "Simular seleção" é do MÓVEL, e não é persistido.** Ele faz `previewHost` reportar a primeira
+  linha do quadro como selecionada, para o autor **desenhar** o esmaecimento — que sem isso só aparece depois
+  de exportar e importar no Desktop, porque `sampleFrame` não define `frame.host`. É interruptor e **não**
+  clique na linha: pressionar um nó já seleciona e arrasta no mesmo gesto, e o `pointerEvents` do
+  `CanvasOverlay` só libera os filhos do container *entrado* — o clique passaria em alguns níveis da árvore e
+  não em outros, que é indistinguível de bug. E não há relatório para filtrar no editor: o clique prometeria
+  um efeito inexistente. Não persiste pela mesma regra da câmera.
+- **O controle só se desenha quando há marca selecionável** (`hasSelectableMarks`, derivado do registro — a
+  pergunta é "algum nó declara papel de agrupamento?", nunca "existe um `ranking` aqui?"). Interruptor que não
+  muda nada na tela é a mesma falha de `direction` num container que posiciona livremente.
 - **Nó novo exige DUAS entradas escritas à mão, e as duas não compilam se faltarem:** `lib/nodeComponents.ts`
   (o componente) e `components/Toolbar.tsx` (o ícone). Os dois mapas são `Record<NodeKind, …>` exaustivos de
   propósito — não dá para derivar desenho de um `label`, mas dá para impedir que o tipo novo apareça sem um.

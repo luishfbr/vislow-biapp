@@ -4,6 +4,12 @@ import type { NodeKind, RoleKind } from './types.js';
 /**
  * Versao do formato da arvore.
  *
+ * MINOR NA 5.3.0: o tipo de no `ranking` e ADITIVO. Nenhum campo saiu, nenhum
+ * mudou de tipo, e toda spec 5.2.0 salva continua valida e continua gerando
+ * exatamente o mesmo pacote — uma arvore sem nenhum `ranking` nao declara papel
+ * de agrupamento, entao o `capabilities.json` dela nao muda em nada. Pela mesma
+ * razao da 5.1.0, a chave do `localStorage` NAO muda: nao ha o que descartar.
+ *
  * MINOR NA 5.1.0, e minor de verdade: `name` e `exposed` sao ADITIVOS e
  * opcionais no no (RN-12). Spec 5.0.0 salva no navegador continua valida e
  * continua gerando o MESMO pacote — sem `exposed`, nao ha painel de formatacao,
@@ -22,7 +28,7 @@ import type { NodeKind, RoleKind } from './types.js';
  * mudou de CHAVE: o projeto antigo continua no navegador e nunca mais e lido.
  * Nada e descartado em silencio porque nada e sequer tentado.
  */
-export const SPEC_VERSION = '5.2.0';
+export const SPEC_VERSION = '5.3.0';
 
 /**
  * Uma coluna da tabela de exemplo — que e, ao mesmo tempo, um CAMPO do visual.

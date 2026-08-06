@@ -264,6 +264,173 @@
   text-align: center;
 }
 
+/* =========================== LISTA DE RANKING ============================= */
+
+/*
+ * `box-sizing: border-box` esta escrito em cada classe deste bloco, e nao numa
+ * regra `*` no topo do arquivo. Um seletor universal aqui vazaria para o
+ * relatorio inteiro do host — e a guarda `check-css.mjs` reprova, com razao.
+ * Repetir a propriedade cinco vezes e o preco de nao ter reset global.
+ */
+.vsl-rank {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  /*
+   * Corta, nunca escorre — a mesma politica do `.vsl-slot`. Linha que nao cabe
+   * na moldura desaparece; e para isso que existe o campo "Quantas linhas".
+   */
+  overflow: hidden;
+}
+
+/*
+ * A linha. Bloco de contencao das tres camadas absolutas (trilho, barra e
+ * realce de ponteiro), que e o que permite a barra ficar ATRAS do texto sem
+ * gastar largura nenhuma.
+ */
+.vsl-rank-row {
+  box-sizing: border-box;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
+  /* A linha ACIONA um filtro, e precisa se anunciar como acionavel. */
+  cursor: pointer;
+  /*
+   * Acumular selecao e Ctrl+clique repetido, e sem isto o segundo clique arrasta
+   * e seleciona o texto do rotulo em vez de filtrar. O texto continua no balao
+   * do tooltip para quem quiser copia-lo.
+   */
+  user-select: none;
+  /*
+   * Piso de alvo de toque (WCAG 2.2 AA, 24x24). O autor escolhe o espacamento e
+   * o tamanho da fonte, e com os dois no minimo a linha cairia abaixo do alvo
+   * acionavel — um controle que so quem tem mao firme consegue usar. E das
+   * poucas medidas deste arquivo que sao NOSSAS: nao ha escolha de design que
+   * justifique um alvo menor.
+   */
+  min-height: 24px;
+}
+
+/*
+ * RF-23 — foco visivel. `currentColor` pelo mesmo motivo do `.vsl-kpi`: o anel
+ * herda a cor de texto ja resolvida e acompanha o alto contraste do host sem
+ * uma cor propria, que este arquivo nao pode ter.
+ *
+ * `outline-offset` NEGATIVO, ao contrario do KPI. Linhas sao adjacentes: um anel
+ * para fora invadiria a vizinha e ainda seria cortado pelo `overflow: hidden`
+ * acima. Por dentro ele fica inteiro dentro da propria linha.
+ */
+.vsl-rank-row:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: -2px;
+}
+
+/* O numero desce para baixo do rotulo. */
+.vsl-rank-stacked {
+  align-items: stretch;
+}
+
+.vsl-rank-track {
+  box-sizing: border-box;
+  position: absolute;
+  inset: 0;
+}
+
+/*
+ * A barra. `border-bottom` sem cor aqui: ela vem inline, e e o que sobra da
+ * barra quando o alto contraste do host colapsa o preenchimento para o fundo.
+ * Ver o comentario extenso em `RankingList.tsx`.
+ */
+.vsl-rank-fill {
+  box-sizing: border-box;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-bottom-width: 2px;
+  border-bottom-style: solid;
+}
+
+/*
+ * O realce de ponteiro.
+ *
+ * A COR dele vem inline, no elemento; esta regra so alterna OPACIDADE. E a
+ * inversao que permite ao autor escolher a cor do realce sem por uma cor neste
+ * arquivo: `:hover` nao alcanca `style` inline, mas alcanca a opacidade de um
+ * elemento cuja cor ja esta inline.
+ */
+.vsl-rank-hover {
+  box-sizing: border-box;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.vsl-rank-row:hover .vsl-rank-hover {
+  opacity: 1;
+}
+
+/*
+ * O conteudo. `position: relative` o poe acima das camadas absolutas sem
+ * `z-index`: no mesmo contexto de empilhamento, posicionado vence nao
+ * posicionado, e a ordem no fonte resolve o resto.
+ */
+.vsl-rank-text {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.vsl-rank-stacked .vsl-rank-text {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+/* O rotulo cede espaco; o numero nunca. Uma coluna de numeros que se desalinha
+   por causa de um nome comprido perde a unica coisa que a torna varrivel. */
+.vsl-rank-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.vsl-rank-value {
+  flex: 0 0 auto;
+}
+
+/* A barra no modo "ao lado": elemento proprio na linha, com altura declarada. */
+.vsl-rank-gauge {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 24px;
+  overflow: hidden;
+}
+.vsl-rank-gauge-fill {
+  display: block;
+  height: 100%;
+}
+
+/*
+ * A UNICA transicao do kit.
+ *
+ * O esmaecimento e resposta ao clique do PROPRIO usuario, e corte seco ali le
+ * como re-render do relatorio em vez de resposta. Largura de barra NAO anima: um
+ * visual do Power BI re-renderiza a cada mudanca de filtro em qualquer lugar da
+ * pagina, e barra que desliza a cada uma delas vira ruido.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .vsl-rank-row {
+    transition: opacity 120ms ease-out;
+  }
+}
+
 /* ================================ SOMBRA ================================== */
 
 /*

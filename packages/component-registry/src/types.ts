@@ -7,7 +7,7 @@ import type { TokenKind } from '@vislow/config-schema';
  * do `pbiviz` compila sem `strictNullChecks`, e sem ela o TypeScript nao
  * estreita uniao por discriminante booleano.
  */
-export type NodeKind = 'container' | 'text' | 'kpi';
+export type NodeKind = 'container' | 'text' | 'kpi' | 'ranking';
 
 /** Papel de dado no Power BI. `grouping` vira eixo/categoria; `measure`, valor. */
 export type RoleKind = 'grouping' | 'measure';
@@ -71,13 +71,17 @@ export type FieldSpec =
   | (FieldBase & { kind: 'boolean'; default: boolean })
   | (FieldBase & { kind: 'text'; default: string; maxLength: number })
   /**
-   * Numero SEM unidade: opacidade em pontos percentuais, espessura de traco,
-   * raio interno de uma rosca em % do raio externo.
+   * Numero SEM unidade: uma contagem de linhas, uma opacidade, uma proporcao.
    *
-   * HOJE NENHUM DESCRITOR USA. Fica pelo mesmo motivo que `role`: e a metade
-   * viva de uma distincao — `number` contra `length` — que o painel, o schema e
-   * o codegen ja sabem tratar, e que volta inteira com os graficos da Fase 4.
-   * Apaga-lo custaria mais para reescrever do que custa manter.
+   * GANHOU SUJEITO na spec 5.3.0, depois de existir sem nenhum usuario desde a
+   * poda da 5.0.0: a Lista de Ranking usa `maxRows` (quantas linhas mostrar) e
+   * `dimOpacity` (opacidade em pontos percentuais do que esta fora da selecao).
+   * Com eles o catalogo exercita as OITO variantes de `FieldSpec` ponta a ponta.
+   *
+   * A distincao contra `length` e a UNIDADE. Uma contagem de linhas e uma
+   * opacidade nao sao medidas de tela: o controle do painel nao deve escrever
+   * "px" ao lado delas, e `max: 50` num campo com sufixo de pixel se leria como
+   * cinquenta pixels de coisa nenhuma.
    */
   | (FieldBase & { kind: 'number'; default: number; min: number; max: number })
   /**

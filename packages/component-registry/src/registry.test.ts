@@ -86,6 +86,30 @@ describe('registro de componentes', () => {
     }
   });
 
+  it('o catalogo declara pelo menos um papel de AGRUPAMENTO', () => {
+    /*
+     * ===================== A GUARDA CONTRA A CADEIA MORTA =====================
+     * Nao e uma invariante de forma como as de cima: e um alarme.
+     *
+     * Meia duzia de capacidades do produto pendem de UM unico fato — existir um
+     * campo `roleKind: 'grouping'` em algum descritor. Sao elas: o ramo
+     * `Grouping` do `capabilities.ts`, o bloco `categorical.categories`, o
+     * `dataReductionAlgorithm`, o `buildIdentities` do template (que sem
+     * categoria devolve `{}`), `isSelected`, `seriesOf`, `truncationOf` e a
+     * variavel `--vislow-hc-selected`. Todas ja estiveram escritas e sem um
+     * unico chamador entre a spec 5.0.0 e a 5.3.0 — filtro cruzado e aviso de
+     * truncamento simplesmente nao funcionavam, e nada falhava.
+     *
+     * Se um dia o ultimo no com papel de categoria sair do catalogo, o produto
+     * perde cross-filter INTEIRO e em silencio. Este teste e o barulho.
+     * ==========================================================================
+     */
+    const withGrouping = NODE_KINDS.filter((kind) =>
+      roleFieldsOf(kind).some((field) => field.roleKind === 'grouping'),
+    );
+    expect(withGrouping.length, 'sem papel de agrupamento nao ha cross-filter').toBeGreaterThan(0);
+  });
+
   it('papel OBRIGATORIO nao tem default; papel OPCIONAL nasce em branco', () => {
     /*
      * A ausencia e o mecanismo, nao um detalhe.

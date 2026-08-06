@@ -1,4 +1,14 @@
-import { INK, INK_MUTED, PAPER, RADIUS, RULE, SPACE, STROKE, TYPE_SCALE } from '@vislow/config-schema';
+import {
+  INK,
+  INK_MUTED,
+  PAPER,
+  PAPER_SUNK,
+  RADIUS,
+  RULE,
+  SPACE,
+  STROKE,
+  TYPE_SCALE,
+} from '@vislow/config-schema';
 import type { FieldSpec, NodeDescriptor, NodeKind } from './types.js';
 
 /**
@@ -46,6 +56,57 @@ export const LABEL_BELOW = 'below';
 export const DELTA_BOTH = 'both';
 export const DELTA_ABSOLUTE = 'absolute';
 export const DELTA_PERCENT = 'percent';
+
+/**
+ * Por onde a Lista de Ranking ordena, e para que lado.
+ *
+ * `model` e "nao ordene": entrega na ordem em que o host mandou, que e a ordem
+ * do proprio modelo semantico. Existe porque o autor do relatorio pode ja ter
+ * ordenado a coluna no Power BI, e reordenar por cima disso apagaria a escolha
+ * dele sem avisar.
+ */
+export const SORT_VALUE = 'value';
+export const SORT_CATEGORY = 'category';
+export const SORT_MODEL = 'model';
+export const SORT_DESC = 'desc';
+export const SORT_ASC = 'asc';
+
+/**
+ * Onde a barra de proporcao fica em relacao ao texto da linha.
+ *
+ * `behind` e o padrao, e e a tese do componente: a barra e um CAMPO TINGIDO
+ * atras do texto, nao um grafico ao lado dele. Nenhuma largura e gasta numa
+ * coluna separada, entao o rotulo fica com a linha inteira — que e exatamente
+ * onde lista de ranking falha, no nome comprido. Lido de longe, e marca de
+ * marcador sobre uma linha impressa, que e a regra "papel, nao tinta" aplicada.
+ *
+ * `beside` entrega o convencional para quem o quer; `none` deixa so a tabela.
+ */
+export const BAR_BEHIND = 'behind';
+export const BAR_BESIDE = 'beside';
+export const BAR_NONE = 'none';
+
+/**
+ * Contra o que a barra mede 100%.
+ *
+ * `max` compara cada linha com a MAIOR da lista — a primeira barra sempre enche,
+ * e o que se le e a proporcao entre os itens. `total` compara com a soma, e o
+ * que se le e a fatia de cada um no todo. Sao perguntas diferentes, e nenhuma
+ * das duas e mais correta: por isso e campo, e nao decisao nossa.
+ */
+export const BASIS_MAX = 'max';
+export const BASIS_TOTAL = 'total';
+
+/**
+ * Onde o numero fica na linha.
+ *
+ * `inline`/`stacked`, e nao `right`/`below`, de proposito: `VALUE_LABELS` e um
+ * mapa PLANO por string de valor, e `below` ja significa "Abaixo do numero" no
+ * `labelPosition` do KPI. Reusar a palavra poria o rotulo errado no dropdown do
+ * Power BI — dentro do relatorio de outra pessoa, que e onde nao se conserta.
+ */
+export const VALUE_INLINE = 'inline';
+export const VALUE_STACKED = 'stacked';
 
 /**
  * Teto das medidas de moldura, em pixel.
@@ -414,6 +475,303 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
           default: SPACE.xs,
           min: 0,
           max: LENGTH_MAX,
+        },
+      ]),
+
+      ...grouped('Superficie', SURFACE_FIELDS),
+    ],
+  },
+
+  /**
+   * A Lista de Ranking (Top-N). O PRIMEIRO no do catalogo a declarar papel de
+   * AGRUPAMENTO — e e so isso que faltava para meia duzia de capacidades
+   * saírem do congelador.
+   *
+   * O que este unico campo destrava, sem uma linha de codigo nova em nenhum dos
+   * lugares abaixo: `usedRoles` passa a devolver um papel `Grouping`, o
+   * `capabilities.json` ganha `categorical.categories` e o
+   * `dataReductionAlgorithm`, o host passa a entregar `categories`,
+   * `buildIdentities` para de devolver `{}`, `isSelected` para de ser sempre
+   * falso e `truncationOf` para de ser sempre ausente. Tudo isso ja existia
+   * escrito e sem nenhum chamador desde o Sprint 6 — a cadeia estava inteira e
+   * morta, e o elo que faltava era o primeiro.
+   *
+   * ===================== POR QUE UMA LISTA, E NAO UM GRAFICO ==================
+   * Estrear selecao num grafico de barras somaria dois riscos numa sprint so:
+   * matematica de eixo, tick, grade e colisao de rotulo de um lado; identidade,
+   * esmaecimento e teclado do outro. A lista e 100% `div` — sem SVG, entao o
+   * alto contraste continua funcionando por `var()`, que em atributo de
+   * apresentacao de SVG nao funciona. E cada linha ja e um alvo com rotulo de
+   * TEXTO, entao `role="button"` e `aria-label` saem corretos sem inventar nada.
+   * ============================================================================
+   *
+   * Trinta e dois campos, na mesma logica dos vinte e sete do KPI: as partes que
+   * COMPETEM visualmente — rotulo, numero, barra e o estado esmaecido — tem cada
+   * uma tamanho, peso e cor proprios. Sem isso o autor nao consegue fazer o
+   * numero recuar para o rotulo dominar, que e a decisao de design mais
+   * frequente numa lista.
+   */
+  ranking: {
+    kind: 'ranking',
+    label: 'Lista de Ranking',
+    hint: 'Categorias em ordem, com barra de proporcao. Clicar numa linha filtra o relatorio.',
+    keywords: [
+      'lista',
+      'ranking',
+      'top',
+      'classificacao',
+      'barra',
+      'proporcao',
+      'maiores',
+      'tabela',
+      'categoria',
+    ],
+    shortcut: 'L',
+    acceptsChildren: false,
+    component: 'RankingList',
+    fields: [
+      ...grouped('Dados', [
+        {
+          // O ELO QUE FALTAVA. Unico campo `roleKind: 'grouping'` do catalogo.
+          key: 'categoryRole',
+          label: 'Categoria',
+          hint: 'A coluna que vira uma linha. E por ela que o clique filtra o relatorio.',
+          kind: 'role',
+          roleKind: 'grouping',
+        },
+        {
+          key: 'valueRole',
+          label: 'Valor',
+          hint: 'A medida que ordena a lista e desenha a barra.',
+          kind: 'role',
+          roleKind: 'measure',
+        },
+        {
+          key: 'sortMode',
+          label: 'Ordenar por',
+          hint: 'Pelo modelo entrega na ordem que o Power BI mandou, sem reordenar.',
+          kind: 'select',
+          options: [SORT_VALUE, SORT_CATEGORY, SORT_MODEL],
+          default: SORT_VALUE,
+        },
+        {
+          key: 'sortDirection',
+          label: 'Sentido',
+          kind: 'select',
+          options: [SORT_DESC, SORT_ASC],
+          default: SORT_DESC,
+          showWhen: { key: 'sortMode', equals: SORT_VALUE },
+        },
+        {
+          /*
+           * `number`, e nao `length`: e uma CONTAGEM, nao uma medida de tela. Um
+           * campo com sufixo "px" e teto 50 se leria como cinquenta pixels de
+           * coisa nenhuma.
+           *
+           * O teto de 50 nao e o do host — o `dataReductionAlgorithm` corta em
+           * 1000, e o aviso de truncamento fala desse numero. Este e o teto do
+           * que uma lista LEGIVEL comporta: acima disso o visual vira uma tabela
+           * rolavel, que e outro componente e nao este.
+           */
+          key: 'maxRows',
+          label: 'Quantas linhas',
+          hint: 'As demais ficam de fora da lista, mas continuam na conta do total.',
+          kind: 'number',
+          default: 10,
+          min: 1,
+          max: 50,
+        },
+      ]),
+
+      ...grouped('Linha', [
+        {
+          // Zero, com fio ligado: a lista nasce lendo como TABELA IMPRESSA, e nao
+          // como uma pilha de cartoes. Fio e o dispositivo de separacao do
+          // sistema; faixa zebrada exigiria uma segunda cor de fundo, e fio exige
+          // uma cor so.
+          key: 'rowGap',
+          label: 'Espaco entre linhas',
+          kind: 'length',
+          default: 0,
+          min: 0,
+          max: LENGTH_MAX,
+        },
+        {
+          key: 'rowPadding',
+          label: 'Espacamento interno',
+          kind: 'length',
+          default: SPACE.sm,
+          min: 0,
+          max: LENGTH_MAX,
+        },
+        { key: 'showDivider', label: 'Fio entre linhas', kind: 'boolean', default: true },
+        {
+          key: 'dividerColor',
+          label: 'Cor do fio',
+          kind: 'color',
+          default: RULE,
+          showWhen: { key: 'showDivider', equals: 'true' },
+        },
+      ]),
+
+      ...grouped('Rotulo', [
+        {
+          key: 'labelFontSize',
+          label: 'Tamanho',
+          kind: 'length',
+          default: TYPE_SCALE.body,
+          min: FONT_SIZE_MIN,
+          max: FONT_SIZE_MAX,
+        },
+        {
+          key: 'labelWeight',
+          label: 'Peso',
+          kind: 'token',
+          token: 'fontWeight',
+          default: 'medium',
+        },
+        { key: 'labelColor', label: 'Cor', kind: 'color', default: INK },
+        {
+          // `truncate` por padrao, ao contrario da Caixa de Texto: uma linha de
+          // ranking que quebra em duas desalinha a coluna de numeros ao lado, e
+          // e justamente o alinhamento dela que faz a lista ser varrivel. O nome
+          // inteiro continua no balao do tooltip.
+          key: 'labelOverflow',
+          label: 'Quando nao cabe',
+          kind: 'select',
+          options: ['wrap', 'truncate'],
+          default: 'truncate',
+        },
+      ]),
+
+      ...grouped('Valor', [
+        {
+          // MESMO tamanho do rotulo, de proposito. O numero ganha enfase por
+          // PESO, e nao por escala: as duas colunas continuam lendo como uma
+          // linha so, em vez de dois tamanhos competindo dentro dela.
+          key: 'valueFontSize',
+          label: 'Tamanho',
+          kind: 'length',
+          default: TYPE_SCALE.body,
+          min: FONT_SIZE_MIN,
+          max: FONT_SIZE_MAX,
+        },
+        {
+          key: 'valueWeight',
+          label: 'Peso',
+          kind: 'token',
+          token: 'fontWeight',
+          default: 'semibold',
+        },
+        { key: 'valueColor', label: 'Cor', kind: 'color', default: INK },
+        {
+          key: 'valuePosition',
+          label: 'Posicao',
+          hint: 'Na mesma linha do rotulo, ou abaixo dele.',
+          kind: 'select',
+          options: [VALUE_INLINE, VALUE_STACKED],
+          default: VALUE_INLINE,
+        },
+      ]),
+
+      ...grouped('Barra', [
+        {
+          key: 'barMode',
+          label: 'Barra',
+          hint: 'Atras do texto ela nao gasta largura, e o rotulo fica com a linha inteira.',
+          kind: 'select',
+          options: [BAR_BEHIND, BAR_BESIDE, BAR_NONE],
+          default: BAR_BEHIND,
+        },
+        {
+          key: 'barBasis',
+          label: 'Medir contra',
+          hint: 'O maior da lista mostra proporcao entre itens; a soma mostra fatia do todo.',
+          kind: 'select',
+          options: [BASIS_MAX, BASIS_TOTAL],
+          default: BASIS_MAX,
+        },
+        {
+          /*
+           * `RULE`, e nao `PAPER_SUNK`.
+           *
+           * A barra e a marca de dados do componente, e `PAPER_SUNK` sobre
+           * `PAPER` e diferenca pequena demais: o componente nasceria parecendo
+           * quebrado, que e uma primeira impressao que nao se recupera. `RULE`
+           * sobre `PAPER` e tinta VISIVEL e ainda assim acromatica, e `INK`
+           * sobre `RULE` passa folgado de 7:1 — o que importa porque no modo
+           * padrao o texto fica POR CIMA dela.
+           */
+          key: 'barColor',
+          label: 'Cor da barra',
+          kind: 'color',
+          default: RULE,
+        },
+        {
+          key: 'barTrackColor',
+          label: 'Cor do trilho',
+          hint: 'O que fica atras da barra, na parte que ela nao preenche.',
+          kind: 'color',
+          default: PAPER_SUNK,
+        },
+        {
+          // So no modo ao lado: atras do texto a barra ocupa a altura da linha
+          // inteira, e uma altura declarada ali seria um controle que nao faz
+          // nada — o mesmo motivo pelo qual `direction` some num container que
+          // posiciona livremente.
+          key: 'barHeight',
+          label: 'Altura da barra',
+          kind: 'length',
+          default: SPACE.sm,
+          min: 1,
+          max: LENGTH_MAX,
+          showWhen: { key: 'barMode', equals: BAR_BESIDE },
+        },
+        {
+          key: 'barRadius',
+          label: 'Raio da barra',
+          kind: 'length',
+          default: RADIUS.sm,
+          min: 0,
+          max: LENGTH_MAX,
+        },
+      ]),
+
+      ...grouped('Selecao', [
+        {
+          /*
+           * 32 pontos percentuais. Nao 50, que fica papa e continua competindo;
+           * nao 15, em que a linha some e se perde a FORMA do ranking.
+           *
+           * Em 32 o que esta fora da selecao continua legivel como estrutura:
+           * voce ainda ve a distribuicao de onde filtrou. Para um instrumento de
+           * filtro cruzado isso e o comportamento honesto — esconder o contexto
+           * que o proprio usuario acabou de tirar da conta e o esconde de si
+           * mesmo.
+           */
+          key: 'dimOpacity',
+          label: 'Opacidade do que sai da selecao',
+          hint: 'Em pontos percentuais. Vale quando ha selecao em qualquer visual da pagina.',
+          kind: 'number',
+          default: 32,
+          min: 0,
+          max: 100,
+        },
+        {
+          // A linha selecionada ganha um FIO NA MARGEM, e nao um fundo: fundo
+          // brigaria com o campo tingido da barra, que no modo padrao ocupa a
+          // linha inteira. Marca de margem e o vocabulario da lista impressa, e
+          // compoe com a barra em vez de disputar com ela.
+          key: 'selectedColor',
+          label: 'Cor da marca de selecao',
+          kind: 'color',
+          default: INK,
+        },
+        {
+          key: 'hoverBackground',
+          label: 'Cor ao passar o mouse',
+          kind: 'color',
+          default: PAPER_SUNK,
         },
       ]),
 

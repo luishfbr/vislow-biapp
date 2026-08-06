@@ -13,6 +13,7 @@ import { CanvasSlot, sampleFrame, type DataFrame } from '@vislow/visual-kit/node
 import { createElement, type ReactNode } from 'react';
 import { CanvasOverlay } from '@/components/CanvasOverlay';
 import { NODE_COMPONENTS } from '@/lib/nodeComponents';
+import { previewHost } from '@/lib/previewHost';
 
 /**
  * Renderiza a arvore com os componentes de verdade (RF-05 / ADR-04).
@@ -203,11 +204,29 @@ function renderNode(node: SpecNode, frame: DataFrame, edit: PreviewEdit | undefi
     : createElement(NODE_COMPONENTS[node.kind], props);
 }
 
-export function SpecPreview({ spec, edit }: { spec: VisualSpec; edit?: PreviewEdit | undefined }) {
+export function SpecPreview({
+  spec,
+  edit,
+  simulateSelection = false,
+}: {
+  spec: VisualSpec;
+  edit?: PreviewEdit | undefined;
+  /**
+   * Faz o host reportar a primeira linha do quadro como selecionada, para o
+   * autor poder DESENHAR o estado esmaecido sem exportar. Vem do `useUiStore`
+   * (movel) por prop, e nao lido daqui: este componente e o gemeo do codegen e
+   * fica testavel sem store.
+   */
+  simulateSelection?: boolean;
+}) {
   // O preview desenha o que o USUARIO digitou na tabela de exemplo. Antes o
   // quadro era fabricado a partir do nome do papel, e ele compunha contra
   // numeros que nao eram dele.
-  const frame = sampleFrame(spec.data);
+  //
+  // O HOST entra por spread, e nao dentro do `sampleFrame`: aquele arquivo mora
+  // no kit, que vai inteiro para o bundle do visual — um host de simulacao nao
+  // tem o que fazer no pacote que o consumidor final instala.
+  const frame = { ...sampleFrame(spec.data), host: previewHost(simulateSelection) };
 
   return (
     // O MESMO componente que o codegen emite em volta da arvore — nao uma string

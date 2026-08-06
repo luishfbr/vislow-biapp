@@ -109,31 +109,55 @@ function fakeHost(calls: HostCalls, highContrast: boolean) {
  * Os nomes de papel sao os do USUARIO (`categoria`, `valor`), nao os fixos do
  * runtime antigo — e essa troca que o pivo trouxe.
  */
-function fakeDataView() {
+function fakeDataView(rowCount = 1) {
   /*
-   * UMA linha por medida, ja agregada — que e o que o host entrega quando o
-   * mapeamento nao pede categoria. O KPI e o unico no que le dados, e ele so
-   * declara papel de MEDIDA.
+   * O BLOCO `categories` EXISTE DESDE A SPEC 5.3.0.
    *
-   * O `format` da coluna e o que faz o `valueFormatter` do template devolver
-   * `1.234,57` em vez de `1234.5678` (RF-17). Sem ele o teste passaria com o
-   * numero cru e o Desktop mostraria amadorismo.
+   * Ate a Lista de Ranking nenhum descritor declarava papel de agrupamento, o
+   * mapeamento gerado nao pedia categoria e o host nao a entregaria — um bloco
+   * aqui teria feito o harness ser mais generoso que o Power BI. Agora o
+   * mapeamento PEDE `categorical.categories`, e nao entrega-lo e que seria
+   * mentir sobre o host.
+   *
+   * `identity` por linha, e distinta: e dela que sai o selection id, e com um id
+   * unico para todas um clique na terceira linha passaria por selecao da
+   * primeira — o teste aprovaria o bug que existe para pegar.
    */
+  const categories = [
+    {
+      source: { displayName: 'Categoria', roles: { categoria: true } },
+      values: Array.from({ length: rowCount }, (_, i) => `Categoria ${String(i + 1)}`),
+      identity: Array.from({ length: rowCount }, (_, i) => ({ key: `identity-${String(i)}` })),
+    },
+  ];
+
+  /*
+   * UMA linha por padrao, e isso e deliberado.
+   *
+   * Com uma linha so, `sumOf` reusa o `formatted` do host e o teste do KPI mede
+   * o `valueFormatter` de verdade — que e onde vive o achado aberto da RF-17.
+   * Com mais de uma ele cai no `Intl`, que formata em pt-BR CORRETAMENTE e
+   * portanto ESCONDERIA o achado. Quem precisa de varias linhas pede.
+   *
+   * O `format` da coluna e o que faz o `valueFormatter` devolver `1.234,57` em
+   * vez de `1234.5678`. Sem ele o teste passaria com o numero cru.
+   */
+  const medida = (base: number): number[] =>
+    rowCount === 1 ? [base] : Array.from({ length: rowCount }, (_, i) => i + 1);
+
   const values = [
     {
       source: { displayName: 'Receita', roles: { valor: true }, format: '#,0.00' },
-      values: [1084320],
+      values: medida(1084320),
     },
     {
       source: { displayName: 'Meta', roles: { meta: true }, format: '#,0.00' },
-      values: [1000000],
+      values: medida(1000000),
     },
   ];
   return {
     categorical: {
-      // SEM `categories`: nenhum descritor declara papel de agrupamento, entao o
-      // mapeamento gerado nao pede categoria e o host nao a entregaria. Um bloco
-      // aqui faria o harness ser mais generoso que o Power BI.
+      categories,
       values: Object.assign(values, { grouped: () => [] }),
     },
     metadata: { columns: [] },
@@ -242,6 +266,13 @@ async function renderCompiled(
    * dentro provaria so que a funcao de merge funciona.
    */
   objects?: Record<string, Record<string, unknown>>,
+  /**
+   * Quantas categorias o host entrega. Uma por padrao — ver `fakeDataView`.
+   *
+   * Quem testa cross-filter pede varias: com uma linha so, "selecionou a
+   * categoria certa" e indistinguivel de "selecionou a unica que havia".
+   */
+  rowCount?: number,
 ): Promise<RenderOutcome> {
   const errors: string[] = [];
   const virtualConsole = new VirtualConsole();
@@ -282,7 +313,7 @@ async function renderCompiled(
     // Sem papel declarado o host ainda entrega um DataView so com metadados —
     // e para isso que o capabilities gerado declara `supportsEmptyDataView`.
     dataViews: withData
-      ? [fakeDataView()]
+      ? [fakeDataView(rowCount)]
       : objects
         ? [{ metadata: { columns: [], objects } }]
         : [],
@@ -485,11 +516,17 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
    * verde enquanto o pacote entregue recusava todo arrasto no Desktop.
    */
   it('o capabilities do PACOTE declara os papeis que a arvore consome', () => {
-    // O POCO DE CAMPOS VOLTOU na spec 5.2.0. Entre a poda da 5.0.0 e o KPI Card
-    // este teste afirmava o contrario — `dataRoles: []` —, e era essa afirmacao
-    // que sinalizava a hora de descongelar o resto do arquivo.
-    expect(embutido.dataRoles.map((role) => role.name)).toEqual(['valor', 'meta']);
+    // O POCO DE CAMPOS VOLTOU na spec 5.2.0 com o KPI (duas medidas) e ganhou a
+    // CATEGORIA na 5.3.0, com a Lista de Ranking. Entre a poda da 5.0.0 e o KPI
+    // este teste afirmava `dataRoles: []`, e era essa afirmacao que sinalizava a
+    // hora de descongelar o resto do arquivo. Sinalizou duas vezes.
+    expect(embutido.dataRoles.map((role) => role.name)).toEqual(['categoria', 'valor', 'meta']);
     expect(embutido.dataViewMappings).toHaveLength(1);
+
+    // `Grouping` DENTRO DO ZIP. E o que faz o host entregar `categories`, sem o
+    // que nao ha selection id — e portanto nao ha cross-filter nenhum.
+    const kinds = Object.fromEntries(embutido.dataRoles.map((role) => [role.name, role.kind]));
+    expect(kinds.categoria).toBe('Grouping');
   });
 
   it('o capabilities do PACOTE e exatamente o que o codegen gerou', () => {
@@ -503,12 +540,18 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
     // errado — a coluna nem chega ao poco. Sem ele, o tipo escolhido no editor
     // seria so formatacao de preview.
     //
-    // As duas colunas da fixture sao `integer`, e `integer` e mais estreito que
-    // `numeric` de proposito: quem marcou a coluna como inteiro disse que casas
-    // decimais nao servem.
-    for (const role of embutido.dataRoles) {
-      expect(role.requiredTypes, role.name).toEqual([{ integer: true }]);
-    }
+    // A fixture cobre os DOIS extremos: `text` e o mais estreito do lado do
+    // agrupamento, `integer` o mais estreito do lado da medida — e `integer` e
+    // mais estreito que `numeric` de proposito, porque quem marcou a coluna como
+    // inteiro disse que casas decimais nao servem.
+    const required = Object.fromEntries(
+      embutido.dataRoles.map((role) => [role.name, role.requiredTypes]),
+    );
+    expect(required).toEqual({
+      categoria: [{ text: true }],
+      valor: [{ integer: true }],
+      meta: [{ integer: true }],
+    });
   });
 
   it('nenhuma condicao do PACOTE declara `min` — senao os pocos travam', () => {
@@ -571,22 +614,20 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   }, 60_000);
 
   /*
-   * ============== A PARIDADE DE INTERATIVIDADE, PARCIALMENTE VIVA ============
+   * ================= A PARIDADE DE INTERATIVIDADE, INTEIRA ==================
    * Este bloco fechava o Sprint 6 e o achado 53 — o pacote DESENHAVA certo e nao
    * FILTRAVA nada, sem nenhum teste notar. Foi para a quarentena na 5.0.0 porque
-   * os seis testes tinham o GRAFICO como unico sujeito.
+   * os seis testes tinham o GRAFICO como unico sujeito, e o KPI Card devolveu
+   * so tres deles: um card de numero unico nao tem marca para clicar.
    *
-   * O KPI Card devolveu tres deles, e nao os seis. A diferenca nao e preguica: o
-   * card so declara papel de MEDIDA, e so coluna vinda de `categories` gera
-   * selection id. O que continua sem sujeito, e volta com o primeiro no que
-   * declarar agrupamento:
+   * A Lista de Ranking (spec 5.3.0) devolve os que faltavam. Sobra UM item
+   * declarado, e ele nao tem sujeito por construcao:
    *
-   *   - acionar uma marca FILTRA o relatorio com a identidade daquela linha
-   *     (RF-18) — nao ha marca nem identidade num numero unico;
-   *   - o aviso de truncamento (RF-25) — `truncationOf` so olha coluna de
-   *     categoria;
-   *   - a ponta SVG do alto contraste — `var()` nao funciona em atributo de
-   *     apresentacao de SVG, e o KPI e HTML.
+   *   - a ponta SVG do alto contraste. `var()` nao e substituido em atributo de
+   *     apresentacao de SVG, e por isso um no que desenhe SVG precisa resolver a
+   *     paleta por `hostOf(frame).highContrast`. Os tres nos de dados de hoje
+   *     — KPI, Lista — sao HTML puro, e HTML usa a variavel. Volta com o
+   *     primeiro no que emitir SVG (o grafico de barras com eixo).
    * =========================================================================
    */
   describe('paridade de interatividade', () => {
@@ -629,6 +670,83 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
       // O ouvinte esta no ELEMENTO do visual, e nao no no — entao ele vale para
       // qualquer composicao, inclusive uma so de texto.
       expect(calls.contextMenus).toBe(1);
+    }, 60_000);
+
+    /*
+     * ================== O TESTE QUE FECHA O ACHADO 53 =========================
+     * O achado 53 foi um pacote que DESENHAVA certo e nao FILTRAVA nada, com
+     * toda a suite verde. A licao ficou escrita no `fakeHost`: o que interessa
+     * nao e o que o visual mostra, e sim o que ele PEDE AO HOST.
+     *
+     * Este e o primeiro teste do repo a exercitar isso ponta a ponta num pacote
+     * REAL: clique no DOM -> `FrameHost.select` -> `Interaction.select` ->
+     * `buildIdentities` -> `selectionManager.select`, tudo dentro do
+     * `content.js` MINIFICADO. Esteve sem sujeito desde a spec 5.0.0.
+     * =========================================================================
+     */
+    it('acionar uma linha filtra o relatorio com a identidade DAQUELA categoria (RF-18)', async () => {
+      // Tres categorias com valores 1, 2 e 3: a ordenacao padrao e decrescente,
+      // entao a PRIMEIRA linha desenhada e a ULTIMA do quadro. Um `sort` que
+      // reindexasse — ou um `buildIdentities` que devolvesse sempre o mesmo id —
+      // filtraria a categoria errada, e so aqui isso apareceria.
+      const { element, calls, window } = await renderCompiled(js, guid, true, false, undefined, 3);
+      const rows = element.querySelectorAll('.vsl-rank-row');
+      expect(rows, 'a Lista de Ranking nao chegou ao DOM do pacote').toHaveLength(3);
+
+      rows[0]!.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(calls.selections).toHaveLength(1);
+      expect(calls.selections[0]?.identity).toEqual({ key: 'row-2' });
+      expect(calls.selections[0]?.multi).toBe(false);
+    }, 60_000);
+
+    it('Ctrl+clique pede selecao MULTIPLA, como nos visuais nativos (RF-18)', async () => {
+      const { element, calls, window } = await renderCompiled(js, guid, true, false, undefined, 3);
+      const rows = element.querySelectorAll('.vsl-rank-row');
+
+      rows[1]!.dispatchEvent(new window.MouseEvent('click', { bubbles: true, ctrlKey: true }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(calls.selections[0]?.multi).toBe(true);
+    }, 60_000);
+
+    it('a linha e um BOTAO acionavel, e nao so alcancavel (RF-23)', async () => {
+      // A diferenca contra o KPI, que e `role="group"`: la nao ha identidade
+      // para selecionar e um `button` prometeria uma acao inexistente. Aqui a
+      // acao existe, e `aria-pressed` diz que ela e um ALTERNADOR.
+      const { element } = await renderCompiled(js, guid, true, false, undefined, 3);
+      const row = element.querySelector('.vsl-rank-row');
+
+      expect(row?.getAttribute('role')).toBe('button');
+      expect(row?.getAttribute('tabindex')).toBe('0');
+      expect(row?.getAttribute('aria-pressed')).toBe('false');
+      expect(row?.getAttribute('aria-label')).toContain('Categoria');
+    }, 60_000);
+
+    it('o teclado aciona a mesma via do clique (RF-23 / RF-18)', async () => {
+      const { element, calls, window } = await renderCompiled(js, guid, true, false, undefined, 3);
+      const row = element.querySelector('.vsl-rank-row')!;
+
+      row.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(calls.selections).toHaveLength(1);
+      expect(calls.selections[0]?.identity).toEqual({ key: 'row-2' });
+    }, 60_000);
+
+    it('acima do corte do host, o visual avisa que truncou (RF-25)', async () => {
+      /*
+       * `truncationOf` so dispara com `column.category` presente E
+       * `values.length >= CATEGORY_LIMIT`. Sem no de agrupamento a primeira
+       * condicao nunca era verdadeira, e o aviso era codigo morto desde o
+       * Sprint 6 — emitido pelo `visual.tsx` gerado e jamais renderizado.
+       *
+       * Mil categorias e o proprio `dataReductionAlgorithm` que o capabilities
+       * declara. A Lista desenha so `maxRows` delas; o aviso fala do conjunto.
+       */
+      const { html } = await renderCompiled(js, guid, true, false, undefined, 1000);
+      expect(html).toContain('Exibindo 1000 de mais de 1000 categorias');
     }, 60_000);
   });
 });

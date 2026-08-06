@@ -53,3 +53,21 @@ export function hcAccent(chosen: string): string {
 export function hcLine(chosen: string): string {
   return withFallback(HC_VARS.line, chosen);
 }
+
+/**
+ * A marca do que esta SELECIONADO. Recebe o `foregroundSelected` do host.
+ *
+ * Ganhou leitor na spec 5.3.0, com a Lista de Ranking. O template ja escrevia a
+ * variavel desde o Sprint 6 (`interaction.ts`), e ate aqui nenhuma regra e
+ * nenhum componente a lia — era a ponta solta de uma cadeia inteira construida
+ * sem sujeito.
+ *
+ * Nao e `hcAccent`: em alto contraste o host distingue a marca de dados comum
+ * (`foreground`) da marca selecionada (`foregroundSelected`), e e essa distincao
+ * que permite ver O QUE esta filtrado num modo em que quase tudo colapsa para
+ * duas cores. Confundir as duas apagaria justamente o estado que a lista existe
+ * para comunicar.
+ */
+export function hcSelected(chosen: string): string {
+  return withFallback(HC_VARS.selected, chosen);
+}

@@ -32,12 +32,26 @@ visual, e é isso que explica cada restrição. Detalhe em [docs/frontend.md](..
 - **`/nodes` fica fora do barril** — o barril carrega o que TODO consumidor precisa (tokens, alto contraste,
   estados, `VisualRoot`), e o editor importa isso sem querer a árvore de componentes junto. A razão original era
   manter o Recharts fora; ele saiu na 5.0.0 e a separação ficou pela razão que sobrou.
-- **`nodes/frame.ts` e `nodes/sampleFrame.ts` voltaram a ter consumidor na spec 5.2.0** — o `KpiCard`, único nó
-  que lê o `DataFrame`. `sumOf` é a agregação dele; `seriesOf` continua sem sujeito e espera os gráficos.
-- **O `KpiCard` é o único nó FOCALIZÁVEL do kit** (`tabIndex`, `role="group"`, `.vsl-kpi:focus-visible`). É
+- **`nodes/frame.ts` e `nodes/sampleFrame.ts` voltaram a ter consumidor na spec 5.2.0.** `sumOf` é a agregação
+  do `KpiCard`; **`seriesOf` ganhou o primeiro chamador na 5.3.0**, a `RankingList` — estava escrito e sem
+  sujeito desde o Sprint 6.
+- **O `KpiCard` é focalizável mas não acionável** (`tabIndex`, `role="group"`, `.vsl-kpi:focus-visible`). É
   `group` e não `button` de propósito: sem papel de agrupamento não há identidade para selecionar, e um
-  `button` prometeria uma ação que não existe. O tooltip nativo sai no ponteiro **e** no foco — quem chega por
+  `button` prometeria uma ação que não existe. **A linha da `RankingList` é `role="button"`** porque ali a ação
+  existe — ela chama `hostOf(frame).select(...)` e filtra o relatório — e leva `aria-pressed`, porque
+  selecionar é um **alternador**. Nos dois, o tooltip nativo sai no ponteiro **e** no foco: quem chega por
   `Tab` não tem coordenada de mouse.
+- **Barra com texto POR CIMA inverte o par de alto contraste.** No modo `behind` da `RankingList`, o
+  preenchimento usa `hcSurface` e a regra inferior usa `hcAccent`. O host dá **uma** cor de frente: barra em
+  `accent` com texto em `ink` por cima faria o texto sumir dentro da barra. Ligado o modo, o campo colapsa
+  para o fundo e sobra um sublinhado proporcional — dado codificado, texto legível. Barra **sem** texto por
+  cima (`beside`) preenche com `hcAccent` normalmente.
+- **Cor de estado que depende de `:hover` vai num ELEMENTO, não numa regra.** `:hover` não alcança `style`
+  inline e o `styles.css` não pode conter cor. A saída é inverter: a cor do autor vai inline num elemento
+  sobreposto (`aria-hidden`, `pointer-events: none`) e a regra só alterna a **opacidade** dele.
+- **`hcSelected` (`--vislow-hc-selected`) ganhou o primeiro leitor na 5.3.0.** Não é `hcAccent`: em alto
+  contraste o host distingue a marca comum (`foreground`) da selecionada (`foregroundSelected`), e é essa
+  distinção que permite ver o que está filtrado num modo em que quase tudo colapsa para duas cores.
 - **A cor do número passa por `hcAccent`, não `hcInk`.** O número é *marca de dados*, e é para isso que a
   variável existe; rótulo e legenda são texto e ficam em `hcInk`. As duas recebem o `foreground` do host hoje,
   e confundi-las apagaria a distinção no dia em que deixarem de receber.

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import Ajv from 'ajv';
 import capabilitiesSchema from 'powerbi-visuals-api/schema.capabilities.json';
@@ -249,16 +251,16 @@ describe('texto do usuario nunca vira codigo (RN-11)', () => {
 
 describe('capabilities.json gerado', () => {
   /*
-   * ================ A BATERIA DE dataRoles VOLTOU NA 5.2.0 ==================
-   * Os quatro testes abaixo estiveram em quarentena declarada entre a poda da
-   * 5.0.0 e o KPI Card: sem no que consumisse dados, `usedRoles` devolvia vazio
-   * e nao havia o que medir. O KPI e o sujeito deles agora.
+   * ============== A QUARENTENA ACABOU DE VEZ NA SPEC 5.3.0 ==================
+   * Esta bateria esteve congelada duas vezes. Entre a poda da 5.0.0 e o KPI Card
+   * nao havia no que consumisse dados, e `usedRoles` devolvia vazio. Entre o KPI
+   * e a Lista de Ranking havia dados mas so MEDIDA — e por isso o ramo
+   * `Grouping`, o bloco `categorical.categories`, o `dataReductionAlgorithm` e o
+   * truncamento (RF-25) continuavam escritos e sem chamador.
    *
-   * O QUE CONTINUA SEM SUJEITO, e vale saber antes de procurar: o KPI so declara
-   * papel de MEDIDA. O ramo `Grouping` do `capabilities.ts`, o bloco
-   * `categorical.categories`, o `dataReductionAlgorithm` e o aviso de
-   * truncamento (RF-25) seguem sem quem os exercite — voltam com o primeiro no
-   * que declarar `roleKind: 'grouping'`.
+   * A Lista de Ranking e o sujeito que faltava. Os quatro testes que afirmavam a
+   * AUSENCIA de agrupamento foram invertidos aqui — eram o lembrete combinado, e
+   * falharam no commit exato em que deviam falhar.
    * ==========================================================================
    */
 
@@ -266,28 +268,50 @@ describe('capabilities.json gerado', () => {
     const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
     const names = capabilities.dataRoles.map((role) => role.name);
 
-    // As duas medidas que o KPI liga entram...
+    // As duas medidas que o KPI liga, mais a categoria que a Lista de Ranking
+    // liga: a tabela de exemplo tem tres colunas e a arvore agora usa as tres.
     expect(names).toContain('valor');
     expect(names).toContain('meta');
-    // ...e a coluna de agrupamento, que existe na tabela de exemplo mas nao esta
-    // ligada em no nenhum, NAO entra. Um campo no poco que ninguem le e o visual
+    expect(names).toContain('categoria');
+  });
+
+  it('coluna que a arvore nao liga fica FORA do poco de campos (ADR-12)', () => {
+    // O outro lado do teste acima, e o que ele deixou de poder afirmar quando a
+    // Lista passou a ligar `categoria`. Uma coluna a mais na tabela, que no
+    // nenhum referencia, nao pode virar campo: poco que ninguem le e o visual
     // pedindo uma coluna para nada.
-    expect(names).not.toContain('categoria');
+    const spec = specWithEveryKind();
+    spec.data.columns.push({
+      name: 'naoLigada',
+      displayName: 'Nao ligada',
+      kind: 'measure',
+      type: 'decimal',
+    });
+    for (const row of spec.data.rows) row.push(1);
+
+    const names = generateCapabilities(assertValidSpec(spec)).dataRoles.map((role) => role.name);
+    expect(names).not.toContain('naoLigada');
   });
 
   it('a ordem dos papeis e a das colunas do projeto, nao a da arvore', () => {
     // `usedRoles` filtra `spec.data.columns`, entao a ordem do poco de campos e
     // a que o autor ve na tabela. Reordenar por travessia da arvore mudaria o
-    // poco a cada vez que um no fosse movido.
+    // poco a cada vez que um no fosse movido — e a Lista de Ranking, que e o
+    // ultimo no da fixture, liga a PRIMEIRA coluna.
     const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
-    expect(capabilities.dataRoles.map((role) => role.name)).toEqual(['valor', 'meta']);
+    expect(capabilities.dataRoles.map((role) => role.name)).toEqual([
+      'categoria',
+      'valor',
+      'meta',
+    ]);
   });
 
-  it('mapeia measure para o kind do Power BI', () => {
+  it('mapeia cada papel para o kind do Power BI conforme o tipo da coluna', () => {
     const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
-    for (const role of capabilities.dataRoles) {
-      expect(role.kind, role.name).toBe('Measure');
-    }
+    const kinds = Object.fromEntries(capabilities.dataRoles.map((role) => [role.name, role.kind]));
+
+    // `Grouping` deixou de ser ramo morto do `capabilities.ts` na spec 5.3.0.
+    expect(kinds).toEqual({ categoria: 'Grouping', valor: 'Measure', meta: 'Measure' });
   });
 
   it.each(COLUMN_TYPES)(
@@ -350,19 +374,59 @@ describe('capabilities.json gerado', () => {
     expect(JSON.stringify(capabilities.dataViewMappings)).not.toContain('"min"');
   });
 
-  it('as medidas viram `values` do mapeamento categorico', () => {
+  it('as medidas viram `values` e os agrupamentos viram `categories`', () => {
     const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
     const mapping = capabilities.dataViewMappings[0] as {
-      categorical: { values?: { select: { bind: { to: string } }[] }; categories?: unknown };
+      categorical: {
+        values?: { select: { bind: { to: string } }[] };
+        categories?: {
+          select: { for: { in: string } }[];
+          dataReductionAlgorithm: { top: { count: number } };
+        };
+      };
     };
 
     expect(mapping.categorical.values?.select).toEqual([
       { bind: { to: 'valor' } },
       { bind: { to: 'meta' } },
     ]);
-    // Sem no que declare agrupamento, o bloco de categorias nao e emitido: pedir
-    // um `DataView` com categorias que ninguem le seria trabalho do host a toa.
-    expect(mapping.categorical.categories).toBeUndefined();
+
+    // O bloco de categorias, emitido pela primeira vez na spec 5.3.0. `for.in` e
+    // nao `bind.to`: agrupamento cria uma LINHA por valor distinto, e e disso
+    // que sai o selection id de cada marca.
+    expect(mapping.categorical.categories?.select).toEqual([{ for: { in: 'categoria' } }]);
+  });
+
+  it('o corte do host e declarado, e bate com o que o visual anuncia', () => {
+    /*
+     * A DUPLICATA VIGIADA.
+     *
+     * `CATEGORY_LIMIT` esta escrito em DOIS lugares — `codegen/src/capabilities.ts`
+     * e `visual-template/template/src/dataFrame.ts` — e nao ha import ligando os
+     * dois: um e do backend que gera o manifesto, o outro compila para dentro do
+     * bundle do visual. Enquanto o truncamento era codigo morto, divergir nao
+     * custava nada. Agora custa: o host cortaria em N e o rodape anunciaria M, e
+     * o visual mentiria sobre o proprio dado sem erro nenhum.
+     *
+     * Este teste le o fonte do template e compara. E feio de proposito — a
+     * alternativa seria um pacote compartilhado so para uma constante.
+     */
+    const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
+    const mapping = capabilities.dataViewMappings[0] as {
+      categorical: { categories?: { dataReductionAlgorithm: { top: { count: number } } } };
+    };
+    const declared = mapping.categorical.categories?.dataReductionAlgorithm.top.count;
+    expect(declared).toBeDefined();
+
+    const source = readFileSync(
+      fileURLToPath(
+        new URL('../../visual-template/template/src/dataFrame.ts', import.meta.url),
+      ),
+      'utf8',
+    );
+    const match = /CATEGORY_LIMIT\s*=\s*(\d+)/.exec(source);
+    expect(match, 'CATEGORY_LIMIT sumiu do template').not.toBeNull();
+    expect(Number(match?.[1])).toBe(declared);
   });
 
   it('uma arvore so de container e texto continua sem pedir campo nenhum', () => {
