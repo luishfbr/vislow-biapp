@@ -7,7 +7,7 @@ import {
   type Artboard,
   type NodeRect,
 } from '@vislow/component-registry';
-import { MoveHorizontal } from 'lucide-react';
+import { MoveHorizontal, SlidersHorizontal } from 'lucide-react';
 import { PanelSectionHeading } from '@/components/PanelSection';
 import { useEffect, useId, useRef, useState } from 'react';
 import { ARTBOARD_PRESETS } from '@/lib/artboard';
@@ -28,6 +28,7 @@ function Row({
   hint,
   error,
   labelFor,
+  publish,
   children,
 }: {
   label: string;
@@ -35,10 +36,21 @@ function Row({
   error?: string | undefined;
   /** Amarra o rotulo a um campo proprio. Sem isto ele e so texto. */
   labelFor?: string | undefined;
+  /**
+   * O alternador de publicacao, na calha da esquerda.
+   *
+   * CALHA, e nao um icone ao lado do rotulo: a pergunta "o que o consumidor do
+   * relatorio pode mexer?" se responde percorrendo a coluna inteira de uma vez,
+   * e um alternador depois de rotulos de larguras diferentes formaria uma borda
+   * irregular que nao se le em varredura. A celula fica VAZIA no campo que nao
+   * pode ser publicado — o alinhamento do painel nao depende de haver alternador.
+   */
+  publish?: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
-    <div className="grid grid-cols-[1fr_9rem] items-center gap-2 py-1">
+    <div className="grid grid-cols-[1.5rem_1fr_9rem] items-center gap-2 py-1">
+      <div className="flex justify-center">{publish}</div>
       <div>
         {labelFor === undefined ? (
           <div className={LABEL}>{label}</div>
@@ -62,10 +74,63 @@ function Row({
   );
 }
 
+/**
+ * O alternador de publicacao de UM campo.
+ *
+ * Publicar quer dizer: este controle passa a existir no painel de formatacao do
+ * Power BI, e quem abrir o relatorio pode muda-lo. FECHADO E O PADRAO — o
+ * alternador desligado nao e uma trava, e a ausencia de uma publicacao.
+ *
+ * O mesmo glifo aparece na arvore, no no que publica alguma coisa: sao a mesma
+ * informacao vista de dois lugares, e dois desenhos diferentes obrigariam o
+ * usuario a aprender duas vezes.
+ */
+export function PublishToggle({
+  label,
+  exposed,
+  onToggle,
+}: {
+  /** Rotulo do campo. Entra no nome acessivel — sao onze deles no painel. */
+  label: string;
+  exposed: boolean;
+  onToggle: (exposed: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      // `aria-pressed`, e nao dois rotulos que se alternam: o leitor de tela ja
+      // anuncia o estado, e um nome que muda faz o mesmo botao parecer dois.
+      aria-pressed={exposed}
+      aria-label={`Publicar ${label} no painel do Power BI`}
+      title={
+        exposed
+          ? `${label} aparece no painel do Power BI`
+          : `Publicar ${label} no painel do Power BI`
+      }
+      onClick={() => {
+        onToggle(!exposed);
+      }}
+      className={cn(
+        'flex size-6 items-center justify-center rounded transition-colors outline-none',
+        'focus-visible:ring-3 focus-visible:ring-ring/50',
+        exposed
+          ? 'bg-primary/10 text-primary hover:bg-primary/20'
+          : 'text-muted-foreground/50 hover:bg-muted hover:text-foreground',
+      )}
+      style={{ touchAction: 'manipulation' }}
+    >
+      {/* Fora de um `Button`, ninguem encolhe o lucide: sem `size-*` ele entra
+          com os 24px de fabrica e estoura a calha. */}
+      <SlidersHorizontal className="size-3" />
+    </button>
+  );
+}
+
 export function SelectField({
   label,
   hint,
   error,
+  publish,
   value,
   options,
   placeholder,
@@ -74,6 +139,7 @@ export function SelectField({
   label: string;
   hint?: string | undefined;
   error?: string | undefined;
+  publish?: React.ReactNode | undefined;
   value: string;
   options: { value: string; label: string }[];
   /** Opcao vazia inicial. Usada quando "nao escolhido" e um estado legitimo. */
@@ -81,7 +147,7 @@ export function SelectField({
   onChange: (v: string) => void;
 }) {
   return (
-    <Row label={label} hint={hint} error={error}>
+    <Row label={label} hint={hint} error={error} publish={publish}>
       {/* `bg-card` explicito, sobrepondo o `bg-transparent` do INPUT: um
           `<select>` NATIVO com fundo transparente deixa o navegador desenhar a
           lista de opcoes sobre o que estiver atras dela, e o texto fica ilegivel
@@ -136,6 +202,7 @@ export function NumberInput({
   label,
   hint,
   error,
+  publish,
   value,
   min,
   max,
@@ -147,6 +214,7 @@ export function NumberInput({
   label: string;
   hint?: string | undefined;
   error?: string | undefined;
+  publish?: React.ReactNode | undefined;
   value: number;
   min: number;
   max: number;
@@ -196,7 +264,7 @@ export function NumberInput({
   };
 
   return (
-    <Row label={label} hint={hint} error={error} labelFor={id}>
+    <Row label={label} hint={hint} error={error} publish={publish} labelFor={id}>
       <div className="flex items-center gap-1.5">
         {/*
           A ALCA DE ARRASTO. O rotulo visivel da linha e o `<label>` do `Row`,
@@ -657,18 +725,20 @@ export function ColorField({
   label,
   hint,
   error,
+  publish,
   value,
   onChange,
 }: {
   label: string;
   hint?: string | undefined;
   error?: string | undefined;
+  publish?: React.ReactNode | undefined;
   value: string;
   onChange: (v: string) => void;
 }) {
   const id = useId();
   return (
-    <Row label={label} hint={hint} error={error}>
+    <Row label={label} hint={hint} error={error} publish={publish}>
       <div className="flex items-center gap-1.5">
         <input
           id={id}
@@ -701,17 +771,19 @@ export function ToggleField({
   label,
   hint,
   error,
+  publish,
   value,
   onChange,
 }: {
   label: string;
   hint?: string | undefined;
   error?: string | undefined;
+  publish?: React.ReactNode | undefined;
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
   return (
-    <Row label={label} hint={hint} error={error}>
+    <Row label={label} hint={hint} error={error} publish={publish}>
       <button
         type="button"
         role="switch"
@@ -742,24 +814,41 @@ export function TextField({
   label,
   hint,
   error,
+  publish,
   value,
   maxLength,
+  placeholder,
   onChange,
 }: {
   label: string;
   hint?: string | undefined;
   error?: string | undefined;
+  publish?: React.ReactNode | undefined;
   value: string;
   maxLength?: number | undefined;
+  /**
+   * O que o campo mostra quando esta vazio.
+   *
+   * Existe para o apelido do no: vazio, o card do painel do Power BI se chama
+   * pelo rotulo do descritor, e um campo em branco nao diria qual e esse nome.
+   */
+  placeholder?: string | undefined;
   onChange: (v: string) => void;
 }) {
   return (
-    <Row label={label} hint={hint} error={error}>
+    <Row label={label} hint={hint} error={error} publish={publish}>
       <input
         type="text"
         className={cn(INPUT, error !== undefined && 'border-warning')}
         value={value}
         maxLength={maxLength}
+        placeholder={placeholder}
+        // O mesmo par do `NumberInput`, e pelo mesmo motivo: e o `name` que o
+        // gerenciador de senhas le para decidir NAO agir sobre este campo. Um
+        // campo de texto sem ele ja apareceu com sugestao de preenchimento em
+        // cima do conteudo de um titulo.
+        name={`prop-${label.toLowerCase().replace(/\s+/gu, '-')}`}
+        autoComplete="off"
         onChange={(e) => {
           onChange(e.target.value);
         }}

@@ -1,5 +1,5 @@
-import { CONTAINER_CANVAS, NODE_DESCRIPTORS } from './registry.js';
-import { RECT_MIN_SIZE, type NodeRect, type SpecNode } from './spec.js';
+import { CONTAINER_CANVAS, exposableFields, isExposable, NODE_DESCRIPTORS } from './registry.js';
+import { NODE_NAME_MAX_LENGTH, RECT_MIN_SIZE, type NodeRect, type SpecNode } from './spec.js';
 
 /**
  * Edicao da arvore — funcoes PURAS que devolvem uma raiz nova.
@@ -280,6 +280,102 @@ export function setNodeProps(
   return replace(root, id, (target) =>
     withPlacedChildren({ ...target, props: { ...target.props, ...patch } }),
   );
+}
+
+/**
+ * Titulo do no onde quer que ele apareca para um humano: o card do painel de
+ * formatacao do visual gerado e a arvore do editor.
+ *
+ * O apelido e opcional, entao o fallback tem de existir num lugar so — o mesmo
+ * motivo do `artboardOf`. Um `?? label` por chamada e uma chance por chamada de
+ * um lado chamar o no de "Texto" e o outro de coisa nenhuma.
+ */
+export function titleOf(node: SpecNode): string {
+  return node.name ?? NODE_DESCRIPTORS[node.kind].label;
+}
+
+/**
+ * Apelido que o editor propoe ao publicar o primeiro campo de um no.
+ *
+ * Do CONTEUDO quando ha um, porque e assim que o autor reconhece o componente:
+ * o card chamado "Receita total" e o titulo que ele esta vendo na prancheta.
+ * Sem conteudo — um container — sobra o rotulo do descritor.
+ */
+export function suggestNodeName(node: SpecNode): string {
+  const content = node.props.content;
+  const text = typeof content === 'string' ? content.trim().replace(/\s+/g, ' ') : '';
+  if (text === '') return NODE_DESCRIPTORS[node.kind].label;
+  return text.slice(0, NODE_NAME_MAX_LENGTH);
+}
+
+/**
+ * Troca o apelido do no. String vazia REMOVE o apelido, e o titulo volta a ser
+ * o rotulo do descritor — apagar o campo no painel nao pode produzir um card
+ * sem titulo nenhum.
+ */
+export function setNodeName(root: SpecNode, id: string, name: string): SpecNode | null {
+  const clean = name.trim().slice(0, NODE_NAME_MAX_LENGTH);
+  return replace(root, id, (target) => {
+    const next: SpecNode = { ...target };
+    if (clean === '') delete next.name;
+    else next.name = clean;
+    return next;
+  });
+}
+
+/**
+ * Publica ou despublica um campo no painel de formatacao do visual gerado.
+ *
+ * Rejeita (`null`) a chave que nao existe no descritor ou que nao e publicavel —
+ * a mesma convencao do resto do modulo, e a mesma regra que `validateSpec` cobra
+ * depois na spec que chega de fora.
+ *
+ * Duas invariantes moram aqui, e nao no editor:
+ *
+ *   1. a lista guarda a ORDEM DO DESCRITOR, nunca a ordem dos cliques. Ela vira
+ *      a ordem dos slices dentro do card, e a ordem de clique faria dois autores
+ *      com as mesmas escolhas gerarem pacotes diferentes — e o mesmo autor,
+ *      dois, ao desmarcar e remarcar;
+ *   2. publicar o PRIMEIRO campo batiza o no, se ele ainda nao tem apelido. O
+ *      titulo do card e a unica coisa pela qual o consumidor identifica o
+ *      componente, e um card chamado "Texto" nasce de um esquecimento que so
+ *      aparece dentro do Power BI.
+ *
+ * Despublicar tudo NAO apaga o apelido: quem publica de novo reencontra o nome
+ * que escolheu, e um apelido sozinho nao chega ao pacote.
+ */
+export function setFieldExposed(
+  root: SpecNode,
+  id: string,
+  key: string,
+  exposed: boolean,
+): SpecNode | null {
+  const node = findNode(root, id);
+  if (!node) return null;
+
+  const field = NODE_DESCRIPTORS[node.kind].fields.find((candidate) => candidate.key === key);
+  if (!field || !isExposable(field)) return null;
+
+  return replace(root, id, (target) => {
+    const current = new Set(target.exposed ?? []);
+    if (exposed) current.add(key);
+    else current.delete(key);
+
+    const next: SpecNode = { ...target };
+    const keys = exposableFields(target.kind)
+      .map((candidate) => candidate.key)
+      .filter((candidate) => current.has(candidate));
+
+    // Ausente, e nao `[]`: "fechado" tem uma representacao so. Duas fariam o
+    // teste de "projeto sem nada publicado gera o pacote de antes" passar num
+    // caminho e falhar no outro.
+    if (keys.length === 0) delete next.exposed;
+    else next.exposed = keys;
+
+    if (keys.length > 0 && next.name === undefined) next.name = suggestNodeName(target);
+
+    return next;
+  });
 }
 
 /**

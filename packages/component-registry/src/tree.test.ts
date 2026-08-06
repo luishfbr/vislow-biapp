@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { createEmptySpec, createNode } from './factory.js';
-import { NODE_KINDS, defaultPropsFor } from './registry.js';
+import { cloneSubtree, createEmptySpec, createNode } from './factory.js';
+import {
+  NODE_DESCRIPTORS,
+  NODE_KINDS,
+  defaultPropsFor,
+  exposableFields,
+  isExposable,
+} from './registry.js';
 import { assertValidSpec, validateSpec } from './schema.js';
 import type { SpecNode } from './spec.js';
 import {
@@ -13,9 +19,13 @@ import {
   removeNode,
   reparentNode,
   selectionAfterRemoval,
+  setFieldExposed,
+  setNodeName,
   setNodeProps,
   setNodeRect,
   subtreeIds,
+  suggestNodeName,
+  titleOf,
 } from './tree.js';
 
 /**
@@ -233,5 +243,120 @@ describe('as operacoes preservam a validade da spec', () => {
     }
 
     expect(validateSpec({ ...spec, root }).kind).toBe('valid');
+  });
+});
+
+/**
+ * O que o autor publica no painel de formatacao do visual gerado (spec 5.1.0).
+ *
+ * As invariantes moram nas OPERACOES, e nao no editor, pelo mesmo motivo do
+ * resto do modulo: sao testaveis sem React, e nao ha caminho pelo qual a
+ * interface produza uma lista fora de ordem ou um card sem titulo.
+ */
+describe('publicacao de campo', () => {
+  const texto = (): SpecNode => {
+    const node = createNode('text');
+    node.props.content = 'Receita total';
+    return node;
+  };
+
+  it('FECHADO e o padrao: no recem-criado nao publica nada', () => {
+    expect(createNode('text').exposed).toBeUndefined();
+    expect(createNode('container').exposed).toBeUndefined();
+  });
+
+  it('publicar o primeiro campo batiza o no', () => {
+    const root = texto();
+    const next = setFieldExposed(root, root.id, 'color', true);
+
+    expect(next?.exposed).toEqual(['color']);
+    // O titulo do card e a unica coisa pela qual o consumidor identifica o
+    // componente: um card chamado "Texto" nasce de um esquecimento que so
+    // apareceria dentro do Power BI.
+    expect(next?.name).toBe('Receita total');
+  });
+
+  it('o apelido ja escolhido nao e sobrescrito pela publicacao seguinte', () => {
+    const root = texto();
+    const batizado = setNodeName(root, root.id, 'Cabecalho')!;
+    const publicado = setFieldExposed(batizado, batizado.id, 'color', true);
+
+    expect(publicado?.name).toBe('Cabecalho');
+  });
+
+  it('a lista guarda a ordem do DESCRITOR, nao a dos cliques', () => {
+    // Ela vira a ordem dos slices dentro do card. Pela ordem de clique, o mesmo
+    // autor geraria dois pacotes diferentes so por desmarcar e remarcar.
+    let root: SpecNode = texto();
+    for (const key of ['overflow', 'color', 'content']) {
+      root = setFieldExposed(root, root.id, key, true) ?? root;
+    }
+
+    const ordem = exposableFields('text')
+      .map((field) => field.key)
+      .filter((key) => root.exposed?.includes(key));
+    expect(root.exposed).toEqual(ordem);
+  });
+
+  it('despublicar tudo remove a lista, mas preserva o apelido', () => {
+    const root = texto();
+    const publicado = setFieldExposed(root, root.id, 'color', true)!;
+    const fechado = setFieldExposed(publicado, publicado.id, 'color', false);
+
+    // AUSENTE, e nao `[]`: "fechado" precisa ter uma representacao so, senao o
+    // teste de "projeto sem publicacao gera o pacote de antes" vale num caminho
+    // e falha no outro.
+    expect(fechado?.exposed).toBeUndefined();
+    // Quem publicar de novo reencontra o nome que escolheu.
+    expect(fechado?.name).toBe('Receita total');
+  });
+
+  it('campo estrutural e campo inexistente sao REJEITADOS', () => {
+    const root = createNode('container');
+    // `placement` decide se o codegen embrulha os filhos em CanvasSlot: a
+    // escolha ja foi gasta quando o pacote foi gerado.
+    expect(setFieldExposed(root, root.id, 'placement', true)).toBeNull();
+    expect(setFieldExposed(root, root.id, 'naoExiste', true)).toBeNull();
+    expect(isExposable(NODE_DESCRIPTORS.container.fields[0]!)).toBe(false);
+  });
+
+  it('o apelido vazio volta ao rotulo do descritor', () => {
+    const root = texto();
+    const batizado = setNodeName(root, root.id, '  Cabecalho  ')!;
+    expect(batizado.name).toBe('Cabecalho');
+
+    const apagado = setNodeName(batizado, batizado.id, '   ')!;
+    expect(apagado.name).toBeUndefined();
+    expect(titleOf(apagado)).toBe('Texto');
+  });
+
+  it('o apelido sugerido vem do conteudo, senao do rotulo', () => {
+    expect(suggestNodeName(texto())).toBe('Receita total');
+    expect(suggestNodeName(createNode('container'))).toBe('Container');
+  });
+
+  it('duplicar um no leva a publicacao junto', () => {
+    const root = texto();
+    const publicado = setFieldExposed(root, root.id, 'color', true)!;
+    const copia = cloneSubtree(publicado);
+
+    expect(copia.exposed).toEqual(publicado.exposed);
+    expect(copia.name).toBe(publicado.name);
+    // Ids diferentes: sao dois cards separados no painel do Power BI.
+    expect(copia.id).not.toBe(publicado.id);
+  });
+
+  it('a spec com campo publicado passa no schema; com campo estrutural, nao', () => {
+    const spec = createEmptySpec('Publicada');
+    const comTexto = insertChild(spec.root, spec.root.id, texto())!;
+    const alvo = comTexto.children?.[0];
+    const publicado = setFieldExposed(comTexto, alvo?.id ?? '', 'color', true)!;
+
+    expect(validateSpec({ ...spec, root: publicado }).kind).toBe('valid');
+
+    // Uma spec adulterada, que nao passou pelas operacoes de arvore.
+    const adulterado = structuredClone(publicado);
+    adulterado.exposed = ['placement'];
+    expect(validateSpec({ ...spec, root: adulterado }).kind).toBe('invalid');
   });
 });

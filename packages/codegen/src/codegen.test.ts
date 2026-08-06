@@ -7,7 +7,9 @@ import {
   NODE_KINDS,
   assertValidSpec,
   createNode,
+  walk,
   type NodeKind,
+  type VisualSpec,
 } from '@vislow/component-registry';
 import { generateCapabilities } from './capabilities.js';
 import { generatePbiviz } from './pbiviz.js';
@@ -18,11 +20,18 @@ import {
   TEST_TABLE,
   specWith,
   specWithEveryKind,
+  specWithExposure,
   specWithKind,
   nodeOf,
 } from './fixtures.js';
 
 const BUILD_ID = 'b1c2d3e4';
+
+/** A forma de um `object` do capabilities, so o que os testes leem. */
+interface ExposedObject {
+  displayName: string;
+  properties: Record<string, { displayName: string; type: Record<string, unknown> } | undefined>;
+}
 
 describe('emissao do visual.tsx', () => {
   it.each(NODE_KINDS)('o tipo "%s" emite o componente do registro', (kind: NodeKind) => {
@@ -420,5 +429,164 @@ describe('generateProject', () => {
       expect(file.contents.endsWith('\n')).toBe(true);
       expect(() => JSON.parse(file.contents) as unknown).not.toThrow();
     }
+  });
+});
+
+/**
+ * O painel de formatacao do visual gerado (spec 5.1.0).
+ *
+ * A afirmacao central desta suite e a PRIMEIRA: sem nada publicado, o pacote e o
+ * de antes do Sprint B. Ela e o que permite a todas as outras serem aditivas —
+ * e a que falha no dia em que alguem transformar o painel em comportamento
+ * padrao, que foi a decisao explicitamente recusada no desenho.
+ */
+describe('painel de formatacao no visual gerado', () => {
+  const publicada = assertValidSpec(specWithExposure());
+
+  /** O primeiro no publicado da fixture e o container; o segundo, o titulo. */
+  const objetos = (spec: VisualSpec): Record<string, ExposedObject> =>
+    generateCapabilities(spec).objects as Record<string, ExposedObject>;
+
+  it('sem nada publicado, o pacote e identico ao de antes', () => {
+    const fechada = assertValidSpec(specWithEveryKind('Nada Publicado'));
+    for (const { node } of walk(fechada)) expect(node.exposed).toBeUndefined();
+
+    const capabilities = generateCapabilities(fechada);
+    expect(capabilities.objects).toEqual({});
+    // A chave AUSENTE, e nao `false`: o gate compara o capabilities do zip com o
+    // regerado, e uma chave a mais e uma diferenca.
+    expect('supportsEmptyDataView' in capabilities).toBe(false);
+
+    const source = generateVisualSource(fechada, BUILD_ID);
+    expect(source).not.toContain('FORMATTING');
+    expect(source).not.toContain('./formatting');
+    expect(source).not.toContain('pick(');
+    expect(source).not.toContain('getFormattingModel');
+  });
+
+  it('cada no publicado vira um object, com o id do no como nome', () => {
+    const objects = objetos(publicada);
+    const [container, titulo] = [publicada.root, publicada.root.children?.[0]];
+
+    expect(Object.keys(objects)).toEqual([container.id, titulo?.id]);
+    // O apelido vira o titulo do card; sem apelido, o rotulo do descritor.
+    expect(objects[container.id]?.displayName).toBe('Container');
+    expect(objects[titulo?.id ?? '']?.displayName).toBe('Titulo do painel');
+  });
+
+  it('o no que nao publicou nada nao ganha object', () => {
+    const nota = publicada.root.children?.[1];
+    expect(nota?.exposed).toBeUndefined();
+    expect(Object.keys(objetos(publicada))).not.toContain(nota?.id);
+  });
+
+  it('cada tipo de campo vira o tipo de propriedade que o host entende', () => {
+    const titulo = publicada.root.children?.[0];
+    const properties = objetos(publicada)[titulo?.id ?? '']?.properties ?? {};
+
+    expect(properties.content?.type).toEqual({ text: true });
+    // `integer`, e nao `numeric`: meio pixel nao e uma escolha.
+    expect(properties.fontSize?.type).toEqual({ integer: true });
+    expect(properties.color?.type).toEqual({ fill: { solid: { color: true } } });
+    expect(properties.showBackground?.type).toEqual({ bool: true });
+    // O rotulo humano do registro chega ao dropdown do Power BI.
+    expect(properties.fontWeight?.type).toEqual({
+      enumeration: [
+        { value: 'normal', displayName: 'Normal' },
+        { value: 'medium', displayName: 'Medio' },
+        { value: 'semibold', displayName: 'Semi-negrito' },
+        { value: 'bold', displayName: 'Negrito' },
+      ],
+    });
+  });
+
+  /**
+   * Sem esta chave o painel aparece, o consumidor mexe e NADA muda no visual:
+   * com `dataRoles: []`, e ela que faz os valores chegarem ao `update()`. E o
+   * modo de falha mais caro deste sprint, porque nao produz erro nenhum.
+   */
+  it('declara supportsEmptyDataView quando ha painel', () => {
+    expect(generateCapabilities(publicada).supportsEmptyDataView).toBe(true);
+  });
+
+  it('o capabilities publicado continua valido contra o schema oficial', () => {
+    const ajv = new Ajv({ strict: false, allErrors: false, validateSchema: true });
+    const validate = ajv.compile(capabilitiesSchema);
+    const explique = (): string =>
+      (validate.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message ?? ''}`).join('; ');
+
+    expect(validate(generateCapabilities(publicada)), explique()).toBe(true);
+  });
+
+  it('campo publicado le o override; campo fechado sai literal', () => {
+    const source = generateVisualSource(publicada, BUILD_ID);
+    const titulo = publicada.root.children?.[0];
+    const element = source.slice(source.indexOf('<TextBox'));
+
+    // Publicado: o valor do autor vira o ULTIMO argumento do `pick`, nao some.
+    expect(element).toContain(
+      `fontSize={pick(overrides, ${jsString(titulo?.id ?? '')}, "fontSize", 20)}`,
+    );
+    // Fechado: literal, como sempre. E o que torna "ignorar o override" uma
+    // propriedade estrutural do pacote — nao ha por onde ler o `objects` ali.
+    expect(element).toContain('padding={8}');
+    expect(element).not.toContain('padding={pick(');
+  });
+
+  it('a tabela FORMATTING leva rotulo, faixa e opcoes — o registro nao vai ao bundle', () => {
+    const source = generateVisualSource(publicada, BUILD_ID);
+    const table = source.slice(source.indexOf('const FORMATTING'), source.indexOf('function Tree'));
+
+    expect(table).toContain('"label": "Tamanho"');
+    expect(table).toContain('"min": 8');
+    expect(table).toContain('"max": 200');
+    expect(table).toContain('"maxLength": 500');
+    expect(table).toContain('"label": "Semi-negrito"');
+  });
+
+  it('a ordem dos campos e a do descritor, nao a do clique', () => {
+    const source = generateVisualSource(publicada, BUILD_ID);
+    const titulo = publicada.root.children?.[0];
+    // A fixture publica embaralhado de proposito.
+    expect(titulo?.exposed?.[0]).toBe('color');
+
+    const table = source.slice(source.indexOf('const FORMATTING'), source.indexOf('function Tree'));
+    const ordem = NODE_DESCRIPTORS.text.fields
+      .map((field) => field.key)
+      .filter((key) => titulo?.exposed?.includes(key))
+      .map((key) => table.indexOf(`"key": ${jsString(key)}`));
+
+    expect(ordem).toEqual([...ordem].sort((a, b) => a - b));
+    expect(ordem[0]).toBeGreaterThan(-1);
+  });
+
+  it('o governante de um showWhen viaja mesmo sem ser publicado', () => {
+    // `background` so aparece com `showBackground` ligado. Na fixture os dois
+    // estao publicados; aqui fica so o governado, e o valor do governante tem de
+    // viajar assim mesmo — senao o painel avalia a condicao contra nada.
+    const spec = specWithExposure('Governante Fechado');
+    const titulo = spec.root.children?.[0];
+    if (titulo) titulo.exposed = ['background'];
+
+    const source = generateVisualSource(assertValidSpec(spec), BUILD_ID);
+    const table = source.slice(source.indexOf('const FORMATTING'), source.indexOf('function Tree'));
+
+    expect(table).toContain('"showBackground": false');
+    expect(table).toContain('"showWhen"');
+  });
+
+  it('o apelido do no e o conteudo do texto passam por literal de string', () => {
+    // RN-11: os dois sao coisa que o USUARIO escreveu, e nenhum dos dois pode
+    // escapar das aspas no fonte gerado.
+    const spec = specWithExposure('Aspas');
+    const titulo = spec.root.children?.[0];
+    if (titulo) {
+      titulo.name = 'Fecha "aspas" </script>';
+      titulo.props.content = 'Conteudo </script>';
+    }
+
+    const source = generateVisualSource(assertValidSpec(spec), BUILD_ID);
+    expect(source).not.toContain('</script>');
+    expect(source).toContain(jsString('Fecha "aspas" </script>'));
   });
 });

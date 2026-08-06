@@ -110,7 +110,7 @@ Não automatizáveis, e por isso escritas:
 | Contrato | Vitest | Fixtures *golden* de spec validadas e renderizadas em snapshot |
 | **Aceite** | Vitest + JSZip + jsdom | `compiledVisual.e2e.test.ts` — ver [build-visual.md](build-visual.md) |
 | E2E | Playwright | Editar → preview → exportar → validar o zip baixado. Cobre RNF-01 e RNF-02 com medição. |
-| Manual | Power BI Desktop + Service | [Matriz MT-01…MT-14](#7-matriz-de-teste-manual) |
+| Manual | Power BI Desktop + Service | [Matriz MT-01…MT-16](#7-matriz-de-teste-manual) |
 
 Dois testes ligam caminhos que nada mais liga, e por isso não se apagam:
 `nodeComponents.test.ts` (o preview contra o codegen) e `tokens.test.ts` (o catálogo contra o mapa de classes,
@@ -192,6 +192,8 @@ Executada a cada fase, em Power BI Desktop **e** no Service. O CI não substitui
 | MT-12 | Pacote com spec corrompida à mão | Card de erro, **nunca** tela branca (RN-04) |
 | MT-13 | Texto com aspas, acentos e emoji | Texto íntegro (RF-03) |
 | MT-14 | Publicar o relatório no Power BI Service | Renderiza igual ao Desktop |
+| MT-15 | **Campo publicado no painel de formatação** | O card aparece com o **apelido** do nó; mudar cor, texto ou medida altera o visual na hora (spec 5.1.0) |
+| MT-16 | Salvar o `.pbix`, fechar e reabrir | A escolha feita no painel **persiste**; "Redefinir para o padrão" volta ao valor do autor |
 
 **Ao diagnosticar qualquer coisa no Desktop, peça o `buildId` primeiro** (achado 40). Sem ele, "importou o
 arquivo antigo" é indistinguível de "a correção não funcionou" — e isso já custou uma sessão inteira.

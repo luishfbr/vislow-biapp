@@ -54,6 +54,12 @@ export function cloneSubtree(node: SpecNode): SpecNode {
     props: { ...node.props },
   };
   if (node.rect) copy.rect = { ...node.rect };
+  // O apelido e a lista de publicados acompanham a copia: duplicar um
+  // componente ja publicado e pedir outro igual, e nao um que perde o painel de
+  // formatacao em silencio. O `objectName` do capabilities e o ID, que e novo —
+  // entao os dois cards existem separados no Power BI, como devem.
+  if (node.name !== undefined) copy.name = node.name;
+  if (node.exposed) copy.exposed = [...node.exposed];
   if (node.children) copy.children = node.children.map(cloneSubtree);
   return copy;
 }

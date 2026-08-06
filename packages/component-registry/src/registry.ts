@@ -94,6 +94,10 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
         key: 'placement',
         label: 'Disposicao',
         hint: 'Empilhar divide o espaco sozinho; livre da a cada filho a sua propria caixa.',
+        // O codegen le esta chave para decidir se embrulha os filhos em
+        // `CanvasSlot`. E a definicao de `structural`: a escolha ja foi gasta
+        // quando o pacote foi gerado, entao ela nao vai ao painel do Power BI.
+        structural: true,
         kind: 'select',
         options: [CONTAINER_STACK, CONTAINER_CANVAS],
         // `stack` e o default para que toda spec ja salva continue igual sem
@@ -216,6 +220,29 @@ export function roleFieldsOf(kind: NodeKind): Extract<FieldSpec, { kind: 'role' 
   return NODE_DESCRIPTORS[kind].fields.filter(
     (field): field is Extract<FieldSpec, { kind: 'role' }> => field.kind === 'role',
   );
+}
+
+/**
+ * O campo pode ser publicado no painel de formatacao do visual gerado?
+ *
+ * Duas exclusoes, e as duas sao por natureza do campo, nao por gosto:
+ *
+ *   - `structural`, porque o codegen ja consumiu a escolha para decidir a forma
+ *     da arvore (ver `FieldBase.structural`);
+ *   - `role`, porque campo de papel nao e formatacao: e a ligacao com uma coluna
+ *     do modelo, e quem a troca e o poco de campos do Power BI, nao um slice.
+ *
+ * FONTE UNICA dos tres consumidores de sempre — o painel do editor, que decide
+ * onde desenhar o alternador; o `validateSpec`, que reprova chave publicada que
+ * nao poderia ser; e o codegen, que emite o `objects` do capabilities.
+ */
+export function isExposable(field: FieldSpec): boolean {
+  return field.kind !== 'role' && field.structural !== true;
+}
+
+/** Campos publicaveis de um tipo de no, na ordem do descritor. */
+export function exposableFields(kind: NodeKind): FieldSpec[] {
+  return NODE_DESCRIPTORS[kind].fields.filter(isExposable);
 }
 
 /**

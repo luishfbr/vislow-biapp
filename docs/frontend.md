@@ -219,6 +219,18 @@ estado**; a derivação que cria objeto vive em `lib/issues.ts` e é memoizada n
 **Nome de coluna é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createColumn` e amarra as
 referências da árvore e o `capabilities.json`.
 
+**Publicar um campo é uma edição** (spec 5.1.0). O painel de propriedades ganhou uma **calha** à esquerda, com
+um alternador por campo: publicar quer dizer "este controle passa a existir no painel de formatação do Power BI".
+Calha, e não um ícone depois do rótulo — a pergunta "o que o consumidor do relatório vai poder mexer?" se
+responde percorrendo a coluna inteira, e alternadores depois de rótulos de larguras diferentes formariam uma
+borda irregular. **Fechado é o padrão**, e a célula fica vazia no campo estrutural (`placement`).
+
+As invariantes moram em `setFieldExposed`, no `component-registry`, e não aqui: a lista guarda a **ordem do
+descritor** (é ela que vira a ordem dos slices no card) e **publicar o primeiro campo batiza o nó**. O store só
+passa pelo `commit`, então publicar entra no histórico como qualquer outra edição. O **mesmo glifo** aparece na
+árvore, no nó que publica alguma coisa — é a mesma informação vista de outro lugar, e é o único lugar em que dá
+para ver o painel do consumidor sem abrir nó por nó.
+
 Um projeto v1 no `localStorage` é migrado na hidratação preservando o `project.id` — sem ele, reexportar
 duplicaria o visual em vez de atualizá-lo.
 

@@ -225,6 +225,9 @@ importers:
       '@vislow/visual-kit':
         specifier: workspace:*
         version: link:../visual-kit
+      powerbi-visuals-api:
+        specifier: 5.11.1
+        version: 5.11.1
 
 packages:
 

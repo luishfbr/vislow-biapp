@@ -154,14 +154,23 @@ trocável — um "Ano" é inteiro e ainda assim agrupa.
 **Os VALORES da tabela não entram no pacote**, pela mesma regra da prancheta: dois testes reprovam o vazamento,
 um no fonte gerado e outro no bundle compilado. O que viaja é só o esquema.
 
-**Próximo — Sprint B, spec 5.1.0:** o **painel de formatação no visual gerado**. O nó ganha `name` (apelido, que
-vira o título do card) e `locked` (as chaves que o autor travou — guardar o que está travado faz "ausente = tudo
-destravado" cair de graça); o `capabilities` passa a emitir `objects`; o codegen emite `getFormattingModel`,
-escrito à mão contra os tipos que **já vêm no `powerbi-visuals-api@5.11.1`** — zero dependência nova, ADR-19
-intacto. Campo travado continua saindo literal no JSX e não tem por onde ler o `objects`: ignorar override vira
-propriedade estrutural, não verificação em runtime.
+**O visual gerado tem painel de formatação desde 2026-08-06** (spec 5.1.0, RF-28, ADR-20) — e ele é **FECHADO
+por padrão**. O nó ganhou `name` (apelido, que vira o título do card) e `exposed` (as chaves que o autor
+publicou); cada nó publicado vira um `object` no `capabilities.json` com o **id do nó** como `objectName`, mais
+`supportsEmptyDataView: true` — sem essa chave, com `dataRoles: []`, o painel aparece e o valor nunca chega ao
+`update()`. O `getFormattingModel` é escrito à mão contra os tipos que **já vêm no `powerbi-visuals-api@5.11.1`**
+(zero dependência nova no pacote, ADR-19 intacto) e mora **estático** em `visual-template/template/src/formatting.ts`,
+ao lado do `interaction.ts`; o codegen emite só DADO, a tabela `FORMATTING`.
 
-**Depois — Fase 4:** KPI Card com comparação (que tira da quarentena os testes de interatividade e de
+Duas consequências que valem saber antes de mexer:
+
+- **Projeto que não publica nada gera o pacote de antes, byte a byte** — sem `objects`, sem
+  `supportsEmptyDataView`, sem `getFormattingModel`, com JSX só de literais. Há teste afirmando isso.
+- **Campo fechado sai literal no JSX e não tem por onde ler o `objects`**: ignorar override é propriedade
+  estrutural, não verificação em runtime. `placement` nunca é publicável (`structural: true` no descritor) —
+  é o codegen que o lê para decidir se embrulha os filhos em `CanvasSlot`.
+
+**Próximo — Fase 4:** KPI Card com comparação (que tira da quarentena os testes de interatividade e de
 `dataRoles`), matriz manual MT-01…MT-14 (incluindo o Service) e E2E Playwright do editor.
 
 O detalhe de cada sprint está em [docs/history.md](docs/history.md); não é preciso lê-lo para trabalhar.
