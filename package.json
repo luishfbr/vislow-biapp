@@ -20,7 +20,7 @@
     "stage:vendor": "turbo run stage:vendor",
     "stage:deps": "turbo run stage:deps",
     "dev:api": "turbo run dev --filter @vislow/api",
-    "clean": "turbo run clean && rm -rf .turbo",
+    "clean": "turbo run clean && node scripts/rmrf.mjs .turbo",
 
     "// tarefas de raiz": "Implementacoes de `//#lint`, `//#lint:docs` e `//#test` — o turbo as chama por este nome exato, entao elas nao podem ser wrappers do proprio turbo. Use `pnpm verify`, que as roda na ordem certa.",
     "lint": "eslint .",
