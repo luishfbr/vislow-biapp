@@ -110,21 +110,30 @@ function fakeHost(calls: HostCalls, highContrast: boolean) {
  * runtime antigo — e essa troca que o pivo trouxe.
  */
 function fakeDataView() {
+  /*
+   * UMA linha por medida, ja agregada — que e o que o host entrega quando o
+   * mapeamento nao pede categoria. O KPI e o unico no que le dados, e ele so
+   * declara papel de MEDIDA.
+   *
+   * O `format` da coluna e o que faz o `valueFormatter` do template devolver
+   * `1.234,57` em vez de `1234.5678` (RF-17). Sem ele o teste passaria com o
+   * numero cru e o Desktop mostraria amadorismo.
+   */
   const values = [
     {
       source: { displayName: 'Receita', roles: { valor: true }, format: '#,0.00' },
-      values: [120, 340, 210, 90],
+      values: [1084320],
+    },
+    {
+      source: { displayName: 'Meta', roles: { meta: true }, format: '#,0.00' },
+      values: [1000000],
     },
   ];
   return {
     categorical: {
-      categories: [
-        {
-          source: { displayName: 'Regiao', roles: { categoria: true } },
-          values: ['Norte', 'Sul', 'Leste', 'Oeste'],
-          identity: [0, 1, 2, 3],
-        },
-      ],
+      // SEM `categories`: nenhum descritor declara papel de agrupamento, entao o
+      // mapeamento gerado nao pede categoria e o host nao a entregaria. Um bloco
+      // aqui faria o harness ser mais generoso que o Power BI.
       values: Object.assign(values, { grouped: () => [] }),
     },
     metadata: { columns: [] },
@@ -298,8 +307,11 @@ async function renderCompiled(
  * depender do Recharts resolver coordenada de mouse num DOM sem motor de
  * layout.
  *
- * A sobreposicao e dos graficos, e saiu com eles na spec 5.0.0. Ver a
- * quarentena no fim deste arquivo.
+ * A sobreposicao e dos graficos, e saiu com eles na spec 5.0.0. O KPI Card nao a
+ * traz de volta: ele e UM elemento focalizavel, nao uma serie de pontos, e sem
+ * papel de agrupamento nao ha identidade para acionar. Ver o bloco de paridade no
+ * fim deste arquivo — o teclado voltou como "alcancavel e rotulado", e o
+ * cross-filter continua sem sujeito.
  */
 
 describe('spec compilada vira um .pbiviz que renderiza', () => {
@@ -405,23 +417,62 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   /**
    * RN-04 do outro lado: SEM DataView nenhum, o visual continua desenhando.
    *
-   * Ate a spec 4.0.0 este teste esperava o `EmptyState` — "Faltam campos para
-   * montar o visual" —, porque todo no do catalogo consumia dados e sem coluna
-   * ligada nao havia o que desenhar. Nenhum no consome dados na 5.0.0: uma
-   * composicao de texto NAO depende do modelo, e exibir "faltam campos" seria
-   * mentira. O que a RN-04 continua exigindo e o que se afirma aqui — nunca
-   * branco, nunca card de erro.
-   *
-   * O `EmptyState` continua no kit, sem consumidor, e volta a aparecer com o KPI
-   * Card da Fase 4.
+   * A arvore tem os dois casos ao mesmo tempo, e e por isso que este teste mede
+   * os dois: a caixa de texto NAO depende do modelo e desenha o conteudo do
+   * autor; o KPI depende, e cai no `EmptyState` orientando qual campo arrastar
+   * (RF-20). Exibir "faltam campos" sobre a composicao inteira seria mentira, e
+   * desenhar um KPI em branco seria a tela branca que a RN-04 proibe.
    */
-  it('sem DataView, desenha a composicao em vez de quebrar', async () => {
+  it('sem DataView, o texto desenha e o KPI pede o campo', async () => {
     const { html, errors } = await renderCompiled(js, guid, false);
 
     expect(html).toContain(String(defaultPropsFor('text').content));
+    expect(html).toContain('Faltam campos para montar o visual');
     expect(html).not.toContain('RENDER_FAIL');
     expect(html).not.toContain('Não foi possível renderizar o visual');
     expect(errors).toEqual([]);
+  }, 60_000);
+
+  /**
+   * COM DataView, o numero chega a tela — formatado pelo host.
+   *
+   * A outra metade do estado vazio, e a que prova que a via de dados esta
+   * inteira: `capabilities` -> `matchRoles` -> `readDataFrame` -> `sumOf` -> DOM.
+   * Cada elo desses esteve dormente entre a 5.0.0 e a 5.2.0.
+   */
+  it('com DataView, o KPI desenha o valor formatado e a variacao', async () => {
+    const { html } = await renderCompiled(js, guid, true);
+    const figura = /vsl-kpi-figure[^>]*>([^<]*)</.exec(html)?.[1] ?? '';
+
+    /*
+     * ================== ACHADO ABERTO: O SEPARADOR NAO E O DO LOCALE =========
+     * O `format` da coluna CHEGA — agrupamento de milhar e duas casas decimais —,
+     * mas os separadores saem em `en-US` mesmo com `host.locale === 'pt-BR'`.
+     *
+     * A causa esta no `powerbi-visuals-utils-formattingutils`: o
+     * `formattingService.getCulture` chama `Globalize.findClosestCulture`, e as
+     * culturas so existem se `lib/globalize/globalize.cultures` for importado —
+     * o que ninguem faz. Sem elas, ele cai em `Globalize.culture("en-US")`.
+     * Importar o modulo custaria 1,17 MB de tabela de locales e estouraria o
+     * orcamento de 1 MB do `content.js` (RNF-04).
+     *
+     * NAO E REGRESSAO DESTE SPRINT: o caminho e o mesmo desde a spec 3.0.0. Ficou
+     * invisivel porque o teste equivalente da 4.x media `120` — abaixo de mil,
+     * sem separador nenhum para errar. O KPI trouxe um numero grande e o expos.
+     *
+     * A assertiva abaixo afirma o que e VERDADE hoje e nao congela o defeito: ela
+     * exige que o formato tenha sido aplicado, sem afirmar qual separador esta
+     * certo. A escolha entre pagar o bundle, trocar o `valueFormatter` por `Intl`
+     * ou aceitar `en-US` e do produto, e a RF-17 continua descoberta ate la.
+     * =========================================================================
+     */
+    expect(figura, 'o formato da coluna nao foi aplicado').toMatch(/^1[.,]084[.,]320[.,]00$/);
+
+    // A variacao usa `Intl` com o locale do quadro, e essa metade sai em pt-BR.
+    expect(html).toContain('▲');
+    expect(html).toContain('+84.320');
+    expect(html).toContain('vs Meta');
+    expect(html).not.toContain('Faltam campos para montar o visual');
   }, 60_000);
 
   /**
@@ -433,15 +484,12 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
    * anterior deste teste comparava o codegen consigo mesmo e por isso passava
    * verde enquanto o pacote entregue recusava todo arrasto no Desktop.
    */
-  it('o capabilities do PACOTE nao declara papel — ninguem consome dados', () => {
-    // Ate a spec 4.0.0 este teste conferia que os papeis consumidos pela arvore
-    // chegavam ao pacote (`['categoria', 'valor']`) — sem isso o usuario nao tem
-    // onde arrastar a coluna e o visual fica eternamente vazio. Nenhum no
-    // consome dados na 5.0.0, e o visual gerado sai SEM POCO DE CAMPOS no Power
-    // BI. Isto e consequencia conhecida da poda, nao descuido: a afirmacao fica
-    // registrada aqui e falha no dia em que a Fase 4 devolver o KPI Card.
-    expect(embutido.dataRoles).toEqual([]);
-    expect(embutido.dataViewMappings).toEqual([]);
+  it('o capabilities do PACOTE declara os papeis que a arvore consome', () => {
+    // O POCO DE CAMPOS VOLTOU na spec 5.2.0. Entre a poda da 5.0.0 e o KPI Card
+    // este teste afirmava o contrario — `dataRoles: []` —, e era essa afirmacao
+    // que sinalizava a hora de descongelar o resto do arquivo.
+    expect(embutido.dataRoles.map((role) => role.name)).toEqual(['valor', 'meta']);
+    expect(embutido.dataViewMappings).toHaveLength(1);
   });
 
   it('o capabilities do PACOTE e exatamente o que o codegen gerou', () => {
@@ -450,22 +498,32 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
     expect(embutido).toEqual(JSON.parse(JSON.stringify(generateCapabilities(spec))));
   });
 
-  /*
-   * ============ AS DUAS GUARDAS DE POCO DE CAMPOS ESTAO DORMENTES ============
-   * Havia aqui dois testes que so tem sujeito com `dataRoles` no pacote:
-   *
-   *   - "o capabilities do PACOTE exige o campo do tipo certo" — `requiredTypes`
-   *     e o que faz o host RECUSAR o arrasto de uma coluna do tipo errado; sem
-   *     ele o tipo escolhido no editor seria so formatacao de preview
-   *   - "nenhuma condicao do PACOTE declara `min` — senao os pocos travam" — a
-   *     regressao de 2026-08-03, em que os pocos apareciam com o nome certo e
-   *     recusavam toda coluna, para sempre, sem erro e sem aviso
-   *
-   * O codigo dos dois continua em `capabilities.ts`, e o `inspectArtifact` do
-   * `pipeline.ts` continua rejeitando `min` em producao. Voltam a ter o que
-   * medir com o KPI Card da Fase 4.
-   * ==========================================================================
-   */
+  it('o capabilities do PACOTE exige o campo do tipo certo', () => {
+    // `requiredTypes` e o que faz o host RECUSAR o arrasto de uma coluna do tipo
+    // errado — a coluna nem chega ao poco. Sem ele, o tipo escolhido no editor
+    // seria so formatacao de preview.
+    //
+    // As duas colunas da fixture sao `integer`, e `integer` e mais estreito que
+    // `numeric` de proposito: quem marcou a coluna como inteiro disse que casas
+    // decimais nao servem.
+    for (const role of embutido.dataRoles) {
+      expect(role.requiredTypes, role.name).toEqual([{ integer: true }]);
+    }
+  });
+
+  it('nenhuma condicao do PACOTE declara `min` — senao os pocos travam', () => {
+    // A regressao de 2026-08-03, medida onde importa: DENTRO do zip. O host
+    // valida o estado que os pocos teriam depois do arrasto, e uma condicao
+    // exigindo `min: 1` em todos os papeis descreve so o estado final — o estado
+    // apos o primeiro campo nao satisfaz condicao nenhuma, e o drop e descartado
+    // em silencio. O visual nunca sai de zero campos.
+    expect(JSON.stringify(embutido.dataViewMappings)).not.toContain('"min"');
+    for (const condition of embutido.dataViewMappings[0]?.conditions ?? []) {
+      for (const [role, limit] of Object.entries(condition)) {
+        expect(limit, role).toEqual({ max: 1 });
+      }
+    }
+  });
 
   /**
    * OS VALORES DA TABELA DE EXEMPLO NAO ESTAO NO PACOTE.
@@ -513,36 +571,66 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   }, 60_000);
 
   /*
-   * ========== A PARIDADE DE INTERATIVIDADE ESTA EM QUARENTENA (5.0.0) ========
-   * Havia aqui um `describe('paridade de interatividade')` com seis testes — o
-   * fecho do Sprint 6 e do achado 53, em que o pacote DESENHAVA certo e nao
-   * FILTRAVA nada, sem nenhum teste notar:
+   * ============== A PARIDADE DE INTERATIVIDADE, PARCIALMENTE VIVA ============
+   * Este bloco fechava o Sprint 6 e o achado 53 — o pacote DESENHAVA certo e nao
+   * FILTRAVA nada, sem nenhum teste notar. Foi para a quarentena na 5.0.0 porque
+   * os seis testes tinham o GRAFICO como unico sujeito.
    *
-   *   - cada ponto da serie alcancavel por teclado, com rotulo legivel (RF-23)
-   *   - acionar um ponto filtra o relatorio, com a identidade DAQUELA linha,
-   *     `{ key: 'row-1' }` (RF-18)
-   *   - o foco pede o tooltip NATIVO com os valores ja formatados pelo `format`
-   *     da coluna (RF-19 / RF-17)
-   *   - o botao direito abre o menu de contexto do host (RF-24)
-   *   - em alto contraste a paleta do host vence, e o SVG le a paleta pelo
-   *     quadro em vez de carregar `var()` (RF-21)
-   *   - fora do alto contraste nenhuma variavel fica presa no elemento
+   * O KPI Card devolveu tres deles, e nao os seis. A diferenca nao e preguica: o
+   * card so declara papel de MEDIDA, e so coluna vinda de `categories` gera
+   * selection id. O que continua sem sujeito, e volta com o primeiro no que
+   * declarar agrupamento:
    *
-   * OS SEIS TINHAM O GRAFICO COMO UNICO SUJEITO: a sobreposicao de teclado, as
-   * marcas selecionaveis e o `fill` resolvido sao todos dele. Com a poda da
-   * 5.0.0 nao ha no que se ligue ao host — `interaction.ts` e `dataFrame.ts`
-   * continuam no template, chamados a cada `update()`, mas sem consumidor.
-   *
-   * A METADE HTML DO ALTO CONTRASTE NAO FICOU DESCOBERTA: `SpecPreview.test.tsx`
-   * confere que a cor e o fundo da caixa de texto saem embrulhados em
-   * `var(--vislow-hc-*, ...)`, que e o mecanismo inteiro do lado do HTML. O que
-   * esta sem cobertura e a ponta SVG, que so existe com grafico.
-   *
-   * Os seis voltam com o KPI Card da Fase 4. `apps/web/src/components/
-   * kitInteraction.test.tsx`, que cobria os mesmos comportamentos no lado do
-   * editor, foi apagado pelo mesmo motivo.
+   *   - acionar uma marca FILTRA o relatorio com a identidade daquela linha
+   *     (RF-18) — nao ha marca nem identidade num numero unico;
+   *   - o aviso de truncamento (RF-25) — `truncationOf` so olha coluna de
+   *     categoria;
+   *   - a ponta SVG do alto contraste — `var()` nao funciona em atributo de
+   *     apresentacao de SVG, e o KPI e HTML.
    * =========================================================================
    */
+  describe('paridade de interatividade', () => {
+    it('o card e alcancavel por teclado e rotulado (RF-23)', async () => {
+      const { element } = await renderCompiled(js, guid, true);
+      const card = element.querySelector('.vsl-kpi');
+
+      expect(card, 'o KPI nao chegou ao DOM do pacote').not.toBeNull();
+      expect(card?.getAttribute('tabindex')).toBe('0');
+      // Rotulado, senao o leitor de tela anuncia um grupo sem nome. O rotulo cai
+      // no titulo da coluna quando o autor nao escreveu um.
+      expect(card?.getAttribute('aria-label')).toBe('Receita');
+    }, 60_000);
+
+    it('o foco pede o tooltip NATIVO ja formatado (RF-19 / RF-17)', async () => {
+      const { element, calls, window } = await renderCompiled(js, guid, true);
+      const card = element.querySelector('.vsl-kpi')!;
+
+      // `focusin`, e nao `focus`: o React delega no elemento raiz, e desde o 17
+      // e a versao que borbulha que ele escuta. Um `focus` aqui nao chega ao
+      // `onFocus` do componente e o teste passaria por engano se fosse negativo.
+      card.dispatchEvent(new window.FocusEvent('focusin', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      expect(calls.tooltips).toHaveLength(1);
+      const items = calls.tooltips[0]?.dataItems ?? [];
+      expect(items.map((item) => item.displayName)).toEqual(['Receita', 'Meta']);
+      // FORMATADO pelo `format` da coluna, e nao o numero cru — que e o que a
+      // RF-17 pede. O separador ainda sai em `en-US`: ver o achado aberto no
+      // teste "com DataView, o KPI desenha o valor formatado e a variacao".
+      expect(items[0]?.value).toMatch(/^1[.,]084[.,]320[.,]00$/);
+    }, 60_000);
+
+    it('o botao direito abre o menu de contexto do host (RF-24)', async () => {
+      const { element, calls, window } = await renderCompiled(js, guid, true);
+
+      element.dispatchEvent(new window.MouseEvent('contextmenu', { bubbles: true }));
+      await new Promise((resolve) => setTimeout(resolve, 50));
+
+      // O ouvinte esta no ELEMENTO do visual, e nao no no — entao ele vale para
+      // qualquer composicao, inclusive uma so de texto.
+      expect(calls.contextMenus).toBe(1);
+    }, 60_000);
+  });
 });
 
 /**

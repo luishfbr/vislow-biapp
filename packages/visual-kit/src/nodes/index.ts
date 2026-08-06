@@ -12,12 +12,13 @@
  * o barril carrega o que TODO consumidor precisa — e o editor importa `tokens` e
  * `highContrast` sem querer arvore de componentes junto.
  *
- * `frame.js` e `sampleFrame.js` continuam aqui SEM CONSUMIDOR: sao o contrato de
- * dados que o KPI Card da Fase 4 reocupa. Nao entram em bundle nenhum enquanto
- * ninguem os importar.
+ * `frame.js` e `sampleFrame.js` voltaram a ter CONSUMIDOR na spec 5.2.0: o
+ * `KpiCard` e o no que reocupou o contrato de dados. Continuam fora do barril
+ * porque quem so compoe texto nao precisa deles.
  */
 export * from './frame.js';
 export * from './sampleFrame.js';
 export * from './Container.js';
 export * from './CanvasSlot.js';
 export * from './TextBox.js';
+export * from './KpiCard.js';

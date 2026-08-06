@@ -10,6 +10,7 @@ import {
   cloneSubtree,
   createEmptySpec,
   createNode,
+  suggestRoleBindings,
   findNode,
   insertChild,
   moveNode,
@@ -428,7 +429,11 @@ export const useEditorStore = create<EditorState>((set, get) => {
       // "selecionado" e a prancheta inteira.
       const selected =
         (selectedId === null ? null : findNode(spec.root, selectedId)) ?? spec.root;
-      const node = createNode(kind);
+      // Papel ligado no palpite obvio: um KPI que nasce sem medida nasce no
+      // estado vazio, e uma tela vazia parece defeito. A escolha e reversivel no
+      // painel; sem coluna do tipo certo o campo fica pendente, que ai e a
+      // informacao correta.
+      const node = createNode(kind, suggestRoleBindings(kind, spec.data.columns));
 
       if (acceptsChildren(selected)) {
         editTree(insertChild(spec.root, selected.id, node), node.id);
@@ -443,7 +448,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     addNodeAt: (kind, rect) => {
       const { spec } = get();
-      const node = createNode(kind);
+      const node = createNode(kind, suggestRoleBindings(kind, spec.data.columns));
 
       // Raiz que EMPILHA nao tem onde honrar a caixa: quem decide o tamanho ali
       // e a cadeia de flex. Cair no caminho comum e melhor que gravar um `rect`

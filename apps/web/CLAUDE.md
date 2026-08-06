@@ -3,8 +3,12 @@
 Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige as duas skills** — plano com
 `frontend-design` antes do JSX, auditoria com `web-design-guidelines` sobre o diff.
 
-- **O catálogo tem DOIS tipos: `container` e `text`.** KPI e os quatro gráficos saíram na spec 5.0.0, e com eles
-  o Recharts. Não há migração 4→5: a chave do `localStorage` é `vislow:project:v5` e a antiga nunca é lida.
+- **O catálogo tem TRÊS tipos: `container`, `text` e `kpi`.** Os quatro gráficos saíram na spec 5.0.0, e com
+  eles o Recharts; o KPI voltou na 5.2.0 e é o **único nó que consome dados**. Não há migração 4→5: a chave do
+  `localStorage` é `vislow:project:v5` e a antiga nunca é lida — a 5.2.0 é aditiva e não mexe nela.
+- **Nó novo exige DUAS entradas escritas à mão, e as duas não compilam se faltarem:** `lib/nodeComponents.ts`
+  (o componente) e `components/Toolbar.tsx` (o ícone). Os dois mapas são `Record<NodeKind, …>` exaustivos de
+  propósito — não dá para derivar desenho de um `label`, mas dá para impedir que o tipo novo apareça sem um.
 - **Nada de lista de tipos ou de propriedades escrita à mão.** Paleta, painel de propriedades, schema e codegen
   saem todos de `NODE_DESCRIPTORS`. Uma lista paralela é a quinta cópia do catálogo e a primeira a divergir.
 - **`lib/nodeComponents.ts` é o gêmeo por referência do que o codegen faz por texto.** `nodeComponents.test.ts`
@@ -50,11 +54,12 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **O painel fala pixel, a spec guarda `%`.** A conversão é `lib/units.ts`; o tamanho do pai vem do
   `ResizeObserver` da camada de manipulação, numa fatia do store **fora da spec** — medida de tela não passa
   pelo `commit`.
-- **Não há mais estado de "campo pendente" no preview.** Todo nó nasce válido na spec 5.0.0: sem campo de papel
-  no catálogo, nenhum nó nasce inválido. O estado ainda é alcançável — o campo hexadecimal grava a cada tecla, e
-  `#1e2` é inválido no caminho para `#1e293b` —, mas trocar o nó inteiro por uma ficha no meio da digitação é
-  pior do que deixar o navegador ignorar uma cor que não entende. O erro continua sendo dito embaixo do campo, e
-  continua bloqueando o export.
+- **Não há ficha de "nó pendente" no preview, nem com o KPI de volta.** Até a 4.0.0 um nó com papel não ligado
+  era trocado por uma ficha âmbar. Não é mais: quando o papel obrigatório falta, o KPI desenha o `EmptyState`
+  — que é literalmente o que o Power BI mostraria, então o preview não mente. O outro caminho para o estado
+  inválido é o campo hexadecimal, que grava a cada tecla (`#1e2` é inválido a caminho de `#1e293b`), e trocar o
+  nó inteiro por uma ficha no meio da digitação é pior do que deixar o navegador ignorar uma cor que não
+  entende. O erro continua sendo dito embaixo do campo, e continua bloqueando o export.
 - **Não existe mais grade no canvas.** O encaixe é atração de 6px de tela por aresta de irmão; a tolerância se
   converte de pixel para `%` pela caixa do container, senão gruda com força diferente conforme o tamanho dele.
 - **Seleção no preview depende de quem posiciona.** Container que empilha: nenhuma (ADR-14) — um wrapper
@@ -69,10 +74,15 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
   cada chave como atributo JSX; geometria é relação com o pai.
 - **A matemática do canvas fica em `lib/canvasGeometry.ts`**, sem React, e é lá que ela se testa. No componente
   sobra o gesto, que jsdom não exercita.
-- **A tabela de exemplo está DORMENTE na spec 5.0.0.** Cada coluna continua sendo, em desenho, o dado do preview
-  e um `dataRole` do `capabilities.json` — mas nenhum nó consome dados desde a poda, então `usedRoles` devolve
-  vazio e o pacote sai sem poço de campos. O DataPanel e o `table.ts` continuam de pé, e voltam a produzir
-  `dataRole` com o KPI Card da Fase 4. Edição de coluna, linha e célula passa por `table.ts`; o store só delega.
+- **A tabela de exemplo VOLTOU a produzir `dataRole` na spec 5.2.0.** Cada coluna é, ao mesmo tempo, o dado do
+  preview e um campo do `capabilities.json` — mas só quando algum nó a LIGA: `usedRoles` filtra
+  `spec.data.columns` pelo que a árvore referencia, então coluna criada e nunca usada não vira poço. Um projeto
+  só de `container` e `text` continua saindo sem poço nenhum. Edição de coluna, linha e célula passa por
+  `table.ts`; o store só delega.
+- **`addNode` liga o papel no palpite óbvio** (`suggestRoleBindings`, no registro): um KPI nasce apontando para
+  a primeira medida livre. Tela vazia parece defeito, e a escolha se desfaz em um clique no painel. Uma coluna
+  por campo — os dois papéis de medida do KPI não caem na mesma, senão o card nasce comparando um número com
+  ele mesmo.
 - **Nome de coluna é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createColumn` e
   amarra as referências da árvore e o `capabilities.json`.
 - **Os valores da tabela não vão para o pacote**, como a prancheta. O que viaja é o esquema: coluna, tipo e

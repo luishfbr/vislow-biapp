@@ -3,6 +3,7 @@ import { cloneSubtree, createEmptySpec, createNode } from './factory.js';
 import {
   NODE_DESCRIPTORS,
   NODE_KINDS,
+  consumesData,
   defaultPropsFor,
   exposableFields,
   isExposable,
@@ -225,23 +226,54 @@ describe('as operacoes preservam a validade da spec', () => {
     expect(assertValidSpec({ ...spec, root: reordenado }).root.children).toHaveLength(2);
   });
 
-  /**
-   * Ate a spec 4.0.0 havia aqui um teste chamado "um grafico sem papel ligado e
-   * invalido de proposito": `createNode` nao preenchia campo de papel, entao um
-   * grafico recem-criado reprovava no schema e o export ficava bloqueado ate o
-   * usuario ligar uma coluna.
+  /*
+   * ===================== QUEM NASCE PENDENTE, E POR QUE =====================
+   * Ate a 4.0.0 um grafico recem-criado reprovava no schema ate o usuario ligar
+   * uma coluna. Na 5.0.0 nenhum descritor declarava papel e TODO no nascia
+   * valido. A 5.2.0 traz o meio-termo, e ele e desenhado:
    *
-   * Na 5.0.0 nenhum descritor declara campo de papel e TODO no nasce valido. O
-   * teste abaixo afirma exatamente isso, para que a mudanca fique registrada
-   * como decisao e nao como teste que sumiu.
+   *   - `container` e `text` continuam nascendo validos;
+   *   - o `kpi` nasce PENDENTE no papel obrigatorio, e so nele.
+   *
+   * Nao e regressao. Um KPI exportavel sem medida entregaria um pacote que so
+   * sabe mostrar o estado vazio, e e a RF-12 que impede: o campo e apontado no
+   * painel e na arvore, e o export fica bloqueado ate a coluna ser ligada. O
+   * preview, enquanto isso, desenha o `EmptyState` — que e literalmente o que o
+   * Power BI mostraria.
+   * ==========================================================================
    */
-  it('todo no nasce VALIDO — nao ha mais campo pendente', () => {
+  it('container e texto nascem validos; o KPI nasce pendente so no papel obrigatorio', () => {
     const spec = createEmptySpec('Nasce valido');
-    let root = spec.root;
-    for (const kind of NODE_KINDS) {
-      root = insertChild(root, spec.root.id, createNode(kind)) ?? root;
-    }
 
+    for (const kind of NODE_KINDS) {
+      const root = insertChild(spec.root, spec.root.id, createNode(kind)) ?? spec.root;
+      const result = validateSpec({ ...spec, root });
+
+      if (!consumesData(kind)) {
+        expect(result.kind, kind).toBe('valid');
+        continue;
+      }
+
+      expect(result.kind, kind).toBe('invalid');
+      const issues = result.kind === 'invalid' ? result.issues : [];
+      // UM campo, e nao a arvore inteira: o papel opcional nasce em `''` e nao
+      // conta como pendencia. Se ele passasse a contar, o autor teria de ligar
+      // uma medida de comparacao que a maioria dos KPIs nunca usa.
+      expect(issues.map((issue) => issue.path).join('\n'), kind).toContain('valueRole');
+      expect(issues.map((issue) => issue.path).join('\n'), kind).not.toContain('compareRole');
+    }
+  });
+
+  it('ligar a medida basta para o KPI ficar valido', () => {
+    // A outra metade: a pendencia acima tem UMA saida, e ela e a que o painel
+    // oferece. Sem este teste, "nasce pendente" poderia ser um no que nunca
+    // valida.
+    const spec = createEmptySpec('KPI ligado');
+    const kpi = createNode('kpi');
+    const measure = spec.data.columns.find((column) => column.kind === 'measure');
+    kpi.props.valueRole = measure?.name ?? '';
+
+    const root = insertChild(spec.root, spec.root.id, kpi) ?? spec.root;
     expect(validateSpec({ ...spec, root }).kind).toBe('valid');
   });
 });

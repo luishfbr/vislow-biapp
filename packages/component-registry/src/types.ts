@@ -7,7 +7,7 @@ import type { TokenKind } from '@vislow/config-schema';
  * do `pbiviz` compila sem `strictNullChecks`, e sem ela o TypeScript nao
  * estreita uniao por discriminante booleano.
  */
-export type NodeKind = 'container' | 'text';
+export type NodeKind = 'container' | 'text' | 'kpi';
 
 /** Papel de dado no Power BI. `grouping` vira eixo/categoria; `measure`, valor. */
 export type RoleKind = 'grouping' | 'measure';
@@ -41,6 +41,22 @@ interface FieldBase {
    * catalogo deixaria de descrever o que o pacote faz.
    */
   structural?: true;
+  /**
+   * Secao a que o campo pertence, nos DOIS paineis.
+   *
+   * O painel do editor desenha um cabecalho por grupo; o card do visual gerado
+   * emite um `FormattingGroup` de verdade por grupo, que e para isso que a API do
+   * Power BI tem `groups[]` — ate a spec 5.1.0 emitiamos um so, com
+   * `displayName: ''`. Fica AQUI, e nao num mapa dentro de cada painel, pela
+   * mesma regra de `keywords` e `shortcut`: duas listas paralelas divergem, e a
+   * divergencia so aparece dentro do Power BI.
+   *
+   * OPCIONAL, e ausente e' o estado de `container` e `text`: campo sem grupo cai
+   * num bloco inicial sem titulo, entao os dois nos continuam desenhando
+   * exatamente como desenhavam. Passou a existir com o KPI Card, cujos 27 campos
+   * viram um paredao sem secao.
+   */
+  group?: string;
 }
 
 /**
@@ -77,8 +93,19 @@ export type FieldSpec =
    * que precisa ser literal no fonte (ver `visual-kit/src/tokens.ts`).
    */
   | (FieldBase & { kind: 'length'; default: number; min: number; max: number })
-  /** Referencia a um papel de dado que o usuario declarou no projeto. */
-  | (FieldBase & { kind: 'role'; roleKind: RoleKind })
+  /**
+   * Referencia a um papel de dado que o usuario declarou no projeto.
+   *
+   * `optional` muda DUAS coisas de uma vez, e por isso e uma so bandeira: o
+   * campo nasce com `''` em vez de ausente (`defaultPropsFor`), e o schema aceita
+   * a string vazia como "nao ligado". Sem ela o no nasce INVALIDO de proposito —
+   * o que e o certo para o papel obrigatorio, porque exportar um KPI sem medida
+   * entregaria um pacote que so sabe mostrar o estado vazio (RF-12).
+   *
+   * Papel vazio nao vira `dataRole`: `usedRoles` filtra `spec.data.columns` pelo
+   * nome ligado, e `''` nao casa com coluna nenhuma.
+   */
+  | (FieldBase & { kind: 'role'; roleKind: RoleKind; optional?: true })
   | (FieldBase & { kind: 'select'; options: string[]; default: string });
 
 export interface NodeDescriptor {

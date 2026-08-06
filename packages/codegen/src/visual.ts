@@ -152,6 +152,7 @@ function formattingTable(nodes: ExposedNode[]): unknown[] {
       if (field.maxLength !== undefined) out.maxLength = field.maxLength;
       if (field.options) out.options = field.options;
       if (field.showWhen) out.showWhen = field.showWhen;
+      if (field.group !== undefined) out.group = field.group;
       return out;
     }),
   }));

@@ -6,11 +6,13 @@ import {
   NODE_DESCRIPTORS,
   NODE_KINDS,
   assertValidSpec,
+  consumesData,
   createNode,
   walk,
   type NodeKind,
   type VisualSpec,
 } from '@vislow/component-registry';
+import { COLUMN_TYPES, type ColumnType } from '@vislow/config-schema';
 import { generateCapabilities } from './capabilities.js';
 import { generatePbiviz } from './pbiviz.js';
 import { generateVisualSource } from './visual.js';
@@ -19,6 +21,7 @@ import { jsString } from './literal.js';
 import {
   TEST_TABLE,
   specWith,
+  specWithColumnType,
   specWithEveryKind,
   specWithExposure,
   specWithKind,
@@ -106,16 +109,26 @@ describe('emissao do visual.tsx', () => {
     });
   });
 
-  it('nao passa o quadro de dados a no nenhum — ninguem declara papel', () => {
-    // A metade positiva deste teste ("passa o quadro a quem DECLARA papel")
-    // tinha um grafico como sujeito e esta em quarentena junto com ele. A
-    // metade que sobrou nao e trivial: ela afirma que `consumesData` continua
-    // governando a emissao do `frame`, e e ela que falha no dia em que o KPI
-    // Card voltar sem o outro lado ser reescrito.
+  it('passa o quadro so a quem declara papel — e a regra vem do registro', () => {
+    // Descongelado na spec 5.2.0. Entre a poda e o KPI Card so a metade negativa
+    // existia, porque nenhum descritor declarava papel; agora as duas valem, e e
+    // `consumesData` — a MESMA funcao que o preview do editor consulta — que
+    // decide de que lado cada tipo cai. Divergir aqui faria o preview desenhar
+    // dados e o pacote entregue cair no estado vazio.
     for (const kind of NODE_KINDS) {
       const source = generateVisualSource(assertValidSpec(specWithKind(kind)), BUILD_ID);
-      expect(source, kind).not.toContain('frame={frame}');
+      if (consumesData(kind)) expect(source, kind).toContain('frame={frame}');
+      else expect(source, kind).not.toContain('frame={frame}');
     }
+  });
+
+  it('o KPI e quem le dados; container e texto continuam sem quadro', () => {
+    // A afirmacao concreta por tras da regra acima. Sem ela, um registro em que
+    // NINGUEM declarasse papel passaria no teste anterior por vacuidade — que e
+    // exatamente o estado de que a 5.2.0 saiu.
+    expect(consumesData('kpi')).toBe(true);
+    expect(consumesData('container')).toBe(false);
+    expect(consumesData('text')).toBe(false);
   });
 
   it('e deterministico: a mesma spec gera o mesmo fonte', () => {
@@ -236,33 +249,126 @@ describe('texto do usuario nunca vira codigo (RN-11)', () => {
 
 describe('capabilities.json gerado', () => {
   /*
-   * ============= A BATERIA DE dataRoles ESTA DORMENTE NA 5.0.0 ===============
-   * Havia aqui quatro testes que precisavam de um no consumindo dados:
+   * ================ A BATERIA DE dataRoles VOLTOU NA 5.2.0 ==================
+   * Os quatro testes abaixo estiveram em quarentena declarada entre a poda da
+   * 5.0.0 e o KPI Card: sem no que consumisse dados, `usedRoles` devolvia vazio
+   * e nao havia o que medir. O KPI e o sujeito deles agora.
    *
-   *   - "declara exatamente os papeis que a arvore consome" (ADR-12: campo
-   *     pedido e campo usado sao a mesma coisa)
-   *   - "mapeia grouping e measure para os kinds do Power BI"
-   *   - "o tipo da coluna vira restricao de arrasto no host" (`requiredTypes`
-   *     por `ColumnType`, com `date` deliberadamente de fora)
-   *   - "a condicao limita a um campo, e NAO exige minimo" — a regressao de
-   *     2026-08-03, em que os pocos apareciam com o nome certo e recusavam toda
-   *     coluna, para sempre, porque `min: 1` descreve so o estado final
-   *
-   * Nenhum descritor declara campo de papel na 5.0.0, entao `usedRoles` devolve
-   * vazio e o `capabilities` sai sem `dataRoles` e sem `dataViewMappings` — nao
-   * ha o que os quatro possam medir. O codigo que eles cobriam continua em
-   * `capabilities.ts`, intacto, e os quatro voltam com o KPI Card da Fase 4.
-   *
-   * O `min` proibido continua guardado em producao pelo `inspectArtifact` do
-   * `pipeline.ts`, que le o capabilities de dentro do zip.
+   * O QUE CONTINUA SEM SUJEITO, e vale saber antes de procurar: o KPI so declara
+   * papel de MEDIDA. O ramo `Grouping` do `capabilities.ts`, o bloco
+   * `categorical.categories`, o `dataReductionAlgorithm` e o aviso de
+   * truncamento (RF-25) seguem sem quem os exercite — voltam com o primeiro no
+   * que declarar `roleKind: 'grouping'`.
    * ==========================================================================
    */
 
-  it('a arvore nao le dados: sem papel e sem mapeamento, para qualquer tipo', () => {
-    // Nao e um teste vazio: e a AFIRMACAO do estado da 5.0.0. Ele falha no dia
-    // em que um descritor voltar a declarar papel — e falhar aqui e o lembrete
-    // de descongelar os quatro testes descritos acima.
-    for (const kind of NODE_KINDS) {
+  it('declara exatamente os papeis que a arvore consome, e nada mais (ADR-12)', () => {
+    const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
+    const names = capabilities.dataRoles.map((role) => role.name);
+
+    // As duas medidas que o KPI liga entram...
+    expect(names).toContain('valor');
+    expect(names).toContain('meta');
+    // ...e a coluna de agrupamento, que existe na tabela de exemplo mas nao esta
+    // ligada em no nenhum, NAO entra. Um campo no poco que ninguem le e o visual
+    // pedindo uma coluna para nada.
+    expect(names).not.toContain('categoria');
+  });
+
+  it('a ordem dos papeis e a das colunas do projeto, nao a da arvore', () => {
+    // `usedRoles` filtra `spec.data.columns`, entao a ordem do poco de campos e
+    // a que o autor ve na tabela. Reordenar por travessia da arvore mudaria o
+    // poco a cada vez que um no fosse movido.
+    const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
+    expect(capabilities.dataRoles.map((role) => role.name)).toEqual(['valor', 'meta']);
+  });
+
+  it('mapeia measure para o kind do Power BI', () => {
+    const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
+    for (const role of capabilities.dataRoles) {
+      expect(role.kind, role.name).toBe('Measure');
+    }
+  });
+
+  it.each(COLUMN_TYPES)(
+    'o tipo "%s" da coluna vira restricao de arrasto no host',
+    (type: ColumnType) => {
+      const capabilities = generateCapabilities(assertValidSpec(specWithColumnType(type)));
+      const role = capabilities.dataRoles[0];
+      expect(role).toBeDefined();
+
+      // `date` fica DELIBERADAMENTE de fora: o `valueType` do schema oficial roda
+      // com `additionalProperties: false` e nao tem tipo temporal nenhum na
+      // lista. Emitir a chave fazia o `pbiviz package` lancar "Invalid
+      // capabilities" e quebrava a build inteira de quem ligasse uma coluna de
+      // data. `requiredTypes` e opcional no schema; omitir e a saida.
+      if (type === 'date') {
+        expect(role?.requiredTypes).toBeUndefined();
+        return;
+      }
+
+      // Percentual e moeda sao FORMATO, nao tipo: no modelo do Power BI os dois
+      // sao numero, e exigir outra coisa recusaria a coluna certa.
+      const expected: Record<string, Record<string, boolean>[]> = {
+        text: [{ text: true }],
+        integer: [{ integer: true }],
+        decimal: [{ numeric: true }],
+        percent: [{ numeric: true }],
+        currency: [{ numeric: true }],
+        boolean: [{ bool: true }],
+      };
+      expect(role?.requiredTypes).toEqual(expected[type]);
+    },
+  );
+
+  it('a condicao limita a um campo por papel, e NAO exige minimo', () => {
+    /*
+     * A REGRESSAO DE 2026-08-03, guardada por extenso.
+     *
+     * O host valida o estado que os pocos TERIAM depois do arrasto contra a
+     * lista de condicoes. Uma condicao unica exigindo `min: 1` em todos os
+     * papeis descreve so o estado FINAL: o estado apos o primeiro campo — um
+     * papel preenchido, o resto vazio — nao satisfaz condicao nenhuma, e o host
+     * descarta o drop. Em silencio. O visual nunca sai de zero campos e nada
+     * renderiza jamais.
+     *
+     * Quem responde por "falta campo" e o `EmptyState`, no visual.
+     */
+    const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
+    const mapping = capabilities.dataViewMappings[0] as {
+      conditions: Record<string, Record<string, number>>[];
+      categorical: Record<string, unknown>;
+    };
+
+    expect(mapping.conditions).toHaveLength(1);
+    for (const [role, condition] of Object.entries(mapping.conditions[0] ?? {})) {
+      expect(condition.max, role).toBe(1);
+      expect(condition, role).not.toHaveProperty('min');
+    }
+    // A guarda em texto cru tambem: um `min` aninhado em qualquer outro lugar do
+    // mapeamento nao passa pelo laco acima.
+    expect(JSON.stringify(capabilities.dataViewMappings)).not.toContain('"min"');
+  });
+
+  it('as medidas viram `values` do mapeamento categorico', () => {
+    const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
+    const mapping = capabilities.dataViewMappings[0] as {
+      categorical: { values?: { select: { bind: { to: string } }[] }; categories?: unknown };
+    };
+
+    expect(mapping.categorical.values?.select).toEqual([
+      { bind: { to: 'valor' } },
+      { bind: { to: 'meta' } },
+    ]);
+    // Sem no que declare agrupamento, o bloco de categorias nao e emitido: pedir
+    // um `DataView` com categorias que ninguem le seria trabalho do host a toa.
+    expect(mapping.categorical.categories).toBeUndefined();
+  });
+
+  it('uma arvore so de container e texto continua sem pedir campo nenhum', () => {
+    // O estado da 5.0.0, agora como afirmacao sobre os tipos que NAO leem dados
+    // — e o que garante que um projeto sem KPI gera o mesmo pacote de antes.
+    for (const kind of NODE_KINDS.filter((candidate) => !consumesData(candidate))) {
       const capabilities = generateCapabilities(assertValidSpec(specWithKind(kind)));
       expect(capabilities.dataRoles, kind).toEqual([]);
       expect(capabilities.dataViewMappings, kind).toEqual([]);

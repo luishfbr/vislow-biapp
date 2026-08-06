@@ -297,8 +297,9 @@ mora em `apps/web` (achado 56).
 pinta em navegador nenhum — a substituição só acontece em propriedade CSS, e o Recharts emite `fill`/`stroke`
 como atributo. Teria quebrado o alto contraste exatamente onde ele mais importa, e em silêncio.
 
-- **Nós de HTML** (`Container`, `TextNode`, `KpiNode`): use `hcInk`, `hcSurface`, `hcAccent`, `hcLine` de
-  `highContrast.ts`.
+- **Nós de HTML** (`Container`, `TextBox`, `KpiCard`): use `hcInk`, `hcSurface`, `hcAccent`, `hcLine` de
+  `highContrast.ts`. `hcAccent` é para **marca de dados** — o número do KPI —, e `hcInk` para texto; as duas
+  recebem o `foreground` do host hoje, e a distinção é o que sobrevive ao dia em que deixarem de receber.
 - **Gráficos**: resolva por `hostOf(frame).highContrast`. Todo descritor de gráfico tem campo de papel, então
   sempre tem o quadro.
 
@@ -309,9 +310,11 @@ mais na cadeia de flex quebra a medida do `ResponsiveContainer` (ADR-14); o grup
 não roubar clique do gráfico. As setas movem o **foco do DOM**, não um índice em estado — é o que dá navegação
 por setas sem hook.
 
-> **DORMENTE na spec 5.0.0.** A sobreposição é dos gráficos, e eles saíram do catálogo. Esta seção descreve o
-> desenho que a Fase 4 reocupa junto com o KPI Card; os testes correspondentes estão em quarentena declarada em
-> `compiledVisual.e2e.test.ts`.
+> **DORMENTE desde a spec 5.0.0, e o KPI Card NÃO a trouxe de volta.** A sobreposição é dos gráficos: ela
+> existe para dar foco a cada ponto de uma série. O KPI é **um** elemento focalizável — `tabIndex={0}` mais
+> `role="group"` no próprio card —, e sem papel de agrupamento não há identidade para `Enter` acionar. Esta
+> seção descreve o desenho que volta com o primeiro nó de agrupamento; a quarentena correspondente está
+> declarada em `compiledVisual.e2e.test.ts`.
 
 ### 3.4 Os serviços do host viajam no quadro
 

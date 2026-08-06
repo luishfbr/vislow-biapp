@@ -231,6 +231,32 @@ function isVisible(field: FieldSpec, node: SpecNode): boolean {
   );
 }
 
+/**
+ * Reparte os campos pelas secoes do descritor, na ordem da PRIMEIRA aparicao.
+ *
+ * O gemeo disto vive em `buildFormattingModel`, no template do visual gerado: os
+ * dois paineis leem o mesmo `group` do registro, entao o autor ve no editor a
+ * mesma divisao que o consumidor ve dentro do Power BI.
+ *
+ * Campo sem grupo cai numa secao de nome vazio, que nao desenha cabecalho — e por
+ * isso que `container` e `text` continuam sendo a lista corrida de sempre.
+ */
+function sectionsOf(fields: FieldSpec[]): { name: string; fields: FieldSpec[] }[] {
+  const sections: { name: string; fields: FieldSpec[] }[] = [];
+
+  for (const field of fields) {
+    const name = field.group ?? '';
+    let section = sections.find((candidate) => candidate.name === name);
+    if (!section) {
+      section = { name, fields: [] };
+      sections.push(section);
+    }
+    section.fields.push(field);
+  }
+
+  return sections;
+}
+
 /** Moldura comum aos dois estados do painel, para o cabecalho nao divergir. */
 function Panel({ eyebrow, title, hint, children }: {
   eyebrow: string;
@@ -342,8 +368,14 @@ export function PropertiesPanel() {
         </section>
       )}
 
-      <div className="divide-y divide-border">
-        {descriptor.fields.filter((field) => isVisible(field, node)).map((field) => (
+      {sectionsOf(descriptor.fields.filter((field) => isVisible(field, node))).map((section) => (
+        <section key={section.name} className="divide-y divide-border">
+          {/* Sem nome, sem cabecalho: `container` e `text` nao declaram secao, e
+              o painel deles continua sendo a lista corrida de sempre. */}
+          {section.name !== '' && (
+            <PanelSectionHeading className="mb-1.5 mt-3">{section.name}</PanelSectionHeading>
+          )}
+          {section.fields.map((field) => (
           <Control
             key={field.key}
             field={field}
@@ -371,8 +403,9 @@ export function PropertiesPanel() {
             onGestureStart={beginGesture}
             onGestureEnd={endGesture}
           />
-        ))}
-      </div>
+          ))}
+        </section>
+      ))}
     </Panel>
   );
 }

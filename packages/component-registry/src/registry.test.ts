@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { TOKEN_CATALOG } from '@vislow/config-schema';
-import { createEmptySpec, createNode, DEFAULT_TABLE, nextNodeId } from './factory.js';
+import {
+  createEmptySpec,
+  createNode,
+  DEFAULT_TABLE,
+  nextNodeId,
+  suggestRoleBindings,
+} from './factory.js';
 import { defaultPropsFor, NODE_DESCRIPTORS, NODE_KINDS, roleFieldsOf } from './registry.js';
 import { assertValidSpec, validateSpec, walk } from './schema.js';
 import {
@@ -23,11 +29,22 @@ import { insertChild } from './tree.js';
  * posiciona livremente, e e a operacao de arvore que da caixa a cada filho.
  * Atribuir direto produziria a arvore que so o editor nunca cria.
  */
+/**
+ * Um no do tipo pedido, com os papeis OBRIGATORIOS ja ligados a tabela padrao.
+ *
+ * Ligar aqui e o que mantem a fixture valida: papel obrigatorio sem ligacao
+ * reprova no schema de proposito (RF-12), e uma fixture invalida faria todo teste
+ * de estrutura falhar pela razao errada.
+ *
+ * A tabela de um projeto novo tem UMA medida (`receita`), entao o `compareRole`
+ * do KPI fica no `''` com que nasce — que e exatamente o caso de um papel
+ * opcional nao ligado, e vale a pena que a fixture o exercite.
+ */
 function specWithEveryNode(): VisualSpec {
   const spec = createEmptySpec('Todos os nos');
   let root = spec.root;
   for (const kind of NODE_KINDS) {
-    root = insertChild(root, root.id, createNode(kind))!;
+    root = insertChild(root, root.id, createNode(kind, suggestRoleBindings(kind, spec.data.columns)))!;
   }
   return { ...spec, root };
 }
@@ -69,11 +86,29 @@ describe('registro de componentes', () => {
     }
   });
 
-  it('defaults nao incluem campos de papel', () => {
+  it('papel OBRIGATORIO nao tem default; papel OPCIONAL nasce em branco', () => {
+    /*
+     * A ausencia e o mecanismo, nao um detalhe.
+     *
+     * O papel obrigatorio fica DE FORA dos defaults de proposito: o no nasce
+     * reprovado pelo schema, o painel e a arvore apontam a pendencia e o export
+     * fica bloqueado (RF-12) ate o autor ligar a coluna. Um KPI exportavel sem
+     * medida entregaria um pacote que so sabe mostrar o estado vazio.
+     *
+     * O opcional nasce `''` — "declarado, nao ligado". Sem isso o no nasceria
+     * pendente por causa de um campo que a maioria dos KPIs nunca liga.
+     */
     for (const kind of NODE_KINDS) {
-      const defaults = Object.keys(defaultPropsFor(kind));
+      const defaults = defaultPropsFor(kind);
       for (const field of roleFieldsOf(kind)) {
-        expect(defaults, `${kind}.${field.key} nao pode ter default`).not.toContain(field.key);
+        if (field.optional === true) {
+          expect(defaults[field.key], `${kind}.${field.key} nasce em branco`).toBe('');
+        } else {
+          expect(
+            Object.keys(defaults),
+            `${kind}.${field.key} nao pode ter default`,
+          ).not.toContain(field.key);
+        }
       }
     }
   });

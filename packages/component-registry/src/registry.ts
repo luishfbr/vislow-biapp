@@ -1,4 +1,4 @@
-import { INK, PAPER, RADIUS, RULE, SPACE, STROKE, TYPE_SCALE } from '@vislow/config-schema';
+import { INK, INK_MUTED, PAPER, RADIUS, RULE, SPACE, STROKE, TYPE_SCALE } from '@vislow/config-schema';
 import type { FieldSpec, NodeDescriptor, NodeKind } from './types.js';
 
 /**
@@ -22,6 +22,30 @@ import type { FieldSpec, NodeDescriptor, NodeKind } from './types.js';
  */
 export const CONTAINER_STACK = 'stack';
 export const CONTAINER_CANVAS = 'canvas';
+
+/**
+ * O juizo do KPI: subir e bom, descer e bom, ou nao ha juizo nenhum.
+ *
+ * Constantes pela mesma razao das disposicoes acima — o valor e comparado no
+ * descritor, no `labels.ts` e dentro do `KpiCard`, e um erro de digitacao
+ * qualquer nao quebra nada: o card so passa a pintar toda queda como problema.
+ *
+ * SEPARA DIRECAO DE JUIZO. A seta segue sempre o sinal aritmetico da variacao;
+ * so a COR muda com a polaridade. Num KPI de custo, churn ou prazo, a seta
+ * continua apontando para baixo e a queda e pintada com a cor de favoravel.
+ */
+export const POLARITY_HIGHER = 'higher';
+export const POLARITY_LOWER = 'lower';
+export const POLARITY_NEUTRAL = 'neutral';
+
+/** Onde o rotulo fica em relacao ao numero. */
+export const LABEL_ABOVE = 'above';
+export const LABEL_BELOW = 'below';
+
+/** Quais dos dois numeros da comparacao aparecem (RF-16 pede os dois). */
+export const DELTA_BOTH = 'both';
+export const DELTA_ABSOLUTE = 'absolute';
+export const DELTA_PERCENT = 'percent';
 
 /**
  * Teto das medidas de moldura, em pixel.
@@ -73,6 +97,18 @@ const SURFACE_FIELDS: FieldSpec[] = [
  */
 const FONT_SIZE_MIN = 8;
 const FONT_SIZE_MAX = 200;
+
+/**
+ * Carimba uma secao numa lista de campos.
+ *
+ * Existe porque `SURFACE_FIELDS` e COMPARTILHADO: `container` e `text` o usam sem
+ * grupo nenhum — e e assim que os dois continuam desenhando exatamente como
+ * desenhavam —, e so o KPI precisa dele numa secao. Carimbar na fonte poria
+ * cabecalho nos tres.
+ */
+function grouped(group: string, fields: FieldSpec[]): FieldSpec[] {
+  return fields.map((field) => ({ ...field, group }));
+}
 
 export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
   container: {
@@ -207,6 +243,183 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
       },
     ],
   },
+
+  /**
+   * O KPI Card (RF-16). O PRIMEIRO no a consumir dados desde a poda da spec
+   * 5.0.0 — e portanto o que devolve o poco de campos ao visual gerado.
+   *
+   * Consequencia de declarar papel, e ela e ampla: `consumesData('kpi')` passa a
+   * ser verdadeiro, `usedRoles` para de devolver vazio, o `capabilities.json`
+   * volta a ter `dataRoles`, `requiredTypes` e `dataViewMappings`, e os testes que
+   * afirmavam o estado sem dados falham por construcao. Isso e desenhado: era o
+   * lembrete combinado de descongelar a quarentena.
+   *
+   * SO MEDIDAS, nenhum agrupamento. Um card de numero unico nao tem marca para
+   * clicar, e so coluna vinda de `categories` gera selection id — entao
+   * cross-filter (RF-18) e truncamento (RF-25) continuam sem sujeito. Declarar um
+   * papel de categoria que nao desenha nada, so para produzir identidade, seria
+   * um campo no poco que existe para satisfazer teste.
+   *
+   * Vinte e sete campos, contra os onze do `text`, porque o controle e POR LINHA:
+   * valor, rotulo e variacao tem tamanho, peso e cor independentes. E por isso
+   * que `group` nasceu — os dois paineis desenham secao, e nao um paredao.
+   */
+  kpi: {
+    kind: 'kpi',
+    label: 'KPI',
+    hint: 'Um numero unico, com rotulo e comparacao opcional contra outra medida.',
+    keywords: ['numero', 'cartao', 'card', 'indicador', 'metrica', 'total', 'meta', 'variacao'],
+    shortcut: 'K',
+    acceptsChildren: false,
+    component: 'KpiCard',
+    fields: [
+      ...grouped('Dados', [
+        {
+          key: 'valueRole',
+          label: 'Valor',
+          hint: 'A medida que o card mostra. Sem ela o visual pede o campo em vez de desenhar.',
+          kind: 'role',
+          roleKind: 'measure',
+        },
+        {
+          // OPCIONAL: nasce com `''` e o schema aceita a string vazia. Sem a
+          // bandeira o no nasceria invalido por falta de um campo que a maioria
+          // dos KPIs nunca liga, e o export ficaria bloqueado sem motivo.
+          key: 'compareRole',
+          label: 'Comparar com',
+          hint: 'Meta, periodo anterior ou orcamento. Vazio esconde a linha de variacao.',
+          kind: 'role',
+          roleKind: 'measure',
+          optional: true,
+        },
+        {
+          key: 'polarity',
+          label: 'Sentido',
+          hint: 'Em custo ou churn, cair e bom. A seta segue o sinal; so a cor muda.',
+          kind: 'select',
+          options: [POLARITY_HIGHER, POLARITY_LOWER, POLARITY_NEUTRAL],
+          default: POLARITY_HIGHER,
+        },
+      ]),
+
+      ...grouped('Valor', [
+        {
+          key: 'valueFontSize',
+          label: 'Tamanho',
+          // `figure` e o degrau da escala descrito como "um numero sozinho, que e
+          // para ser lido do outro lado da sala". E literalmente este campo.
+          kind: 'length',
+          default: TYPE_SCALE.figure,
+          min: FONT_SIZE_MIN,
+          max: FONT_SIZE_MAX,
+        },
+        { key: 'valueWeight', label: 'Peso', kind: 'token', token: 'fontWeight', default: 'semibold' },
+        { key: 'valueColor', label: 'Cor', kind: 'color', default: INK },
+      ]),
+
+      ...grouped('Rotulo', [
+        {
+          key: 'label',
+          label: 'Texto',
+          hint: 'Vazio usa o nome do campo que o consumidor arrastou.',
+          kind: 'text',
+          default: '',
+          maxLength: 60,
+        },
+        {
+          key: 'labelPosition',
+          label: 'Posicao',
+          kind: 'select',
+          options: [LABEL_ABOVE, LABEL_BELOW],
+          default: LABEL_BELOW,
+        },
+        {
+          key: 'labelFontSize',
+          label: 'Tamanho',
+          kind: 'length',
+          default: TYPE_SCALE.label,
+          min: FONT_SIZE_MIN,
+          max: FONT_SIZE_MAX,
+        },
+        { key: 'labelWeight', label: 'Peso', kind: 'token', token: 'fontWeight', default: 'normal' },
+        { key: 'labelColor', label: 'Cor', kind: 'color', default: INK_MUTED },
+      ]),
+
+      ...grouped('Variacao', [
+        {
+          key: 'deltaMode',
+          label: 'Mostrar',
+          hint: 'A diferenca absoluta, o percentual, ou os dois.',
+          kind: 'select',
+          options: [DELTA_BOTH, DELTA_ABSOLUTE, DELTA_PERCENT],
+          default: DELTA_BOTH,
+        },
+        {
+          key: 'compareLabel',
+          label: 'Legenda',
+          hint: 'Vazio usa o nome do campo de comparacao.',
+          kind: 'text',
+          default: '',
+          maxLength: 40,
+        },
+        {
+          key: 'deltaFontSize',
+          label: 'Tamanho',
+          kind: 'length',
+          default: TYPE_SCALE.label,
+          min: FONT_SIZE_MIN,
+          max: FONT_SIZE_MAX,
+        },
+        { key: 'deltaWeight', label: 'Peso', kind: 'token', token: 'fontWeight', default: 'medium' },
+        {
+          // AS DUAS NASCEM ACROMATICAS, e nao verde e vermelha. Numa ferramenta de
+          // composicao a cor e do autor do relatorio: `design.ts` nao tem um unico
+          // valor cromatico, e um default verde o obrigaria a ter dois. A direcao
+          // nao depende da cor — a seta e o sinal a carregam sozinhos, que e o que
+          // faz o card funcionar em daltonismo, em alto contraste e impresso.
+          key: 'upColor',
+          label: 'Cor quando favoravel',
+          kind: 'color',
+          default: INK_MUTED,
+        },
+        { key: 'downColor', label: 'Cor quando desfavoravel', kind: 'color', default: INK_MUTED },
+        {
+          // O fio que separa a variacao do numero. E a regra "tom e fio, nunca
+          // elevacao" aplicada a uma decisao de CONTEUDO: a comparacao e outra
+          // afirmacao que o valor, e o fio diz isso sem gastar cor.
+          key: 'showRule',
+          label: 'Fio acima',
+          kind: 'boolean',
+          default: true,
+        },
+      ]),
+
+      ...grouped('Layout', [
+        // `left` e nao `center`: cards de KPI vivem em fila, e o olho compara uma
+        // coluna de numeros alinhados a esquerda muito mais rapido do que uma
+        // coluna centralizada, em que cada numero comeca num lugar diferente.
+        { key: 'align', label: 'Alinhamento', kind: 'token', token: 'align', default: 'left' },
+        {
+          key: 'valign',
+          label: 'Alinhamento vertical',
+          hint: 'Onde o bloco fica quando a caixa e mais alta que ele.',
+          kind: 'token',
+          token: 'valign',
+          default: 'middle',
+        },
+        {
+          key: 'gap',
+          label: 'Espaco entre linhas',
+          kind: 'length',
+          default: SPACE.xs,
+          min: 0,
+          max: LENGTH_MAX,
+        },
+      ]),
+
+      ...grouped('Superficie', SURFACE_FIELDS),
+    ],
+  },
 };
 
 export const NODE_KINDS = Object.keys(NODE_DESCRIPTORS) as NodeKind[];
@@ -254,11 +467,11 @@ export function exposableFields(kind: NodeKind): FieldSpec[] {
  * divergencia mais barata de introduzir e mais cara de achar — o preview
  * desenharia dados e o pacote entregue cairia no estado vazio.
  *
- * DORMENTE na spec 5.0.0: nenhum descritor declara campo de papel, entao isto
- * devolve `false` sempre e o `capabilities` gerado sai com `dataRoles: []` — o
- * visual nao tem poco de campos no Power BI. A tabela de exemplo do projeto
- * continua servindo ao preview. Volta a morder com o KPI Card da Fase 4, e e por
- * isso que a funcao fica: e ela que impede preview e codegen de divergirem.
+ * VOLTOU A MORDER na spec 5.2.0. Entre a poda da 5.0.0 e o KPI Card isto
+ * devolvia `false` sempre, e o `capabilities` gerado saia com `dataRoles: []` —
+ * o visual nao tinha poco de campos no Power BI. Com o `kpi` no catalogo,
+ * `container` e `text` continuam devolvendo `false` e uma arvore so deles gera o
+ * mesmo pacote de antes, byte a byte.
  */
 export function consumesData(kind: NodeKind): boolean {
   return roleFieldsOf(kind).length > 0;
@@ -267,13 +480,21 @@ export function consumesData(kind: NodeKind): boolean {
 /**
  * Props default de um tipo de no.
  *
- * Campos de papel NAO entram: eles referenciam um papel que o usuario declarou
- * no projeto, e nao ha default sensato — quem cria o no escolhe.
+ * Campo de papel OBRIGATORIO nao entra: ele referencia um papel que o usuario
+ * declarou no projeto, e nao ha default sensato — quem cria o no escolhe. A
+ * ausencia e o mecanismo, nao um efeito colateral: o no nasce reprovado pelo
+ * schema, o painel e a arvore apontam a pendencia e o export fica bloqueado
+ * (RF-12) ate a medida ser ligada. Um KPI exportavel sem medida entregaria um
+ * pacote que so sabe mostrar o estado vazio.
+ *
+ * Campo de papel OPCIONAL entra como `''` — "declarado, nao ligado". Sem isso o
+ * no nasceria pendente por causa de um campo que a maioria dos KPIs nunca liga.
  */
 export function defaultPropsFor(kind: NodeKind): Record<string, string | number | boolean> {
   const props: Record<string, string | number | boolean> = {};
   for (const field of NODE_DESCRIPTORS[kind].fields) {
     if (field.kind !== 'role') props[field.key] = field.default;
+    else if (field.optional === true) props[field.key] = '';
   }
   return props;
 }

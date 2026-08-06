@@ -37,6 +37,8 @@ export interface ExposedField {
   maxLength?: number;
   options?: ValueOption[];
   showWhen?: { key: string; equals: string };
+  /** Secao dentro do card. Ausente = o bloco inicial sem titulo. */
+  group?: string;
   /** O valor do AUTOR — o mesmo literal que sai no JSX. */
   value: string | number | boolean;
 }
@@ -104,6 +106,9 @@ function exposedNodeOf(node: SpecNode): ExposedNode | null {
       entry.max = field.max;
     }
     if (field.kind === 'text') entry.maxLength = field.maxLength;
+    // A chave so viaja quando existe: um `group: undefined` na tabela emitida
+    // seria uma diferenca no fonte gerado de todo no sem secao.
+    if (field.group !== undefined) entry.group = field.group;
 
     const options = optionsFor(field);
     if (options) entry.options = options;

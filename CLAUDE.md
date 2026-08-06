@@ -98,20 +98,32 @@ relatório, mostra tooltip nativo, respeita alto contraste, é navegável por te
 
 Concluídos: fundação e primeiro editor (depois substituídos pelo pivô da ADR-08), registro de componentes, API
 de build, editor de composição, paridade de interatividade, faxina do caminho antigo, migração para Turborepo,
-o **canvas de posicionamento livre** (ADR-18) e o **kit autoral** (spec 5.0.0). Pacote **93,7 KB**,
-`content.js` **288,1 KB**.
+o **canvas de posicionamento livre** (ADR-18), o **kit autoral** (spec 5.0.0) e o **KPI Card** (spec 5.2.0).
+Pacote **95,2 KB**, `content.js` **292,4 KB**.
 
-**O catálogo tem DOIS componentes desde 2026-08-05** (spec 5.0.0): `container` e `text`. KPI e os quatro
-gráficos foram removidos, e o Recharts saiu com eles — daí a queda de 62% no `content.js`. Removeção de
-schema exige major (RN-12), e **não há migração 4→5**: `migrate.ts` foi apagado e a chave do `localStorage`
-pulou para `vislow:project:v5`, então o projeto antigo continua no navegador e nunca mais é lido. Nada é
-descartado em silêncio porque nada é tentado.
+**O catálogo tem TRÊS componentes desde 2026-08-06** (spec 5.2.0): `container`, `text` e `kpi`. Entre
+2026-08-05 e essa data foram só dois — a poda da 5.0.0 tirou o KPI e os quatro gráficos, e o Recharts saiu
+com eles (daí a queda de 62% no `content.js`, que o KPI não desfez: ele custou 4,3 KB). Remoção de schema
+exige major (RN-12), e **não há migração 4→5**: `migrate.ts` foi apagado e a chave do `localStorage` pulou
+para `vislow:project:v5`, então o projeto antigo continua no navegador e nunca mais é lido. Nada é descartado
+em silêncio porque nada é tentado. A 5.2.0 é aditiva e **não** mexe nessa chave.
 
-**Consequência a saber antes de diagnosticar qualquer coisa:** nenhum nó consome dados, então `usedRoles`
-devolve vazio e o `capabilities.json` sai com `dataRoles: []` — **o visual gerado não tem poço de campos no
-Power BI**. `spec.data`, o DataPanel, `dataFrame.ts` e `interaction.ts` continuam de pé, dormentes. A chamada
-`readFrame` no `update()` **fica**: é dentro dela que o alto contraste é aplicado. Filtro cruzado, tooltip
-nativo e teclado estão em quarentena declarada nos próprios arquivos de teste, e voltam com a Fase 4.
+**O poço de campos VOLTOU com o KPI.** Ele é o único nó que consome dados, e declara **dois papéis de
+medida**: `valueRole` (obrigatório) e `compareRole` (opcional). Uma árvore só de `container` e `text` continua
+gerando o pacote de antes, com `dataRoles: []`.
+
+**O que isso descongelou e o que continua congelado**, e vale saber antes de procurar teste que não existe:
+`dataRoles`, `requiredTypes`, a proibição de `min`, o estado vazio (RF-20), o tooltip nativo (RF-19), o menu de
+contexto (RF-24) e o teclado como *alcançável e rotulado* (RF-23 parcial) voltaram. **Filtro cruzado (RF-18) e
+aviso de truncamento (RF-25) continuam sem sujeito** — os dois dependem de `column.category`, e um card de
+número único não declara agrupamento nem tem marca para clicar. A quarentena restante está declarada em
+`compiledVisual.e2e.test.ts`.
+
+**Achado aberto (RF-17):** o `format` da coluna chega ao número, mas os **separadores saem em `en-US`** mesmo
+com `host.locale` em pt-BR. O `formattingService` só conhece culturas se
+`powerbi-visuals-utils-formattingutils/lib/globalize/globalize.cultures` for importado, e essa tabela pesa
+1,17 MB — estouraria o `content.js`. Não é regressão do KPI: o caminho é o mesmo desde a spec 3.0.0, e ficou
+invisível porque o teste da 4.x media `120`, abaixo de mil. Está documentado por extenso no e2e.
 
 **A linguagem visual do kit é "papel, não tinta"** (`packages/config-schema/src/design.ts`). Nenhum valor dela
 é cromático: numa ferramenta de composição a cor é do autor do relatório, e o que é nosso é o neutro exato em
@@ -144,12 +156,34 @@ peso, alinhamento horizontal, alinhamento vertical e sombra.
 ponta todo o caminho genérico que o painel, o schema e o codegen percorrem. O que passar nela passa para
 qualquer componente futuro.
 
+**O KPI Card tem vinte e sete campos, em seis seções** (spec 5.2.0, RF-16). O controle é **por linha** — valor,
+rótulo e variação têm tamanho, peso e cor independentes —, e é por isso que `FieldBase` ganhou `group`: os
+**dois** painéis o leem, o do editor como cabeçalho de seção e o do Power BI como `FormattingGroup` de verdade.
+Campo sem grupo cai num bloco inicial sem título, então `container` e `text` desenham exatamente como
+desenhavam. Com `role`, o card cobre **sete dos oito** tipos de `FieldSpec`; só `number` segue dormente.
+
+Três decisões do card que não são estéticas:
+
+- **A direção nunca depende da cor.** Seta (`aria-hidden`) e sinal aritmético aparecem sempre. Cor sozinha não
+  comunica direção para daltônicos, e em alto contraste as duas cores do autor podem virar a mesma.
+- **`polarity` separa direção de juízo** (`higher`/`lower`/`neutral`). Num KPI de custo ou churn a queda é boa:
+  a seta continua para baixo e a cor de favorável é que se aplica. As duas cores **nascem acromáticas**
+  (`INK_MUTED`) — verde e vermelho por padrão exigiriam valor cromático em `design.ts`.
+- **Base zero não vira `Infinity`**, e o denominador do percentual é `|base|`: com base negativa, dividir pelo
+  número cru inverteria o sinal do percentual em relação ao da seta.
+
+**`suggestRoleBindings` voltou** (`factory.ts`), e é o editor que a chama em `addNode`/`addNodeAt`: um KPI
+nasce ligado à primeira medida livre, porque tela vazia parece defeito. Sem coluna do tipo certo o campo fica
+pendente e o export trava — que aí é a informação correta (RF-12).
+
 O projeto tem uma **tabela de dados de exemplo** (`spec.data`, spec 3.0.0): até 10 colunas e 50 linhas, cada
 coluna com um tipo declarado (`text`, `integer`, `decimal`, `percent`, `currency`, `date`, `boolean`). **A
 coluna É o campo** — não existe lista paralela de papéis. Do lado do editor ela formata o preview; do lado do
 pacote ela vira um `dataRole` com `requiredTypes` (o Power BI recusa o arrasto do tipo errado) e
-`conditions.min: 1` (o host segura o visual enquanto faltar campo). O papel agrupar/somar sai do tipo e é
-trocável — um "Ano" é inteiro e ainda assim agrupa.
+`conditions.max: 1`. **Nunca `min`** — já tentamos, e o host descarta todo arrasto em silêncio, porque uma
+condição única com `min: 1` em todos os papéis descreve só o estado final. Quem responde por "falta campo" é o
+`EmptyState` do visual. O papel agrupar/somar sai do tipo e é trocável — um "Ano" é inteiro e ainda assim
+agrupa.
 
 **Os VALORES da tabela não entram no pacote**, pela mesma regra da prancheta: dois testes reprovam o vazamento,
 um no fonte gerado e outro no bundle compilado. O que viaja é só o esquema.
@@ -170,7 +204,9 @@ Duas consequências que valem saber antes de mexer:
   estrutural, não verificação em runtime. `placement` nunca é publicável (`structural: true` no descritor) —
   é o codegen que o lê para decidir se embrulha os filhos em `CanvasSlot`.
 
-**Próximo — Fase 4:** KPI Card com comparação (que tira da quarentena os testes de interatividade e de
-`dataRoles`), matriz manual MT-01…MT-14 (incluindo o Service) e E2E Playwright do editor.
+**Próximo — o que resta da Fase 4:** matriz manual MT-01…MT-14 (incluindo o Service), E2E Playwright do editor
+e a decisão sobre o separador de locale da RF-17 (o achado aberto acima). Filtro cruzado (RF-18) e truncamento
+(RF-25) esperam o primeiro nó que declare papel de **agrupamento** — não há como devolvê-los com um card de
+número único.
 
 O detalhe de cada sprint está em [docs/history.md](docs/history.md); não é preciso lê-lo para trabalhar.

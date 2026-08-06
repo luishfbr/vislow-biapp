@@ -27,6 +27,7 @@ import {
   MAX_ROWS,
   NODE_ID_PATTERN,
   NODE_NAME_MAX_LENGTH,
+  OPTIONAL_ROLE_NAME_PATTERN,
   PROJECT_NAME_MAX_LENGTH,
   PROJECT_NAME_MIN_LENGTH,
   RECT_MIN_SIZE,
@@ -61,7 +62,10 @@ function fieldSchema(field: FieldSpec): Record<string, unknown> {
     case 'role':
       // A existencia do papel referenciado NAO da para expressar em JSON Schema
       // — e verificada semanticamente em `validateSpec`.
-      return { type: 'string', pattern: ROLE_NAME_PATTERN };
+      return {
+        type: 'string',
+        pattern: field.optional === true ? OPTIONAL_ROLE_NAME_PATTERN : ROLE_NAME_PATTERN,
+      };
   }
 }
 
@@ -430,6 +434,10 @@ export function validateSpec(value: unknown): SpecValidationResult {
     for (const field of NODE_DESCRIPTORS[node.kind].fields) {
       if (field.kind !== 'role') continue;
       const referenced = node.props[field.key];
+      // Papel opcional em branco e "declarado, nao ligado" — um estado valido, e
+      // nao um papel inexistente. `usedRoles` tambem nao o vera: `''` nao casa
+      // com coluna nenhuma, entao ele nao vira `dataRole` no capabilities.
+      if (field.optional === true && referenced === '') continue;
       const role = typeof referenced === 'string' ? roles.get(referenced) : undefined;
 
       if (!role) {
