@@ -22,8 +22,8 @@
     "typecheck": "tsc -p tsconfig.json",
     "stage:vendor": "node scripts/stage-vendor.mjs",
     "stage:deps": "node scripts/stage-deps.mjs",
-    "// clean": "`deps/` NAO entra aqui. Sao centenas de MB que so o lockfile invalida, e o script ja sai cedo quando o stamp bate — apagar por rotina devolveria a espera (e a rede) que este passo existe para eliminar. Para forcar: `rm -rf packages/visual-template/deps`.",
-    "clean": "rm -rf dist vendor .tmp .turbo"
+    "// clean": "`deps/` NAO entra aqui. Sao centenas de MB que so o lockfile invalida, e o script ja sai cedo quando o stamp bate — apagar por rotina devolveria a espera (e a rede) que este passo existe para eliminar. Para forcar: `node scripts/rmrf.mjs packages/visual-template/deps` na raiz.",
+    "clean": "node ../../scripts/rmrf.mjs dist vendor .tmp .turbo"
   },
   "// devDependencies": "NAO sao importadas pelo codigo — nao remova por parecerem nao usadas. `scripts/stage-vendor.mjs` LE o `dist/` das duas e falha sem ele; declarar a aresta e o que faz o `^build` do turbo (e o `pnpm -r`) ordenarem certo, em vez de depender de quem roda os comandos lembrar da ordem. Ficam em devDependencies, e nao dependencies, porque o que chega ao visual e a COPIA em `vendor/`, nunca este node_modules — ver achado 39.",
   "devDependencies": {

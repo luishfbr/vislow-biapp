@@ -11,7 +11,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test:build": "vitest run --config ../../vitest.build.config.ts",
     "start": "node dist/main.js",
-    "clean": "rm -rf dist .turbo"
+    "clean": "node ../../scripts/rmrf.mjs dist .turbo"
   },
   "dependencies": {
     "@nestjs/common": "11.1.6",

@@ -22,7 +22,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc -p tsconfig.json",
-    "clean": "rm -rf dist .turbo"
+    "clean": "node ../../scripts/rmrf.mjs dist .turbo"
   },
   "dependencies": {
     "ajv": "8.20.0",
