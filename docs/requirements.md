@@ -177,6 +177,16 @@ um gráfico vazio, não um erro.
 
 **RF-25 `[P0]` — Aviso de truncamento** quando o `dataReductionAlgorithm` cortar o conjunto (RN-10).
 
+**RF-28 `[P0]` — Painel de formatação no visual gerado**
+O autor **publica** os campos que quiser (`exposed` no nó); cada nó publicado vira um card no painel de
+formatação do Power BI, batizado pelo apelido do nó.
+*Dado* um campo publicado, *quando* o consumidor do relatório o altera no painel, *então* o visual passa a
+desenhar o valor dele — e volta ao valor do autor em "Redefinir para o padrão".
+*Dado* um campo **não** publicado, *quando* alguém injeta um valor para ele no relatório, *então* o visual o
+ignora: o valor do autor está literal no fonte gerado, e não há por onde ler o `objects` naquela posição.
+**Fechado é o padrão** (ADR-20): sem publicação, o pacote não tem painel — nem `objects`, nem
+`getFormattingModel`.
+
 ## 5. Requisitos não funcionais
 
 | ID | Categoria | Requisito | Como é verificado |
@@ -222,5 +232,6 @@ Em ordem sugerida de valor por esforço:
 2. **Galeria de templates** — specs de partida. Adiado de propósito: só faz sentido com o registro estável.
 3. **Importação de tema do Power BI** — derivar cores do `.json` de tema corporativo. Atende P-03 diretamente.
 4. **Contas e biblioteca na nuvem** — salvar, versionar e compartilhar projetos entre times.
-5. **Painel de formatação no visual gerado** (`getFormattingModel`) — deixar o consumidor do relatório ajustar o
-   que o autor permitir. O `pbiviz` já avisa que será obrigatório em versão futura (R-09).
+5. ~~**Painel de formatação no visual gerado** (`getFormattingModel`)~~ — **ENTREGUE** na spec 5.1.0, como
+   RF-28 e ADR-20. Fecha também o R-09: o aviso do `pbiviz` sobre `getFormattingModel` obrigatório deixa de
+   valer para todo pacote que publique algum campo.

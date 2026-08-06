@@ -58,7 +58,7 @@ describe('o que a barra conta sobre a composicao', () => {
   it('conta os componentes acrescentados', () => {
     act(() => {
       useEditorStore.getState().addNode('text');
-      useEditorStore.getState().addNode('kpi');
+      useEditorStore.getState().addNode('text');
     });
     render();
     expect(texto()).toContain('2 componentes');
@@ -106,18 +106,20 @@ describe('as pendencias', () => {
     expect(texto()).not.toContain('pend');
   });
 
-  it('aparecem quando um componente fica sem campo ligado', () => {
-    // Um grafico NASCE ligado: a fabrica amarra os papeis as colunas da tabela
-    // de exemplo, entao largar um na prancheta nao produz pendencia nenhuma.
-    // Quem produz e desligar o campo depois — que e o estado NORMAL de quem esta
-    // trocando de coluna, e por isso ele e ambar e nao vermelho.
+  it('aparecem quando um campo fica com valor que o schema recusa', () => {
+    // Todo no NASCE valido na spec 5.0.0 — nao ha mais campo sem default, entao
+    // largar um componente na prancheta nao produz pendencia nenhuma. Quem
+    // produz e um valor invalido digitado depois, e o caminho real para isso e o
+    // campo hexadecimal: ele grava a cada tecla, e `#12` e invalido no caminho
+    // para `#123456`. E o estado NORMAL de quem esta escolhendo uma cor, e por
+    // isso a barra o chama de pendencia em ambar, e nao de erro em vermelho.
     act(() => {
-      useEditorStore.getState().addNode('barChart');
+      useEditorStore.getState().addNode('text');
     });
     const id = useEditorStore.getState().spec.root.children?.[0]?.id;
-    expect(id, 'o grafico nao foi criado').toBeDefined();
+    expect(id, 'o texto nao foi criado').toBeDefined();
     act(() => {
-      useEditorStore.getState().setProp(id!, 'measureRole', '');
+      useEditorStore.getState().setProp(id!, 'color', '#12');
     });
     render();
     expect(texto()).toContain('pendência');

@@ -12,7 +12,6 @@ import {
   createNode,
   findNode,
   insertChild,
-  migrateToCurrent,
   moveNode,
   parentOf,
   positionsChildren,
@@ -25,10 +24,12 @@ import {
   setColumnKind,
   setColumnLabel,
   setColumnType,
+  setFieldExposed,
+  setNodeName,
   setNodeProps,
   setNodeRect,
-  suggestRoleBindings,
   validateSpec,
+  SPEC_VERSION,
   type Artboard,
   type NodeKind,
   type NodeRect,
@@ -190,6 +191,20 @@ export interface EditorState {
   setProp: (id: string, key: string, value: unknown) => void;
   /** Move ou redimensiona dentro de um pai que posiciona. Prende na borda. */
   setRect: (id: string, rect: NodeRect) => void;
+
+  /**
+   * Apelido do no — o titulo do card no painel de formatacao do visual gerado.
+   * String vazia remove, e o titulo volta a ser o rotulo do descritor.
+   */
+  setNodeName: (id: string, name: string) => void;
+  /**
+   * Publica (ou despublica) um campo no painel do visual gerado.
+   *
+   * Delega para `setFieldExposed`, que e puro e testado sem React: e la que
+   * moram a ordem do descritor e o batismo automatico do no na primeira
+   * publicacao. Aqui so passa pelo `commit`, como toda edicao de arvore.
+   */
+  setFieldExposed: (id: string, key: string, exposed: boolean) => void;
 
   /**
    * A tabela de exemplo. Cada coluna e, ao mesmo tempo, um campo do visual —
@@ -413,7 +428,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       // "selecionado" e a prancheta inteira.
       const selected =
         (selectedId === null ? null : findNode(spec.root, selectedId)) ?? spec.root;
-      const node = createNode(kind, suggestRoleBindings(kind, spec.data.columns));
+      const node = createNode(kind);
 
       if (acceptsChildren(selected)) {
         editTree(insertChild(spec.root, selected.id, node), node.id);
@@ -428,7 +443,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     addNodeAt: (kind, rect) => {
       const { spec } = get();
-      const node = createNode(kind, suggestRoleBindings(kind, spec.data.columns));
+      const node = createNode(kind);
 
       // Raiz que EMPILHA nao tem onde honrar a caixa: quem decide o tamanho ali
       // e a cadeia de flex. Cair no caminho comum e melhor que gravar um `rect`
@@ -532,6 +547,14 @@ export const useEditorStore = create<EditorState>((set, get) => {
       editTree(setNodeRect(get().spec.root, id, rect));
     },
 
+    setNodeName: (id, name) => {
+      editTree(setNodeName(get().spec.root, id, name));
+    },
+
+    setFieldExposed: (id, key, exposed) => {
+      editTree(setFieldExposed(get().spec.root, id, key, exposed));
+    },
+
     addColumn: (label, type) => {
       editTable(addColumn(get().spec, label, type));
     },
@@ -602,15 +625,37 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
 
     /**
-     * Importa um `.vislow.json`, migrando o formato antigo pelo mesmo caminho
-     * do `localStorage`.
+     * Importa um `.vislow.json`.
      *
-     * Sem a migracao aqui, um arquivo exportado antes da tabela de exemplo
-     * existir seria recusado como "invalido" — e o usuario nao teria como
-     * saber que o problema e a idade do arquivo, nem o que fazer a respeito.
+     * VERSAO INCOMPATIVEL E DITA POR EXTENSO, e nao empacotada como "arquivo
+     * invalido". Ate a spec 4.0.0 havia uma cadeia de migracao aqui e um arquivo
+     * antigo era convertido; na 5.0.0 ela foi apagada junto com os tipos de no
+     * removidos. Sem esta mensagem, quem tentasse abrir um arquivo de dois meses
+     * atras receberia uma lista de erros de schema sobre `kind` desconhecido — e
+     * nao teria como saber que o problema e a idade do arquivo.
      */
     importSpec: (raw) => {
-      const result = validateSpec(migrateToCurrent(raw));
+      // O `in` ja estreita `raw` para um objeto com a chave: o compilador sabe
+      // disso, e uma assercao aqui seria ruido que o lint reprova.
+      const version =
+        typeof raw === 'object' && raw !== null && 'schemaVersion' in raw
+          ? raw.schemaVersion
+          : undefined;
+      if (typeof version === 'string' && version !== SPEC_VERSION) {
+        return {
+          ok: false,
+          issues: [
+            {
+              path: '/schemaVersion',
+              message:
+                `Este arquivo e da versao ${version}, e o editor esta na ${SPEC_VERSION}. ` +
+                'Nao ha conversao entre as duas — recomponha o visual neste editor.',
+            },
+          ],
+        };
+      }
+
+      const result = validateSpec(raw);
       if (result.kind === 'invalid') return { ok: false, issues: result.issues };
       commit(result.spec, null);
       // Mesma razao do projeto novo: o que foi importado substitui tudo.

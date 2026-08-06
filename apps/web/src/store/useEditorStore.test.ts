@@ -3,7 +3,9 @@ import {
   ARTBOARD_MAX,
   ARTBOARD_MIN,
   artboardOf,
+  defaultPropsFor,
   findNode,
+  NODE_KINDS,
   validateSpec,
   type SpecNode,
 } from '@vislow/component-registry';
@@ -73,50 +75,57 @@ describe('adicionar componentes', () => {
   it('entra como IRMAO quando a selecao e uma folha', () => {
     store().addNode('text');
     // A selecao agora e o texto, que nao aceita filhos.
-    store().addNode('kpi');
-    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'kpi']);
+    store().addNode('text');
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'text']);
   });
 
   it('entra logo DEPOIS do irmao selecionado, nao no fim', () => {
     store().addNode('text');
     const primeiro = store().selectedId;
-    store().addNode('kpi');
+    store().addNode('text');
     store().select(primeiro);
-    store().addNode('barChart');
+    store().addNode('text');
 
-    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'barChart', 'kpi']);
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'text', 'text']);
   });
 
   it('aninha dentro de um container filho', () => {
     store().addNode('container');
-    store().addNode('kpi');
-    expect(kindsOf(store().spec.root)).toEqual(['container', 'container', 'kpi']);
+    store().addNode('text');
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'container', 'text']);
   });
 
-  it('liga os papeis automaticamente e a spec continua valida', () => {
-    // Sem isto todo grafico nasceria no estado vazio, com dois campos para
-    // preencher antes de o usuario ver qualquer coisa.
-    store().addNode('barChart');
+  /*
+   * ============ AS LIGACOES AUTOMATICAS DE PAPEL ESTAO DORMENTES =============
+   * Havia aqui dois testes sobre `suggestRoleBindings`:
+   *
+   *   - "liga os papeis automaticamente e a spec continua valida" — sem isso
+   *     todo grafico nascia no estado vazio, com dois campos a preencher antes
+   *     de o usuario ver qualquer coisa
+   *   - "sem coluna do tipo certo, o campo fica pendente e o export trava"
+   *
+   * `suggestRoleBindings` foi APAGADA na spec 5.0.0: sem campo de papel no
+   * catalogo ela nao tinha o que sugerir, e `createNode` voltou a ser so os
+   * defaults. Volta com o KPI Card da Fase 4.
+   * =========================================================================
+   */
+
+  it('todo no nasce valido e o export nao trava por causa dele', () => {
+    // A contrapartida do que saiu acima: nao havendo mais campo sem default,
+    // adicionar qualquer componente deixa a spec pronta para exportar.
+    for (const kind of NODE_KINDS) store().addNode(kind);
+
     expect(store().issues).toEqual([]);
-
-    expect(selected().props).toMatchObject({ categoryRole: 'regiao', measureRole: 'receita' });
-  });
-
-  it('sem coluna do tipo certo, o campo fica pendente e o export trava', () => {
-    store().removeColumn('regiao');
-    store().addNode('barChart');
-
-    expect(store().issues.length).toBeGreaterThan(0);
-    expect(selectCanExport(useEditorStore.getState())).toBe(false);
+    expect(selectCanExport(useEditorStore.getState())).toBe(true);
   });
 });
 
 describe('reordenar e remover', () => {
   it('sobe e desce entre irmaos', () => {
     store().addNode('text');
-    store().addNode('kpi');
+    store().addNode('text');
     store().moveSelected(-1);
-    expect(kindsOf(store().spec.root)).toEqual(['container', 'kpi', 'text']);
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'text']);
   });
 
   it('a raiz nao pode ser removida', () => {
@@ -136,7 +145,7 @@ describe('reordenar e remover', () => {
 
   it('remover leva a selecao para um vizinho, nunca para o vazio', () => {
     store().addNode('text');
-    store().addNode('kpi');
+    store().addNode('text');
     store().removeSelected();
 
     expect(selected()).toBeDefined();
@@ -146,11 +155,11 @@ describe('reordenar e remover', () => {
 describe('duplicar', () => {
   it('a copia entra logo depois do original e passa a ser a selecao', () => {
     store().addNode('text');
-    store().addNode('kpi');
+    store().addNode('text');
 
     const copia = store().duplicateNode();
 
-    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'kpi', 'kpi']);
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'text', 'text']);
     expect(store().selectedId).toBe(copia);
   });
 
@@ -192,7 +201,7 @@ describe('tabela de exemplo', () => {
   it('editar o rotulo NAO muda o nome tecnico', () => {
     // O nome amarra as referencias da arvore e vai para o capabilities.json.
     // Se ele mudasse junto, cada renomeio quebraria todo no que o usa.
-    store().addNode('barChart');
+    store().addNode('text');
     store().setColumnLabel('receita', 'Receita liquida');
 
     const column = store().spec.data.columns.find((c) => c.name === 'receita');
@@ -200,15 +209,17 @@ describe('tabela de exemplo', () => {
     expect(store().issues).toEqual([]);
   });
 
-  it('remover uma coluna DESLIGA os nos que a usavam', () => {
-    store().addNode('kpi');
-    expect(store().issues).toEqual([]);
-
+  it('remover uma coluna deixa a spec valida — ninguem a consumia', () => {
+    // Ate a spec 4.0.0 este teste se chamava "remover uma coluna DESLIGA os nos
+    // que a usavam" e provava o `unbindRole`: o prop do no era APAGADO, e o no
+    // voltava ao estado pendente com o export travado, em vez de guardar o nome
+    // de uma coluna que nao existe mais. Nenhum no consome coluna na 5.0.0. O
+    // `unbindRole` continua em `table.ts` e volta a morder na Fase 4.
+    store().addNode('text');
     store().removeColumn('receita');
 
-    expect(selected().props.measureRole).toBeUndefined();
-    // Pendente, nao quebrado: o editor mostra o campo vazio e trava o export.
-    expect(selectCanExport(useEditorStore.getState())).toBe(false);
+    expect(store().issues).toEqual([]);
+    expect(selectCanExport(useEditorStore.getState())).toBe(true);
   });
 
   it('linha e celula chegam ao preview pelo store', () => {
@@ -259,7 +270,7 @@ describe('prancheta do editor', () => {
   });
 
   it('nao toca na arvore nem na selecao', () => {
-    store().addNode('barChart');
+    store().addNode('text');
     const before = store().spec.root;
     const selected = store().selectedId;
 
@@ -298,7 +309,7 @@ describe('importar projeto', () => {
   it('aceita uma spec valida e abre sem selecao', () => {
     // Herdar a selecao da spec anterior apontaria para um no que ja nao existe;
     // cair na raiz esconderia que o projeto acabou de ser trocado inteiro.
-    store().addNode('barChart');
+    store().addNode('text');
     const exportada = structuredClone(store().spec);
 
     store().newProject('Vazio');
@@ -308,22 +319,20 @@ describe('importar projeto', () => {
 });
 
 describe('o roteiro do teste manual produz uma spec compilavel', () => {
-  it('container + KPI + dois graficos passa na mesma validacao que a API aplica', () => {
+  it('container aninhado com textos passa na mesma validacao que a API aplica', () => {
     store().rename('Painel de vendas');
     store().addNode('text');
     store().addNode('container');
-    store().addNode('kpi');
+    store().addNode('text');
     store().select(store().spec.root.id);
-    store().addNode('barChart');
-    store().addNode('lineChart');
+    store().addNode('text');
 
     expect(kindsOf(store().spec.root)).toEqual([
       'container',
       'text',
       'container',
-      'kpi',
-      'barChart',
-      'lineChart',
+      'text',
+      'text',
     ]);
 
     // A MESMA funcao que o `BuildsController` chama antes de enfileirar.
@@ -354,7 +363,7 @@ describe('desfazer e refazer', () => {
     // Cada `pointermove` chama `setRect`. Sem o gesto delimitado, `Ctrl+Z`
     // andaria um pixel de cada vez e desfazer um arrasto exigiria centenas de
     // toques — que e o mesmo que nao ter desfazer.
-    store().addNode('kpi');
+    store().addNode('text');
     const id = store().selectedId ?? '';
     const original = findNode(store().spec.root, id)?.rect;
 
@@ -370,7 +379,7 @@ describe('desfazer e refazer', () => {
   it('durante o gesto NAO revalida nem empilha', () => {
     // Era o custo que cada evento de ponteiro pagava: `validateSpec` da spec
     // inteira mais um `saveProjectDebounced`, centenas de vezes por arrasto.
-    store().addNode('kpi');
+    store().addNode('text');
     const id = store().selectedId ?? '';
     const passos = store().past.length;
 
@@ -398,13 +407,13 @@ describe('desfazer e refazer', () => {
 
   it('editar depois de desfazer abandona o ramo refeito', () => {
     store().addNode('text');
-    store().addNode('kpi');
+    store().addNode('text');
     store().undo();
     expect(store().future.length).toBe(1);
 
-    store().addNode('barChart');
+    store().addNode('text');
     expect(store().future).toEqual([]);
-    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'barChart']);
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'text']);
   });
 
   it('desfazer a criacao de um no limpa a selecao que apontava para ele', () => {
@@ -419,7 +428,7 @@ describe('desfazer e refazer', () => {
   });
 
   it('a spec depois de desfazer continua valida', () => {
-    store().addNode('barChart');
+    store().addNode('text');
     store().setProp(store().selectedId ?? '', 'strokeWidth', 4);
     store().undo();
     store().undo();
@@ -444,9 +453,9 @@ describe('criar pela paleta', () => {
     // Pelo dialogo o no cai numa caixa automatica em cascata, nunca onde a
     // pessoa esta olhando — e cada componente custava um arrasto de correcao
     // logo depois de criado.
-    store().addNodeAt('kpi', { x: 25, y: 40, w: 30, h: 20 });
+    store().addNodeAt('text', { x: 25, y: 40, w: 30, h: 20 });
 
-    expect(selected().kind).toBe('kpi');
+    expect(selected().kind).toBe('text');
     expect(selected().rect).toEqual({ x: 25, y: 40, w: 30, h: 20 });
   });
 
@@ -461,10 +470,14 @@ describe('criar pela paleta', () => {
     expect(validateSpec(store().spec).kind).toBe('valid');
   });
 
-  it('liga os papeis, como qualquer outro caminho de criacao', () => {
-    store().addNodeAt('barChart', { x: 0, y: 0, w: 50, h: 50 });
+  it('nasce com os defaults do descritor, como qualquer outro caminho de criacao', () => {
+    // Ate a spec 4.0.0 este teste conferia que desenhar um retangulo LIGAVA os
+    // papeis, como o `addNode` fazia — os dois caminhos de criacao tinham de
+    // concordar. Sem campo de papel no catalogo, o que os dois precisam ter em
+    // comum e o conjunto de defaults, e e isso que se confere agora.
+    store().addNodeAt('text', { x: 0, y: 0, w: 50, h: 50 });
     expect(store().issues).toEqual([]);
-    expect(selected().props).toMatchObject({ categoryRole: 'regiao', measureRole: 'receita' });
+    expect(selected().props).toEqual(defaultPropsFor('text'));
   });
 
   it('numa raiz que EMPILHA, o no entra sem caixa', () => {
@@ -472,16 +485,16 @@ describe('criar pela paleta', () => {
     // uma geometria que nao desenha nada — e o `validateSpec` reprova filho de
     // container empilhado com caixa.
     store().setProp(store().spec.root.id, 'placement', 'stack');
-    store().addNodeAt('kpi', { x: 25, y: 40, w: 30, h: 20 });
+    store().addNodeAt('text', { x: 25, y: 40, w: 30, h: 20 });
 
-    expect(selected().kind).toBe('kpi');
+    expect(selected().kind).toBe('text');
     expect(selected().rect).toBeUndefined();
     expect(validateSpec(store().spec).kind).toBe('valid');
   });
 
   it('armar e desarmar a paleta', () => {
-    store().armPalette('kpi');
-    expect(store().paletteKind).toBe('kpi');
+    store().armPalette('text');
+    expect(store().paletteKind).toBe('text');
     store().armPalette(null);
     expect(store().paletteKind).toBeNull();
   });
@@ -493,7 +506,7 @@ describe('entrar e sair de container aninhado', () => {
     store().addNode('container');
     const filho = store().selectedId ?? '';
     store().setProp(filho, 'placement', 'canvas');
-    store().addNode('kpi');
+    store().addNode('text');
     return { filho };
   }
 
@@ -548,5 +561,56 @@ describe('entrar e sair de container aninhado', () => {
     store().newProject('Outro');
 
     expect(store().enteredId).toBeNull();
+  });
+});
+
+/**
+ * O painel de formatacao do visual gerado (spec 5.1.0), do lado do editor.
+ *
+ * As invariantes de ordem e de batismo estao no `component-registry`, onde se
+ * testam sem React. O que se prova aqui e a fronteira: publicar e uma EDICAO —
+ * passa pelo `commit`, revalida e empilha um passo de desfazer, como qualquer
+ * outra.
+ */
+describe('publicar campo no painel do Power BI', () => {
+  it('projeto novo nao publica nada', () => {
+    const publicados = (node: SpecNode): number =>
+      (node.exposed?.length ?? 0) + (node.children ?? []).reduce((n, c) => n + publicados(c), 0);
+
+    store().addNode('text');
+    expect(publicados(store().spec.root)).toBe(0);
+  });
+
+  it('publicar e uma edicao: entra no historico e continua valida', () => {
+    store().addNode('text');
+    const id = store().selectedId ?? '';
+
+    store().setFieldExposed(id, 'color', true);
+    expect(findNode(store().spec.root, id)?.exposed).toEqual(['color']);
+    expect(validateSpec(store().spec).kind).toBe('valid');
+
+    store().undo();
+    expect(findNode(store().spec.root, id)?.exposed).toBeUndefined();
+  });
+
+  it('o apelido tambem desfaz', () => {
+    store().addNode('text');
+    const id = store().selectedId ?? '';
+
+    store().setFieldExposed(id, 'color', true);
+    store().setNodeName(id, 'Cabecalho');
+    expect(findNode(store().spec.root, id)?.name).toBe('Cabecalho');
+
+    store().undo();
+    // Volta ao apelido que a publicacao sugeriu, nao a coisa nenhuma.
+    expect(findNode(store().spec.root, id)?.name).toBe(String(defaultPropsFor('text').content));
+  });
+
+  it('chave estrutural nao muda nada — a operacao e rejeitada', () => {
+    const id = store().spec.root.id;
+    const antes = store().spec;
+
+    store().setFieldExposed(id, 'placement', true);
+    expect(store().spec).toBe(antes);
   });
 });

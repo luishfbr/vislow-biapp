@@ -1,13 +1,5 @@
 import type { NodeKind } from '@vislow/component-registry';
-import {
-  AreaChartNode,
-  BarChartNode,
-  Container,
-  KpiNode,
-  LineChartNode,
-  PieChartNode,
-  TextNode,
-} from '@vislow/visual-kit/nodes';
+import { Container, TextBox } from '@vislow/visual-kit/nodes';
 import type { ReactNode } from 'react';
 
 /**
@@ -22,17 +14,13 @@ import type { ReactNode } from 'react';
  *
  * O import e NOMEADO tambem aqui, ainda que o editor nao tenha orcamento de
  * bundle: manter a mesma forma dos dois lados evita que alguem "simplifique"
- * para um namespace e leve o Recharts inteiro para o visual compilado.
+ * para um import de namespace, que no lado do codegen levaria o catalogo inteiro
+ * para dentro do visual compilado.
  */
 
 const COMPONENTS = {
   container: Container,
-  text: TextNode,
-  kpi: KpiNode,
-  barChart: BarChartNode,
-  lineChart: LineChartNode,
-  areaChart: AreaChartNode,
-  pieChart: PieChartNode,
+  text: TextBox,
   // `satisfies` cobra a cobertura EXATA das chaves: um `kind` novo no registro
   // sem componente aqui nao compila, e uma chave a mais tambem nao.
 } satisfies Record<NodeKind, unknown>;

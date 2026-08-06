@@ -1,16 +1,7 @@
 'use client';
 
 import { NODE_DESCRIPTORS, NODE_KINDS, type NodeKind } from '@vislow/component-registry';
-import {
-  ChartArea,
-  ChartColumn,
-  ChartLine,
-  ChartPie,
-  Frame,
-  Gauge,
-  MousePointer2,
-  Type,
-} from 'lucide-react';
+import { Frame, MousePointer2, Type } from 'lucide-react';
 import { useRef, type ComponentType, type KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { SELECT_SHORTCUT } from '@/lib/shortcuts';
@@ -36,11 +27,6 @@ import { useEditorStore } from '@/store/useEditorStore';
 const ICONS: Record<NodeKind, ComponentType<{ className?: string }>> = {
   container: Frame,
   text: Type,
-  kpi: Gauge,
-  barChart: ChartColumn,
-  lineChart: ChartLine,
-  areaChart: ChartArea,
-  pieChart: ChartPie,
 };
 
 export function Toolbar() {
@@ -53,8 +39,10 @@ export function Toolbar() {
    * ferramentas.
    *
    * E o que `role="toolbar"` PROMETE, e a promessa nao e decorativa: sem ela,
-   * chegar ao campo de nome pelo teclado custaria oito paradas de Tab, e quem
-   * usa leitor de tela ouviria a barra inteira antes de cada uso do editor.
+   * chegar ao campo de nome pelo teclado custaria uma parada de Tab por
+   * ferramenta, e quem usa leitor de tela ouviria a barra inteira antes de cada
+   * uso do editor. Com o catalogo em dois tipos isso custa pouco hoje; a Fase 4
+   * devolve os graficos e o custo volta com eles.
    *
    * A busca e por DOM, e nao por indice guardado em estado: a barra e derivada
    * do catalogo e um tipo de no novo entra sem que este codigo saiba.
@@ -65,7 +53,7 @@ export function Toolbar() {
 
     const atual = botoes.findIndex((b) => b === document.activeElement);
     // Circular: da ultima volta para a primeira. Numa fila curta e visivel,
-    // parar na ponta so obriga a voltar apertando a seta sete vezes.
+    // parar na ponta so obriga a percorrer a fila inteira de volta.
     const anda = (passo: number): number => (atual + passo + botoes.length) % botoes.length;
 
     const alvo =

@@ -5,7 +5,8 @@ import {
   type SpecNode,
   type VisualSpec,
 } from '@vislow/component-registry';
-import { indent, jsString, jsxValue } from './literal.js';
+import { exposedNodes, isExposedKey, type ExposedNode } from './exposure.js';
+import { indent, jsData, jsScalar, jsString, jsxValue } from './literal.js';
 import { usedRoles } from './roles.js';
 
 /**
@@ -46,7 +47,19 @@ function emitNode(node: SpecNode): string {
   // objeto vindo de JSON e do cliente, e o fonte gerado precisa ser
   // deterministico para que dois builds da mesma spec batam byte a byte.
   for (const field of descriptor.fields) {
-    attributes.push(`${field.key}=${jsxValue(node.props[field.key])}`);
+    const authored = node.props[field.key];
+
+    // Campo FECHADO sai literal, como sempre. E o que torna "ignorar o override"
+    // uma propriedade estrutural do pacote, e nao uma verificacao em runtime que
+    // alguem possa contornar: o valor do autor esta no fonte, e nao ha por onde
+    // ler o `objects` naquela posicao.
+    if (!isExposedKey(node, field.key)) {
+      attributes.push(`${field.key}=${jsxValue(authored)}`);
+      continue;
+    }
+
+    const call = `pick(overrides, ${jsString(node.id)}, ${jsString(field.key)}, ${jsScalar(authored)})`;
+    attributes.push(`${field.key}={${call}}`);
   }
 
   const open = `<${descriptor.component}`;
@@ -105,10 +118,56 @@ function treeUsesFrame(spec: VisualSpec): boolean {
   return visit(spec.root);
 }
 
+/**
+ * A tabela `FORMATTING` do fonte gerado, na forma que o `formatting.ts` do
+ * template declara (`FormattingSpec`).
+ *
+ * A conversao existe porque os dois lados guardam o valor do autor em lugares
+ * diferentes, de proposito: aqui ele fica no CAMPO, que e como o JSX o consome;
+ * la ele fica num mapa por chave, que e como o painel o consome — junto com os
+ * governantes de `showWhen`, que nao sao campos publicados e mesmo assim
+ * precisam de valor.
+ *
+ * Quem confere que as duas formas batem e o COMPILADOR do build: o
+ * `visual.tsx` gerado anota a tabela com `FormattingSpec`, entao uma chave a
+ * mais ou um tipo trocado reprova o `pbiviz package` — e o gate de aceite
+ * compila um pacote de verdade a cada `pnpm check`.
+ */
+function formattingTable(nodes: ExposedNode[]): unknown[] {
+  return nodes.map((node) => ({
+    id: node.id,
+    title: node.title,
+    values: {
+      ...Object.fromEntries(node.fields.map((field) => [field.key, field.value])),
+      ...node.governors,
+    },
+    fields: node.fields.map((field) => {
+      const out: Record<string, unknown> = {
+        key: field.key,
+        label: field.label,
+        kind: field.kind,
+      };
+      if (field.min !== undefined) out.min = field.min;
+      if (field.max !== undefined) out.max = field.max;
+      if (field.maxLength !== undefined) out.maxLength = field.maxLength;
+      if (field.options) out.options = field.options;
+      if (field.showWhen) out.showWhen = field.showWhen;
+      return out;
+    }),
+  }));
+}
+
 export function generateVisualSource(spec: VisualSpec, buildId: string): string {
   const components = usedComponents(spec);
   const roles = usedRoles(spec);
   const withFrame = treeUsesFrame(spec);
+  const exposed = exposedNodes(spec);
+  /**
+   * Nada publicado, nada disto existe: sem import do `formatting`, sem tabela,
+   * sem `pick()` no JSX e sem `getFormattingModel`. E o que faz um projeto que
+   * ignora o Sprint B gerar o fonte de antes dele, caractere a caractere.
+   */
+  const withFormatting = exposed.length > 0;
 
   // `EMPTY_FRAME` e `DataFrame` entram SEMPRE, mesmo numa arvore so de texto: o
   // quadro deixou de ser apenas dado no Sprint 6 — e por ele que a interacao
@@ -117,6 +176,79 @@ export function generateVisualSource(spec: VisualSpec, buildId: string): string 
   const nodeImports = [...components, 'EMPTY_FRAME', 'type DataFrame'];
 
   const roleList = roles.map((role) => jsString(role.name)).join(', ');
+
+  // A `Tree` recebe so o que a arvore desta spec usa. Um parametro que nao serve
+  // a ninguem seria um `noUnusedParameters` do lado do build — e o `pbiviz`
+  // compila com o tsconfig dele, nao com o nosso.
+  const treeNames: string[] = [];
+  const treeTypes: string[] = [];
+  const treeArgs: string[] = [];
+  if (withFrame) {
+    treeNames.push('frame');
+    treeTypes.push('frame: DataFrame');
+    treeArgs.push('frame={frame}');
+  }
+  if (withFormatting) {
+    treeNames.push('overrides');
+    treeTypes.push('overrides: Overrides');
+    treeArgs.push('overrides={overrides}');
+  }
+  const treeSignature =
+    treeNames.length === 0 ? '' : `{ ${treeNames.join(', ')} }: { ${treeTypes.join('; ')} }`;
+  const treeCall = treeArgs.length === 0 ? '' : `${treeArgs.join(' ')} `;
+
+  const formattingImport = withFormatting
+    ? `import {
+  buildFormattingModel,
+  pick,
+  readOverrides,
+  type FormattingSpec,
+  type Overrides,
+} from './formatting';
+`
+    : '';
+
+  const formattingTableSource = withFormatting
+    ? `
+/**
+ * O que o autor PUBLICOU no painel de formatacao, e so isso.
+ *
+ * Cada entrada vira um card no painel do Power BI, com o id do no como
+ * \`objectName\` — o mesmo declarado no \`objects\` do capabilities.json. O valor
+ * de cada campo aqui e o do AUTOR: e o default do controle e o que vale quando o
+ * consumidor limpa a escolha dele.
+ */
+const FORMATTING: FormattingSpec = ${jsData(formattingTable(exposed))};
+`
+    : '';
+
+  const overridesField = withFormatting
+    ? `  /** O que o consumidor do relatorio escolheu, ja validado. */
+  private overrides: Overrides = {};
+`
+    : '';
+
+  const overridesRead = withFormatting
+    ? `    this.overrides = readOverrides(options, FORMATTING);
+`
+    : '';
+
+  const overridesLocal = withFormatting ? `    const overrides = this.overrides;\n` : '';
+
+  const formattingModel = withFormatting
+    ? `
+  /**
+   * O painel de formatacao (RF-28).
+   *
+   * O host chama a cada mudanca de propriedade, entao o modelo e montado do
+   * estado VIGENTE — e por isso que um campo escondido por \`showWhen\` aparece
+   * assim que o interruptor que o governa e ligado.
+   */
+  public getFormattingModel(): powerbi.visuals.FormattingModel {
+    return buildFormattingModel(FORMATTING, this.overrides);
+  }
+`
+    : '';
 
   return `/**
  * GERADO POR @vislow/codegen — NAO EDITE.
@@ -130,10 +262,10 @@ export function generateVisualSource(spec: VisualSpec, buildId: string): string 
 import type powerbi from 'powerbi-visuals-api';
 import { StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
-import { ErrorBoundary, TruncationNotice } from '@vislow/visual-kit';
+import { ErrorBoundary, TruncationNotice, VisualRoot } from '@vislow/visual-kit';
 import { ${nodeImports.join(', ')} } from '@vislow/visual-kit/nodes';
 import { Interaction } from './interaction';
-
+${formattingImport}
 // O campo \`style\` do pbiviz.json e ignorado pela toolchain: o CSS entra por
 // AQUI. Sem este import o build reporta sucesso e o visual sai sem estilo.
 import '@vislow/visual-kit/styles.css';
@@ -158,8 +290,8 @@ const BUILD_ID = ${jsString(buildId)};
 
 /** Papeis que a arvore consome. Bate com os declarados no capabilities.json. */
 const ROLES = [${roleList}];
-
-function Tree(${withFrame ? '{ frame }: { frame: DataFrame }' : ''}) {
+${formattingTableSource}
+function Tree(${treeSignature}) {
   return (
 ${indent(emitNode(spec.root), 2)}
   );
@@ -175,7 +307,7 @@ export class Visual implements IVisual {
    */
   private readonly interaction: Interaction;
   private frame: DataFrame = EMPTY_FRAME;
-
+${overridesField}
   constructor(options: VisualConstructorOptions) {
     this.root = createRoot(options.element);
     this.interaction = new Interaction(options, () => {
@@ -185,26 +317,26 @@ export class Visual implements IVisual {
 
   public update(options: VisualUpdateOptions): void {
     this.frame = this.interaction.readFrame(options, ROLES);
-    this.render();
+${overridesRead}    this.render();
   }
-
+${formattingModel}
   private render(): void {
     const frame = this.frame;
-
+${overridesLocal}
     // RN-04: o visual NUNCA renderiza em branco. Um try/catch em volta do
     // render nao basta — no modo concorrente a fase de render e assincrona e a
     // excecao acontece fora do bloco. Só o ErrorBoundary captura.
     this.root.render(
       <StrictMode>
-        <div className="pbi:relative pbi:w-full pbi:h-full pbi:flex pbi:flex-col">
+        <VisualRoot>
           <ErrorBoundary buildId={BUILD_ID}>
-            <Tree ${withFrame ? 'frame={frame}' : ''}/>
+            <Tree ${treeCall}/>
           </ErrorBoundary>
           {/* RF-25: o host trunca em silencio; o visual conta. */}
           {frame.truncated && (
             <TruncationNotice shown={frame.truncated.shown} limit={frame.truncated.limit} />
           )}
-        </div>
+        </VisualRoot>
       </StrictMode>,
     );
   }

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { createEmptySpec } from '@vislow/component-registry';
+import { createEmptySpec, NODE_DESCRIPTORS, NODE_KINDS } from '@vislow/component-registry';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -105,17 +105,20 @@ function childKinds(): string[] {
 describe('dialogo de componentes', () => {
   it('abre mostrando o catalogo inteiro', () => {
     render();
-    expect(options()).toHaveLength(7);
+    // Derivado do registro, e nao um numero escrito aqui: o catalogo encolheu de
+    // sete para dois na spec 5.0.0 e volta a crescer na Fase 4. Um literal aqui
+    // so registraria o tamanho de ontem.
+    expect(options()).toHaveLength(NODE_KINDS.length);
   });
 
   it('digitar filtra a lista e o destaque volta para o primeiro resultado', () => {
     render();
     press('ArrowDown');
-    type('pizza');
+    type('texto');
 
     expect(options()).toHaveLength(1);
-    // O destaque nao pode ficar no indice 2 de uma lista que agora tem 1 item.
-    expect(highlighted()).toContain('Pizza');
+    // O destaque nao pode ficar no indice 1 de uma lista que agora tem 1 item.
+    expect(highlighted()).toContain(NODE_DESCRIPTORS.text.label);
   });
 
   it('Enter adiciona o componente destacado', () => {
@@ -124,10 +127,10 @@ describe('dialogo de componentes', () => {
       closed = true;
     });
 
-    type('donut');
+    type('legenda');
     press('Enter');
 
-    expect(childKinds()).toEqual(['pieChart']);
+    expect(childKinds()).toEqual(['text']);
     // Fecha sozinho: manter aberto depois de adicionar esconde o resultado.
     expect(closed).toBe(true);
   });
@@ -135,11 +138,10 @@ describe('dialogo de componentes', () => {
   it('as setas movem o destaque, e o Enter segue o destaque', () => {
     render();
     press('ArrowDown');
-    press('ArrowDown');
     press('Enter');
 
-    // Terceiro do registro: container, text, kpi.
-    expect(childKinds()).toEqual(['kpi']);
+    // Segundo do registro: container, text.
+    expect(childKinds()).toEqual(['text']);
   });
 
   it('consulta sem resultado nao oferece nada para adicionar', () => {

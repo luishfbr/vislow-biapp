@@ -4,7 +4,6 @@ import { artboardOf } from '@vislow/component-registry';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { ZoomControl } from '@/components/ZoomControl';
 import type { Pane } from '@/lib/artboard';
-import { issuesByNode } from '@/lib/issues';
 import {
   ZOOM_STEP,
   fitToPane,
@@ -29,9 +28,9 @@ import { SpecPreview } from './SpecPreview';
  * E a unica forma de o tamanho declarado significar algo: a geometria dos nos e
  * proporcional (`NodeRect`), mas a tipografia nao, entao desenhar so a proporcao
  * faria 1920x1080 e 640x360 produzirem o mesmo preview e composicoes diferentes.
- * A escala e `transform`, que NAO altera o tamanho de layout: os graficos
- * continuam medindo a prancheta em px reais, e o que o Recharts calcula aqui e o
- * que ele calcularia numa moldura daquele tamanho.
+ * A escala e `transform`, que NAO altera o tamanho de layout: um no que se mede
+ * continua medindo a prancheta em px reais, e o que ele calcula aqui e o que
+ * calcularia numa moldura daquele tamanho.
  *
  * A CAMERA (`lib/viewport.ts`) tem zoom e deslocamento desde 2026-08-04. Antes a
  * escala era so "cabe no painel", presa em 100% no teto — numa prancheta de 1920
@@ -41,7 +40,7 @@ import { SpecPreview } from './SpecPreview';
  *
  * Num container que POSICIONA, o preview tem selecao e arrasto: a camada de
  * manipulacao e filha absoluta do container, fora do fluxo, e nao toca na cadeia
- * de flex que os graficos usam para medir (ADR-18). Num container que EMPILHA
+ * de flex de que um no que se mede depende (ADR-18). Num container que EMPILHA
  * continua sem — la nao ha geometria de onde derivar a camada, e a objecao da
  * ADR-14 segue de pe. A selecao pelo painel de arvore funciona nos dois casos.
  *
@@ -83,7 +82,6 @@ const DROP_H = 0.3;
 
 export function PreviewCanvas() {
   const spec = useEditorStore((s) => s.spec);
-  const issues = useEditorStore((s) => s.issues);
   const selectedId = useEditorStore((s) => s.selectedId);
   const select = useEditorStore((s) => s.select);
   const setRect = useEditorStore((s) => s.setRect);
@@ -169,14 +167,9 @@ export function PreviewCanvas() {
     // nova — reenquadrando duas vezes por gesto.
   }, [layoutEpoch, artboard]);
 
-  // Memoizado porque `issuesByNode` constroi Maps novos: sem isso o
-  // `SpecPreview` re-renderiza a cada render do canvas, inclusive ao redimensionar
-  // a janela, e os graficos remontam sem motivo.
-  const byNode = useMemo(() => issuesByNode(spec, issues), [spec, issues]);
-
-  // Memoizado pelo mesmo motivo do `byNode`: um objeto novo a cada render faria
-  // o `SpecPreview` remontar os graficos a cada movimento do ponteiro, que e
-  // exatamente quando isso mais custa.
+  // Memoizado: um objeto novo a cada render faria o `SpecPreview` remontar a
+  // arvore inteira a cada movimento do ponteiro, que e exatamente quando isso
+  // mais custa.
   const edit = useMemo(
     () => ({
       selectedId,
@@ -470,7 +463,7 @@ export function PreviewCanvas() {
             visibility: viewport ? 'visible' : 'hidden',
           }}
         >
-          <SpecPreview spec={spec} issues={byNode} edit={edit} />
+          <SpecPreview spec={spec} edit={edit} />
         </div>
 
         {/* O retangulo em desenho. Fica FORA da prancheta transformada e usa

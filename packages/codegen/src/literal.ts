@@ -33,11 +33,52 @@ export function jsString(value: string): string {
     .replace(/<\//g, '<\\/');
 }
 
+/** Valor escalar como literal de JS, sem embrulho nenhum. */
+export function jsScalar(value: unknown): string {
+  if (typeof value === 'boolean') return value ? 'true' : 'false';
+  if (typeof value === 'number' && Number.isFinite(value)) return String(value);
+  return jsString(String(value));
+}
+
 /** Valor de prop JSX. Sempre em container de expressao — ver o cabecalho. */
 export function jsxValue(value: unknown): string {
-  if (typeof value === 'boolean') return value ? '{true}' : '{false}';
-  if (typeof value === 'number' && Number.isFinite(value)) return `{${String(value)}}`;
-  return `{${jsString(String(value))}}`;
+  return `{${jsScalar(value)}}`;
+}
+
+/**
+ * Estrutura de dados como literal de JS, recursivamente.
+ *
+ * Existe para a tabela `FORMATTING` do Sprint B, que e o unico DADO composto que
+ * o codegen emite — o resto sao atributos JSX escalares. Passa por `jsString`
+ * em toda ponta de string, entao a mesma garantia da RN-11 vale aqui: apelido de
+ * no e conteudo de texto sao coisas que o usuario escreveu, e nenhum deles tem
+ * como escapar das aspas.
+ *
+ * Chave de objeto sai entre aspas SEMPRE: as chaves vem de `props`, e uma que
+ * nao fosse identificador valido produziria fonte que nao compila. Hoje todas
+ * sao, porque vem do descritor; e a mesma classe de suposicao que ja custou caro
+ * neste projeto quando valeu por um tempo.
+ */
+export function jsData(value: unknown, level = 0): string {
+  const pad = '  '.repeat(level);
+  const inner = '  '.repeat(level + 1);
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) return '[]';
+    const items = value.map((item) => `${inner}${jsData(item, level + 1)}`).join(',\n');
+    return `[\n${items},\n${pad}]`;
+  }
+
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value);
+    if (entries.length === 0) return '{}';
+    const body = entries
+      .map(([key, item]) => `${inner}${jsString(key)}: ${jsData(item, level + 1)}`)
+      .join(',\n');
+    return `{\n${body},\n${pad}}`;
+  }
+
+  return jsScalar(value);
 }
 
 /** Indenta um bloco de linhas. Puro cosmetico: o fonte gerado e lido por gente. */

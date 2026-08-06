@@ -1,24 +1,259 @@
 /*
- * Fonte do Tailwind para o visual compilado e para o preview do editor.
+ * O CSS do visual compilado. ESCRITO A MAO — nao ha Tailwind aqui desde a spec
+ * 5.0.0.
  *
- * ESTRATEGIA (validada no spike, ADR-06 revisado para Tailwind v4):
- * este CSS e PRE-COMPILADO pelo CLI do Tailwind e entregue como CSS puro. O
- * `powerbi-visuals-tools` nao traz PostCSS (so less-loader e css-loader), entao
- * tentar plugar o Tailwind no webpack dele seria luta desnecessaria. O visual
- * gerado apenas importa o CSS ja pronto.
+ * ========================= O QUE PODE E O QUE NAO PODE ======================
+ * SO ENTRA AQUI O QUE E ESCOLHA ENTRE ALTERNATIVAS, ou medida NOSSA que o
+ * usuario nao escolhe: peso, alinhamento, sombra, direcao, transbordo, e o
+ * tamanho dos avisos do proprio kit.
  *
- * Sem preflight: importamos apenas as camadas `theme` e `utilities`, nunca
- * `base`. O visual roda dentro de um iframe sandbox junto com os estilos que o
- * host injeta; um reset global entraria em conflito com eles (secao 9.3).
+ * NENHUMA COR. Nem a do usuario, que vai por `style` inline como sempre foi, nem
+ * a dos nossos avisos, que passa por `hcInk` para o alto contraste do host poder
+ * vence-la (RF-21) — `var()` num arquivo CSS estatico nao alcanca isso.
+ *
+ * Essa divisao nao e estetica, e o que impede divergencia: `config-schema/
+ * design.ts` guarda VALOR e este arquivo guarda ESTRUTURA. Os dois nunca falam
+ * da mesma coisa, entao nao ha como um contradizer o outro. No dia em que uma
+ * cor aparecer aqui, ela passa a ter dois donos.
+ *
+ * NAO ESCREVA REGRA PARA `html`, `body` OU SELETOR DE ELEMENTO NU. Este CSS e
+ * injetado dentro do relatorio do host, ao lado do CSS dele; um reset aqui
+ * vazaria para o relatorio inteiro. A guarda `scripts/check-css.mjs` reprova.
+ * ============================================================================
+ *
+ * ================================ O PREFIXO =================================
+ * `vsl-` em toda classe — o namespace do pacote. Antes era `pbi:`, prefixo de
+ * VARIANTE do Tailwind v4, e vinha com a regra de que o prefixo tinha de vir
+ * antes da variante (`pbi:focus:ring-2`). Essa regra morreu junto com o Tailwind.
+ *
+ * O que NAO morreu: classe e string literal completa no fonte. Interpolar
+ * (`vsl-w-${peso}`) produz um nome que nao existe aqui, e o navegador ignora
+ * nome inexistente sem dizer nada — o estilo some no Power BI, sem erro. A
+ * guarda confere os DOIS sentidos: classe usada sem regra, e regra sem uso.
+ * ============================================================================
  */
 
-@layer theme, utilities;
-
-@import 'tailwindcss/theme.css' layer(theme) prefix(pbi);
-@import 'tailwindcss/utilities.css' layer(utilities) prefix(pbi);
+/* ============================== TIPOGRAFIA ================================ */
 
 /*
- * O Tailwind descobre as classes por analise estatica do fonte. Como o mapa de
- * tokens usa strings literais completas (ver tokens.ts), este `@source` basta.
+ * A familia. DECLARADA, e nao herdada.
+ *
+ * Ate a 4.0.0 o no de texto nunca declarava `font-family`: a tipografia do
+ * visual compilado era a do host — ou seja, nao era nossa. Nao da para EMBARCAR
+ * uma fonte (o orcamento de 1 MB do `content.js` nao comporta, e a build nao usa
+ * rede), entao a identidade se faz escolhendo a ORDEM da pilha: Aptos, o padrao
+ * novo do Office, antes de Segoe UI, que e o que todo visual nativo usa.
+ *
+ * `tabular-nums` ligado por padrao porque isto e um componente de RELATORIO:
+ * numero que nao alinha entre linhas e defeito, nao estilo.
  */
-@source './**/*.{ts,tsx}';
+.vsl-text {
+  font-family:
+    'Aptos', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue',
+    Arial, sans-serif;
+  font-variant-numeric: tabular-nums;
+}
+
+.vsl-w-normal {
+  font-weight: 400;
+}
+.vsl-w-medium {
+  font-weight: 500;
+}
+.vsl-w-semibold {
+  font-weight: 600;
+}
+.vsl-w-bold {
+  font-weight: 700;
+}
+
+.vsl-h-left {
+  text-align: left;
+}
+.vsl-h-center {
+  text-align: center;
+}
+.vsl-h-right {
+  text-align: right;
+}
+
+/*
+ * Alinhamento VERTICAL do conteudo dentro da caixa.
+ *
+ * A caixa de texto e um flex em coluna so para isto existir. Sem ele o texto
+ * gruda no topo de uma caixa que o usuario desenhou alta de proposito, e a unica
+ * saida seria calcular espacamento a mao.
+ */
+.vsl-v-top {
+  justify-content: flex-start;
+}
+.vsl-v-middle {
+  justify-content: center;
+}
+.vsl-v-bottom {
+  justify-content: flex-end;
+}
+
+/* ============================== TRANSBORDO ================================ */
+
+/*
+ * `wrap` contra `truncate` — o que a caixa faz quando o texto nao cabe.
+ *
+ * `overflow-wrap: anywhere` no modo que quebra: sem ele uma URL ou um codigo de
+ * produto sem espaco estoura a caixa para fora, e no canvas isso cobre o
+ * vizinho. `white-space: pre-wrap` preserva a quebra que o usuario digitou, que
+ * e o motivo de o campo aceitar varias linhas.
+ */
+.vsl-wrap {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  /*
+   * `pretty` evita viuva — uma palavra sozinha na ultima linha. Uma caixa de
+   * texto num relatorio quase sempre e um TITULO, e e exatamente onde a viuva
+   * aparece e onde ela mais custa. O navegador que nao conhecer a propriedade
+   * ignora, entao nao ha o que degradar.
+   */
+  text-wrap: pretty;
+}
+.vsl-truncate {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ============================== SUPERFICIE ================================ */
+
+/*
+ * Empilhar contra posicionar livremente.
+ *
+ * Em `canvas` o container vira o BLOCO DE CONTENCAO dos filhos, e por isso troca
+ * `flex` por `relative` em vez de somar os dois: com ambos, o filho absoluto sai
+ * da cadeia de flex e o `gap` continua reservando espaco para quem ja nao esta
+ * nela.
+ *
+ * `min-width`/`min-height` zerados nao sao decorativos: sem eles um filho
+ * flexivel nunca encolhe abaixo do proprio conteudo, e um no que se mede pela
+ * moldura le altura zero.
+ */
+.vsl-stack {
+  display: flex;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+}
+.vsl-canvas {
+  position: relative;
+  flex: 1 1 0%;
+  min-width: 0;
+  min-height: 0;
+}
+.vsl-row {
+  flex-direction: row;
+}
+.vsl-col {
+  flex-direction: column;
+}
+
+/*
+ * A caixa de um filho posicionado, em % do pai. Os quatro percentuais vao por
+ * `style` inline, como a cor.
+ *
+ * `overflow: hidden` e a POLITICA DE TRANSBORDO do canvas: o que nao cabe e
+ * cortado, nunca escorre sobre o vizinho.
+ */
+.vsl-slot {
+  position: absolute;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/*
+ * A moldura que o codegen e o preview desenham em volta da arvore inteira. A
+ * MESMA classe nos dois, senao o preview mente sobre o pacote entregue.
+ */
+.vsl-root {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * A caixa de texto. Flex em coluna para o alinhamento vertical funcionar;
+ * `min-width: 0` para ela poder encolher dentro de uma pilha.
+ */
+.vsl-box {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+/* ================================ SOMBRA ================================== */
+
+/*
+ * Sombra CURTA e de tinta, nao o halo cinza-azulado de sempre.
+ *
+ * O default e `none`, e isso e a tese: um componente Vislow se separa da tela do
+ * relatorio por TOM (o `PAPER` de `design.ts` nao e branco) e por FIO, nao por
+ * elevacao. Tom e fio sobrevivem a impressao e a exportacao em PDF; sombra
+ * borrada, nao.
+ *
+ * Quando ha sombra, ela e baixa, apertada e tingida de tinta — papel sobre
+ * papel, nao cartao flutuando. E o unico lugar do arquivo com componente de cor,
+ * e por isso e preto puro com alfa: nao ha o que o usuario possa escolher aqui,
+ * e nao ha o que o alto contraste precise vencer numa sombra.
+ */
+.vsl-shadow-none {
+  box-shadow: none;
+}
+.vsl-shadow-sm {
+  box-shadow: 0 1px 2px rgb(0 0 0 / 6%);
+}
+.vsl-shadow-md {
+  box-shadow: 0 2px 6px rgb(0 0 0 / 8%);
+}
+.vsl-shadow-lg {
+  box-shadow: 0 6px 16px rgb(0 0 0 / 10%);
+}
+
+/* ============================ AVISOS DO KIT =============================== */
+
+/*
+ * Estado vazio (RF-20), card de erro (RF-14) e aviso de truncamento (RF-25).
+ *
+ * A COR destes nao esta aqui: ela passa por `hcInk` em `states.tsx`, para o alto
+ * contraste do host poder vence-la. O que esta aqui e so a forma.
+ */
+.vsl-notice {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  font-family:
+    'Aptos', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue',
+    Arial, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.vsl-notice-title {
+  font-weight: 600;
+}
+.vsl-notice-line {
+  margin-top: 8px;
+  font-size: 11px;
+}
+.vsl-footnote {
+  flex-shrink: 0;
+  padding-top: 4px;
+  font-family:
+    'Aptos', 'Segoe UI Variable Text', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue',
+    Arial, sans-serif;
+  font-size: 11px;
+}

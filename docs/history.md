@@ -1148,6 +1148,145 @@ sabotagem deliberada de teste, e ele reverteu para a versão **commitada** — a
 `ProjectMenu` daquele sprint. Num repositório com trabalho não commitado, `git checkout` não desfaz a última
 edição: desfaz tudo desde o último commit.
 
+### Kit autoral — a poda e o CSS próprio — ✅ **CONCLUÍDO em 2026-08-05** (spec 5.0.0)
+
+Sprint A dos dois que preparam o painel de formatação. O objetivo declarado era duplo: **encolher o catálogo**
+para o que vai de fato ser usado, e **tirar do visual compilado toda biblioteca externa**, para que a identidade
+visual passe a ser uma decisão nossa em vez de o default de uma ferramenta.
+
+**Saíram do catálogo** `kpi`, `barChart`, `lineChart`, `areaChart` e `pieChart` — e o Recharts com eles.
+Remoção de schema exige major (RN-12), então a spec foi para **5.0.0**.
+
+| | antes | depois |
+|---|---|---|
+| Pacote `.pbiviz` | 221,1 KB | **93,7 KB** (−58%) |
+| `content.js` | 751,3 KB | **288,1 KB** (−62%) |
+| Tipos no catálogo | 7 | 2 |
+
+**Não há migração 4→5, por decisão.** A alternativa — manter `migrate.ts` sem o último salto — deixaria código
+vivo produzindo spec 4.0.0 e entregando-a a um validador que garantidamente reprova, apagando o projeto do
+usuário em silêncio. Em vez disso a **chave do `localStorage` pulou para `vislow:project:v5`**: o projeto antigo
+continua no navegador e simplesmente nunca mais é procurado. Nada é descartado porque nada é tentado. O
+`migrate.ts` (365 linhas), o `migrate.test.ts` e as fixtures congeladas foram apagados; `importSpec` passou a
+dizer "este arquivo é da versão X" em vez de devolver uma lista de erros de schema sobre `kind` desconhecido.
+
+**O Tailwind saiu do `visual-kit`.** O `styles.css` passou a ser escrito à mão, com prefixo `vsl-`, e a divisão
+que o mantém honesto é: `config-schema/src/design.ts` guarda **valor**, o CSS guarda **estrutura**. Os dois
+nunca falam da mesma coisa, e por isso não têm como divergir. Morreu junto a regra do prefixo antes da variante
+(achado 54), que era propriedade do prefixo de variante do Tailwind v4.
+
+**A linguagem visual é "papel, não tinta".** Nenhum valor do `design.ts` é cromático, e isso é uma posição, não
+uma omissão: numa ferramenta de composição a cor pertence ao autor do relatório, e o que é nosso é o neutro
+exato em que ele a põe. Os defaults anteriores (`#3b82f6`, `#1e293b`, `#e2e8f0`) eram o slate/blue do Tailwind,
+escolhidos por estarem à mão — todo visual gerado nascia com cara de painel de SaaS. A rampa nova tem cast
+**verde**, não azul, e `PAPER` não é branco: um componente Vislow se separa da tela do relatório por **tom e
+fio**, nunca por elevação, porque tom e fio sobrevivem a PDF e a impressão.
+
+**A assinatura é tipografia óptica.** `fontSize` é pixel livre, então entrelinha e tracking **respondem ao
+tamanho** (`leadingFor`/`trackingFor`): 11px sai com 1.44 de entrelinha, 44px com 1.15 e −0.02em. Custa uma
+linha e vale por um controle a mais que ninguém teria de aprender.
+
+**Corrigido de passagem um bug fantasiado de não-decisão:** o `TextNode` nunca declarava `font-family` — a
+tipografia do visual compilado era herdada do host, ou seja, não era nossa. A `.vsl-text` declara uma pilha que
+começa em Aptos, antes de Segoe UI, justamente para não parecer visual nativo.
+
+**A Caixa de Texto substituiu o `TextNode`**, que era uma linha só com `truncate` e `shrink-0` — não tinha
+fundo, preenchimento, quebra de linha nem alinhamento vertical. Os onze campos novos foram escolhidos para
+cobrir os **seis** tipos de `FieldSpec`, para que um componente só exercite ponta a ponta o caminho genérico que
+o painel, o schema e o codegen percorrem — é o que torna o Sprint B verificável com um sujeito só.
+
+**A moldura mais externa virou componente** (`VisualRoot`). Ela era uma string de classes escrita duas vezes, no
+`SpecPreview` e no template de codegen, com a igualdade mantida por atenção humana e nada conferindo. Divergir
+ali daria ao preview uma moldura e ao pacote outra, e a diferença só apareceria dentro do Power BI.
+
+**Duas guardas novas, as duas verificadas quebrando-as de propósito:**
+
+1. `check-css.mjs` deixou de conferir uma **amostra** de seis utilidades e passou a conferir **os dois
+   sentidos** — classe usada sem regra, e regra sem uso. O segundo é o que impede o arquivo de virar depósito.
+   Ela precisou aprender a **ignorar comentário**: o `tokens.ts` documenta a regra da classe literal com um
+   exemplo do que não fazer, e a guarda leu o exemplo como uso real e reprovou o build. É o espelho exato do
+   achado 57, em que o Tailwind lia as exigências de dentro do próprio guarda.
+2. `stage-vendor.mjs` passou a reprovar biblioteca externa no `dist/` do kit. Isso pegou um problema real: o
+   `tsc` **não apaga** o que sumiu do `src/`, e o `dist/` ainda carregava `charts.js`, `KpiNode.js`,
+   `TextNode.js` e `mockFrame.js` — todos copiados para dentro do visual pelo `stage-vendor`, e `charts.js`
+   importando um `recharts` que já não estava instalado. O `build` do kit passou a apagar o `dist/` antes de
+   compilar.
+
+**O custo, declarado:** sem nó que consuma dados, `usedRoles` devolve vazio e o `capabilities.json` sai com
+`dataRoles: []` — **o visual gerado não tem poço de campos no Power BI**. Filtro cruzado, tooltip nativo,
+teclado e as duas guardas de `requiredTypes`/`min` ficaram sem sujeito e estão em **quarentena declarada nos
+próprios arquivos de teste**, com o nome de cada teste e o motivo escritos por extenso. Onde foi possível, a
+lacuna virou uma afirmação positiva do estado novo (`dataRoles` vazio, todo nó nasce válido), que falha no dia
+em que a Fase 4 devolver o KPI Card — e falhar ali é o lembrete de descongelar o resto.
+
+**Alto contraste NÃO foi para a quarentena:** `Container` e `TextBox` continuam passando cor e fundo por
+`hcInk`/`hcSurface`, e a chamada `readFrame` no `update()` ficou de pé justamente porque é dentro dela que
+`applyHighContrast` roda. Tirá-la por parecer inútil desligaria o alto contraste em silêncio. O que ficou sem
+cobertura é só a ponta SVG, que só existe com gráfico.
+
+### Painel de formatação no visual gerado — ✅ **CONCLUÍDO em 2026-08-06** (spec 5.1.0)
+
+Sprint B, o par do kit autoral. O visual entregue passou a ter **painel de formatação** dentro do Power BI:
+o consumidor do relatório ajusta o que o autor **publicou**, e nada além disso. RF-28 e ADR-20.
+
+**A decisão que governa o resto: fechado por padrão.** O plano escrito dizia o contrário — o nó guardaria
+`locked`, e "ausente = tudo destravado" cairia de graça. O argumento era sobre custo de representação, não
+sobre qual padrão está certo, e o padrão errado tem consequência: uma composição modesta de oito nós vira ~80
+controles no painel de quem abre o relatório, e todo projeto já salvo passaria a entregar cada cor e cada
+pixel no próximo export sem ninguém ter pedido. Invertido, o nó guarda `exposed` e ganha-se uma propriedade
+**verificável**: projeto que não publica nada gera o pacote de antes.
+
+| | sem publicação | com publicação (2 nós, 8 campos) |
+|---|---|---|
+| Pacote `.pbiviz` | **93,6 KB** (igual ao anterior) | 95,2 KB |
+| `content.js` | **288,1 KB** (igual ao anterior) | 292,0 KB |
+
+**A chave que não produz erro nenhum quando falta:** `supportsEmptyDataView`. O catálogo da 5.0.0 não consome
+dados, então `dataRoles` sai vazio — e o schema oficial descreve essa chave por extenso como "whether the
+visual can receive formatting pane properties when it **has no dataroles**". Sem ela o painel aparece, o
+consumidor mexe nos controles e o `update()` nunca recebe os valores: o visual simplesmente não muda. É o
+padrão de falha desta casa, e por isso virou item próprio da matriz manual (MT-15).
+
+**`placement` não pode ser publicado, e a regra mora no descritor.** Ele é lido pelo **codegen**, não pelo
+runtime: é ele que decide se cada filho sai embrulhado num `CanvasSlot`. Publicá-lo produziria filhos
+absolutos dentro de um pai que empilha — composição desmontada, sem erro. Virou `structural: true` no
+`FieldSpec`, ao lado do `showWhen`, e não uma exceção escrita dentro do codegen.
+
+**A fronteira codegen/template, de novo.** O codegen emite **dado** (a tabela `FORMATTING`, com rótulo, faixa e
+opções); a máquina que vira `FormattingModel` é estática, em `template/src/formatting.ts`, ao lado do
+`interaction.ts`. O `component-registry` não é vendorizado no visual — poria o Ajv e o catálogo inteiro dentro
+do pacote. Quem confere que as duas formas batem é o **compilador do build**: a tabela é anotada com
+`FormattingSpec`, então uma chave a mais reprova o `pbiviz package`.
+
+**Um lugar onde o teste ficou possível sem compilar pacote.** `formatting.ts` depende só de tipos do
+`powerbi-visuals-api`, então o `include` do vitest que reservava `packages/*/test/**` desde o Sprint 7 —
+escrito naquele dia sem consumidor, "porque a saída tem de existir antes da necessidade" — passou a ter um. O
+arquivo compila **duas vezes, com regimes diferentes**: pela toolchain do `pbiviz` (sem `strictNullChecks`) e
+pelo tsconfig do monorepo (estrito, com `noUncheckedIndexedAccess`).
+
+**Os rótulos de valor mudaram de casa.** `TOKEN_LABELS` e `OPTION_LABELS` viviam em `apps/web/src/lib/controls.ts`
+e serviam só ao painel do editor. O dropdown dentro do Power BI precisa exatamente dos mesmos, e o codegen não
+importa o editor: foram para `component-registry/src/labels.ts`, e o `controls.ts` foi apagado. Duas cópias
+divergiriam no dia em que alguém renomeasse "Semi-negrito" — e a divergência apareceria dentro do relatório de
+outra pessoa.
+
+**As três guardas, quebradas de propósito antes de serem declaradas prontas:**
+
+1. codegen — campo publicado lê o override, campo fechado sai literal, e projeto sem publicação gera o mesmo
+   fonte de antes. Com `isExposedKey` forçado a `false`, ela reprovou;
+2. `template/test/formatting.test.ts` — modelo, desembrulho do `fill`, omissão por `showWhen`, mescla e o
+   valor inválido caindo no do autor;
+3. gate — no `.pbiviz` compilado, `getFormattingModel()` devolve os cards **e** um `objects` injetado muda o
+   DOM. Com a mesma quebra do item 1, ela reprovou também. O que o gate **não** alcança está escrito por
+   extenso no arquivo: o host de teste entrega o DataView que o próprio teste montou, então ele não depende do
+   `supportsEmptyDataView` — quem morde ali é a assertiva sobre o capabilities lido do ZIP.
+
+**No editor**, publicar virou uma **calha** de alternadores à esquerda dos rótulos do painel de propriedades —
+a pergunta "o que o consumidor vai poder mexer?" se responde percorrendo uma coluna, e alternadores depois de
+rótulos de larguras diferentes formariam uma borda irregular. Publicar o primeiro campo **batiza o nó** (o
+apelido vira o título do card), e a invariante mora em `setFieldExposed`, no registro, não na tela. O mesmo
+glifo marca o nó na árvore.
+
 ## 8. Anexo A — achados numerados
 
 Correções aplicadas na v2.0 sobre o rascunho v1.0, com a razão de cada uma.

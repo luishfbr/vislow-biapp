@@ -3,10 +3,11 @@ import { COLUMN_TYPE_LABEL, COLUMN_TYPES, isNumericType, type ColumnType } from 
 /**
  * Vocabulario de tela dos tipos de coluna.
  *
- * Mora aqui pelo mesmo motivo do `lib/controls.ts`: e a unica coisa que o
- * `config-schema` deliberadamente NAO possui, porque e texto de interface e nao
- * regra de dominio. O `COLUMN_TYPE_LABEL` vem de la (o codegen tambem precisa
- * saber o nome do tipo); os sinais sao so do editor.
+ * Mora aqui porque e a unica coisa desta lista que so o EDITOR usa. O
+ * `COLUMN_TYPE_LABEL` vem do `config-schema` (o codegen tambem precisa saber o
+ * nome do tipo), e os rotulos de valor de token e de select mudaram de casa no
+ * Sprint B — foram para `component-registry/src/labels.ts`, porque o painel de
+ * formatacao do visual gerado precisa exatamente dos mesmos.
  */
 
 /**

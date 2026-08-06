@@ -385,7 +385,7 @@ async function inspectArtifact(
   }
   // ADR-02: sem o CSS pre-compilado o visual importa, renderiza e sai sem
   // estilo nenhum. O `pbiviz` reporta sucesso do mesmo jeito.
-  if (!inspection.js.includes('pbi:')) {
+  if (!inspection.js.includes('vsl-')) {
     reject('O bundle nao contem as classes do visual-kit — o CSS nao entrou.');
   }
   // O capabilities do PACOTE, nao o que o codegen diz ter gerado. Sem esta

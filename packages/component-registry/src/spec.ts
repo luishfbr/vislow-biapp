@@ -1,8 +1,28 @@
 import type { CellValue, ColumnType, ProjectIdentity } from '@vislow/config-schema';
 import type { NodeKind, RoleKind } from './types.js';
 
-/** Versao do formato da arvore. Distinta do `schemaVersion` do config plano v1. */
-export const SPEC_VERSION = '4.0.0';
+/**
+ * Versao do formato da arvore.
+ *
+ * MINOR NA 5.1.0, e minor de verdade: `name` e `exposed` sao ADITIVOS e
+ * opcionais no no (RN-12). Spec 5.0.0 salva no navegador continua valida e
+ * continua gerando o MESMO pacote — sem `exposed`, nao ha painel de formatacao,
+ * nao ha `objects` no capabilities e o JSX sai so com literais. Por isso a chave
+ * do `localStorage` NAO muda: nao ha nada para descartar.
+ *
+ * MAJOR NA 5.0.0 porque houve REMOCAO: os tipos `kpi`, `barChart`,
+ * `lineChart`, `areaChart` e `pieChart` sairam do catalogo (RN-12 exige major
+ * para remocao de schema). Uma spec 4.0.0 que contenha qualquer um deles nao
+ * valida mais.
+ *
+ * E NAO HA MIGRACAO 4->5, por decisao explicita. A cadeia inteira de migracao
+ * (`migrate.ts`, v1->v3->v4) foi apagada junto, porque sem o ultimo salto ela
+ * produziria specs 4.0.0 que o validador garantidamente reprova — codigo vivo
+ * gerando saida invalida e o pior dos dois mundos. Em vez disso, `persistence.ts`
+ * mudou de CHAVE: o projeto antigo continua no navegador e nunca mais e lido.
+ * Nada e descartado em silencio porque nada e sequer tentado.
+ */
+export const SPEC_VERSION = '5.1.0';
 
 /**
  * Uma coluna da tabela de exemplo — que e, ao mesmo tempo, um CAMPO do visual.
@@ -139,12 +159,48 @@ export interface NodeRect {
  */
 export const RECT_MIN_SIZE = 2;
 
+/**
+ * Teto do apelido do no. O mesmo do nome do projeto: e um titulo de card no
+ * painel do Power BI, que trunca bem antes disso.
+ */
+export const NODE_NAME_MAX_LENGTH = 50;
+
 export interface SpecNode {
-  /** Unico dentro da arvore. Chave de React e alvo de selecao no editor. */
+  /**
+   * Unico dentro da arvore. Chave de React, alvo de selecao no editor E
+   * `objectName` do `capabilities.json` quando o no publica algum campo — e por
+   * ele que o valor escolhido pelo consumidor volta ao visual. Um id que mudasse
+   * orfanaria em silencio o que ja esta gravado no relatorio; ele nasce em
+   * `nextNodeId` e nunca muda.
+   */
   id: string;
   kind: NodeKind;
   /** Valores dos campos do descritor. Validado contra o schema gerado. */
   props: Record<string, unknown>;
+  /**
+   * Apelido do no. Vira o TITULO do card no painel de formatacao do visual
+   * gerado — o unico texto pelo qual o consumidor do relatorio identifica qual
+   * componente ele esta ajustando.
+   *
+   * Opcional, e o editor o preenche sozinho ao publicar o primeiro campo (ver
+   * `suggestNodeName`). Ausente, o codegen cai no rotulo do descritor: um card
+   * chamado "Texto" e ruim, um card sem titulo nenhum e pior.
+   */
+  name?: string;
+  /**
+   * Chaves de campo que o autor PUBLICOU no painel do visual gerado.
+   *
+   * FECHADO POR PADRAO: ausente ou vazio quer dizer painel vazio. O inverso —
+   * guardar o que esta travado — daria de graca "ausente = tudo destravado", e
+   * com ele todo projeto ja salvo passaria a entregar cada cor e cada pixel ao
+   * consumidor no proximo export, sem ninguem ter pedido. Fechado por padrao
+   * tambem torna verificavel a propriedade que sustenta o resto: projeto que
+   * ignora o Sprint B gera o pacote de antes, byte a byte.
+   *
+   * Chave publicada tem de existir no descritor e ser publicavel
+   * (`isExposable`) — `validateSpec` reprova o resto.
+   */
+  exposed?: string[];
   /**
    * Geometria dentro do pai. So tem efeito quando o PAI posiciona livremente;
    * num pai que empilha, quem manda no tamanho e a cadeia de flex.

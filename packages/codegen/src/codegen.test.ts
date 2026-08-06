@@ -7,9 +7,10 @@ import {
   NODE_KINDS,
   assertValidSpec,
   createNode,
+  walk,
   type NodeKind,
+  type VisualSpec,
 } from '@vislow/component-registry';
-import { COLUMN_TYPES } from '@vislow/config-schema';
 import { generateCapabilities } from './capabilities.js';
 import { generatePbiviz } from './pbiviz.js';
 import { generateVisualSource } from './visual.js';
@@ -18,13 +19,19 @@ import { jsString } from './literal.js';
 import {
   TEST_TABLE,
   specWith,
-  specWithColumnType,
   specWithEveryKind,
+  specWithExposure,
   specWithKind,
   nodeOf,
 } from './fixtures.js';
 
 const BUILD_ID = 'b1c2d3e4';
+
+/** A forma de um `object` do capabilities, so o que os testes leem. */
+interface ExposedObject {
+  displayName: string;
+  properties: Record<string, { displayName: string; type: Record<string, unknown> } | undefined>;
+}
 
 describe('emissao do visual.tsx', () => {
   it.each(NODE_KINDS)('o tipo "%s" emite o componente do registro', (kind: NodeKind) => {
@@ -44,19 +51,21 @@ describe('emissao do visual.tsx', () => {
    * tree-shaking em silencio — o build passaria e o pacote estouraria.
    */
   it('nao importa componente que a arvore nao usa', () => {
-    const source = generateVisualSource(assertValidSpec(specWithKind('kpi')), BUILD_ID);
-    expect(source).not.toContain('BarChartNode');
-    expect(source).not.toContain('PieChartNode');
+    const source = generateVisualSource(assertValidSpec(specWithKind('text')), BUILD_ID);
+    // A arvore tem texto dentro de container: o `CanvasSlot` e o unico outro no
+    // do subcaminho, e ele so entra quando alguem posiciona.
+    expect(source).not.toContain('CanvasSlot');
     expect(source).not.toContain('import *');
   });
 
   it('emite todos os campos do descritor, na ordem do descritor', () => {
-    const source = generateVisualSource(assertValidSpec(specWithKind('barChart')), BUILD_ID);
+    const source = generateVisualSource(assertValidSpec(specWithKind('text')), BUILD_ID);
     // Recortado no elemento: buscar no fonte inteiro faz a busca casar com o
     // campo de OUTRO no que tenha a mesma chave, e o teste passa a medir a ordem
-    // de um elemento que nao e o testado.
-    const element = source.slice(source.indexOf('<BarChartNode'));
-    const keys = NODE_DESCRIPTORS.barChart.fields.map((field) => field.key);
+    // de um elemento que nao e o testado. A caixa de texto e o sujeito certo
+    // aqui porque e o no com mais campos do catalogo, cobrindo os seis tipos.
+    const element = source.slice(source.indexOf('<TextBox'));
+    const keys = NODE_DESCRIPTORS.text.fields.map((field) => field.key);
     const positions = keys.map((key) => element.indexOf(`${key}=`));
 
     expect(positions.every((position) => position >= 0)).toBe(true);
@@ -64,13 +73,11 @@ describe('emissao do visual.tsx', () => {
   });
 
   describe('filhos posicionados', () => {
-    /** Um KPI dentro de um container que posiciona, com caixa conhecida. */
+    /** Uma caixa de texto dentro de um container que posiciona. */
     function positioned() {
       const container = createNode('container');
       container.props.placement = 'canvas';
-      container.children = [
-        { ...nodeOf('kpi'), rect: { x: 25, y: 10, w: 50, h: 40 } },
-      ];
+      container.children = [{ ...nodeOf('text'), rect: { x: 25, y: 10, w: 50, h: 40 } }];
       return generateVisualSource(assertValidSpec(specWith(container)), BUILD_ID);
     }
 
@@ -83,7 +90,7 @@ describe('emissao do visual.tsx', () => {
       expect(source).toContain('w={50}');
       expect(source).toContain('h={40}');
       // O embrulho fica POR FORA do no, senao a caixa nao posiciona nada.
-      expect(source.indexOf('<CanvasSlot')).toBeLessThan(source.indexOf('<KpiNode'));
+      expect(source.indexOf('<CanvasSlot')).toBeLessThan(source.indexOf('<TextBox'));
     });
 
     it('importa o CanvasSlot pelo nome, como qualquer outro no', () => {
@@ -94,19 +101,21 @@ describe('emissao do visual.tsx', () => {
     });
 
     it('quem so empilha nao paga pelo CanvasSlot no bundle', () => {
-      const source = generateVisualSource(assertValidSpec(specWithKind('kpi')), BUILD_ID);
+      const source = generateVisualSource(assertValidSpec(specWithKind('text')), BUILD_ID);
       expect(source).not.toContain('CanvasSlot');
     });
   });
 
-  it('so passa o quadro de dados a nos que declaram papel', () => {
-    const withData = generateVisualSource(assertValidSpec(specWithKind('barChart')), BUILD_ID);
-    expect(withData).toContain('frame={frame}');
-
-    const textOnly = createNode('container');
-    textOnly.children = [createNode('text')];
-    const source = generateVisualSource(assertValidSpec(specWith(textOnly)), BUILD_ID);
-    expect(source).not.toContain('frame={frame}');
+  it('nao passa o quadro de dados a no nenhum — ninguem declara papel', () => {
+    // A metade positiva deste teste ("passa o quadro a quem DECLARA papel")
+    // tinha um grafico como sujeito e esta em quarentena junto com ele. A
+    // metade que sobrou nao e trivial: ela afirma que `consumesData` continua
+    // governando a emissao do `frame`, e e ela que falha no dia em que o KPI
+    // Card voltar sem o outro lado ser reescrito.
+    for (const kind of NODE_KINDS) {
+      const source = generateVisualSource(assertValidSpec(specWithKind(kind)), BUILD_ID);
+      expect(source, kind).not.toContain('frame={frame}');
+    }
   });
 
   it('e deterministico: a mesma spec gera o mesmo fonte', () => {
@@ -226,88 +235,38 @@ describe('texto do usuario nunca vira codigo (RN-11)', () => {
 });
 
 describe('capabilities.json gerado', () => {
-  it('declara exatamente os papeis que a arvore consome', () => {
-    const container = createNode('container');
-    container.children = [nodeOf('kpi')];
-    const capabilities = generateCapabilities(assertValidSpec(specWith(container)));
+  /*
+   * ============= A BATERIA DE dataRoles ESTA DORMENTE NA 5.0.0 ===============
+   * Havia aqui quatro testes que precisavam de um no consumindo dados:
+   *
+   *   - "declara exatamente os papeis que a arvore consome" (ADR-12: campo
+   *     pedido e campo usado sao a mesma coisa)
+   *   - "mapeia grouping e measure para os kinds do Power BI"
+   *   - "o tipo da coluna vira restricao de arrasto no host" (`requiredTypes`
+   *     por `ColumnType`, com `date` deliberadamente de fora)
+   *   - "a condicao limita a um campo, e NAO exige minimo" — a regressao de
+   *     2026-08-03, em que os pocos apareciam com o nome certo e recusavam toda
+   *     coluna, para sempre, porque `min: 1` descreve so o estado final
+   *
+   * Nenhum descritor declara campo de papel na 5.0.0, entao `usedRoles` devolve
+   * vazio e o `capabilities` sai sem `dataRoles` e sem `dataViewMappings` — nao
+   * ha o que os quatro possam medir. O codigo que eles cobriam continua em
+   * `capabilities.ts`, intacto, e os quatro voltam com o KPI Card da Fase 4.
+   *
+   * O `min` proibido continua guardado em producao pelo `inspectArtifact` do
+   * `pipeline.ts`, que le o capabilities de dentro do zip.
+   * ==========================================================================
+   */
 
-    // O KPI so consome a medida. O papel "categoria", declarado no projeto mas
-    // nao ligado, NAO pode virar campo — senao o visual pede uma coluna que
-    // ninguem le.
-    expect(capabilities.dataRoles.map((role) => role.name)).toEqual(['valor']);
-    expect(capabilities.dataRoles[0]?.kind).toBe('Measure');
-  });
-
-  it('mapeia grouping e measure para os kinds do Power BI', () => {
-    const capabilities = generateCapabilities(assertValidSpec(specWithKind('barChart')));
-    expect(capabilities.dataRoles).toEqual([
-      {
-        displayName: 'Categoria',
-        name: 'categoria',
-        kind: 'Grouping',
-        requiredTypes: [{ text: true }],
-      },
-      { displayName: 'Valor', name: 'valor', kind: 'Measure', requiredTypes: [{ integer: true }] },
-    ]);
-  });
-
-  it('o tipo da coluna vira restricao de arrasto no host', () => {
-    // Sem `requiredTypes`, o tipo declarado no editor nao valeria nada do lado
-    // do Power BI: o usuario arrastaria uma coluna de texto para um campo que o
-    // visual soma, e a soma sairia zero sem erro nenhum.
-    const esperado: Record<string, Record<string, boolean>[] | undefined> = {
-      text: [{ text: true }],
-      integer: [{ integer: true }],
-      // Percentual e moeda sao FORMATO, nao tipo: no modelo do Power BI os dois
-      // sao numero, e exigir outra coisa recusaria justamente a coluna certa.
-      decimal: [{ numeric: true }],
-      percent: [{ numeric: true }],
-      currency: [{ numeric: true }],
-      // `date` fica SEM restricao, e nao e esquecimento: o `valueType` do schema
-      // oficial nao tem nenhum tipo temporal, e a chave inventada reprova a
-      // validacao do proprio `pbiviz package`. Ver o teste de schema abaixo.
-      date: undefined,
-      boolean: [{ bool: true }],
-    };
-
-    for (const type of COLUMN_TYPES) {
-      const spec = assertValidSpec(specWithColumnType(type));
-      const [role] = generateCapabilities(spec).dataRoles;
-      expect(role?.requiredTypes, type).toEqual(esperado[type]);
+  it('a arvore nao le dados: sem papel e sem mapeamento, para qualquer tipo', () => {
+    // Nao e um teste vazio: e a AFIRMACAO do estado da 5.0.0. Ele falha no dia
+    // em que um descritor voltar a declarar papel — e falhar aqui e o lembrete
+    // de descongelar os quatro testes descritos acima.
+    for (const kind of NODE_KINDS) {
+      const capabilities = generateCapabilities(assertValidSpec(specWithKind(kind)));
+      expect(capabilities.dataRoles, kind).toEqual([]);
+      expect(capabilities.dataViewMappings, kind).toEqual([]);
     }
-  });
-
-  it('a condicao limita a um campo, e NAO exige minimo', () => {
-    // Regressao de 2026-08-03, e a razao de `min` nao poder voltar: o host
-    // valida contra as condicoes o estado que os pocos TERIAM depois do
-    // arrasto. Uma condicao unica com `min: 1` em todos os papeis descreve so o
-    // estado final — o estado com um campo posto e o resto vazio nao satisfaz
-    // nada, e o drop e descartado em silencio. Resultado no Desktop: os pocos
-    // aparecem com o nome certo e simplesmente nao aceitam coluna nenhuma,
-    // para sempre. Quem responde por "falta campo" e o `EmptyState`.
-    const capabilities = generateCapabilities(assertValidSpec(specWithKind('lineChart')));
-    const [mapping] = capabilities.dataViewMappings as {
-      conditions: Record<string, { min?: number; max: number }>[];
-    }[];
-    expect(mapping?.conditions[0]).toEqual({
-      categoria: { max: 1 },
-      valor: { max: 1 },
-    });
-
-    for (const condition of mapping?.conditions ?? []) {
-      for (const [role, range] of Object.entries(condition)) {
-        expect(range, role).not.toHaveProperty('min');
-      }
-    }
-  });
-
-  it('nao declara mapeamento quando a arvore nao le dados', () => {
-    const container = createNode('container');
-    container.children = [createNode('text')];
-    const capabilities = generateCapabilities(assertValidSpec(specWith(container)));
-
-    expect(capabilities.dataRoles).toEqual([]);
-    expect(capabilities.dataViewMappings).toEqual([]);
   });
 });
 
@@ -337,11 +296,6 @@ describe('capabilities.json contra o schema oficial do powerbi-visuals-api', () 
       .map((error) => `${error.instancePath || '/'} ${error.message ?? ''}`)
       .join('; ');
 
-  it.each(COLUMN_TYPES)('o tipo de coluna "%s" gera capabilities validos', (type) => {
-    const capabilities = generateCapabilities(assertValidSpec(specWithColumnType(type)));
-    expect(validate(capabilities), explique()).toBe(true);
-  });
-
   it('uma arvore com todos os tipos de no gera capabilities validos', () => {
     const capabilities = generateCapabilities(assertValidSpec(specWithEveryKind()));
     expect(validate(capabilities), explique()).toBe(true);
@@ -357,14 +311,21 @@ describe('capabilities.json contra o schema oficial do powerbi-visuals-api', () 
   it('o schema realmente recusa um tipo temporal — a guarda morde', () => {
     // Sem esta assercao, "os capabilities sao validos" poderia significar so que
     // o schema nao confere nada. Aqui esta a prova de que ele confere.
-    const capabilities = generateCapabilities(assertValidSpec(specWithColumnType('date')));
-    const [role] = capabilities.dataRoles;
-    expect(role).toBeDefined();
+    //
+    // O papel e MONTADO A MAO, e nao gerado: na 5.0.0 nenhum no consome dados e
+    // o codegen nao produz `dataRoles` de onde partir. A guarda continua tendo
+    // sujeito porque o que ela testa e o SCHEMA OFICIAL, nao o nosso codegen —
+    // e e por isso que ela e a mais importante desta suite: e ela que teria
+    // pegado o `requiredTypes: [{ dateTime: true }]` que ficou meses no codigo
+    // matando toda build de projeto com coluna de data.
+    const base = generateCapabilities(assertValidSpec(specWithEveryKind()));
 
     for (const inventado of [{ dateTime: true }, { date: true }, { temporal: true }]) {
       const quebrado = {
-        ...capabilities,
-        dataRoles: [{ ...role, requiredTypes: [inventado] }],
+        ...base,
+        dataRoles: [
+          { displayName: 'Data', name: 'data', kind: 'Grouping', requiredTypes: [inventado] },
+        ],
       };
       expect(validate(quebrado), JSON.stringify(inventado)).toBe(false);
     }
@@ -409,14 +370,19 @@ describe('generateProject', () => {
 
   it('recusa spec invalida em vez de gerar fonte quebrado', () => {
     const container = createNode('container');
-    // Papel nao declarado no projeto: passa pelo schema, morre na validacao
-    // semantica. Gerar assim produziria um visual que pede um campo que o
-    // capabilities.json nao declara.
-    const chart = nodeOf('barChart');
-    chart.props.measureRole = 'inexistente';
-    container.children = [chart];
+    // Campo obrigatorio do descritor apagado. Gerar assim emitiria
+    // `fontSize={undefined}` no JSX e o visual sairia com a tipografia do host —
+    // divergindo do preview, sem erro em lugar nenhum.
+    //
+    // Ate a spec 4.0.0 o sujeito era um papel NAO DECLARADO num grafico, que
+    // passa pelo schema e morre na validacao semantica. Essa metade esta
+    // dormente com os graficos; o que continua provado aqui e que
+    // `generateProject` valida ANTES de emitir, em vez de confiar em quem chama.
+    const texto = nodeOf('text');
+    delete texto.props.fontSize;
+    container.children = [texto];
 
-    expect(() => generateProject(specWith(container), BUILD_ID)).toThrow(/inexistente/);
+    expect(() => generateProject(specWith(container), BUILD_ID)).toThrow(/fontSize/);
   });
 
   it('a prancheta do editor NAO chega ao pacote', () => {
@@ -463,5 +429,164 @@ describe('generateProject', () => {
       expect(file.contents.endsWith('\n')).toBe(true);
       expect(() => JSON.parse(file.contents) as unknown).not.toThrow();
     }
+  });
+});
+
+/**
+ * O painel de formatacao do visual gerado (spec 5.1.0).
+ *
+ * A afirmacao central desta suite e a PRIMEIRA: sem nada publicado, o pacote e o
+ * de antes do Sprint B. Ela e o que permite a todas as outras serem aditivas —
+ * e a que falha no dia em que alguem transformar o painel em comportamento
+ * padrao, que foi a decisao explicitamente recusada no desenho.
+ */
+describe('painel de formatacao no visual gerado', () => {
+  const publicada = assertValidSpec(specWithExposure());
+
+  /** O primeiro no publicado da fixture e o container; o segundo, o titulo. */
+  const objetos = (spec: VisualSpec): Record<string, ExposedObject> =>
+    generateCapabilities(spec).objects as Record<string, ExposedObject>;
+
+  it('sem nada publicado, o pacote e identico ao de antes', () => {
+    const fechada = assertValidSpec(specWithEveryKind('Nada Publicado'));
+    for (const { node } of walk(fechada)) expect(node.exposed).toBeUndefined();
+
+    const capabilities = generateCapabilities(fechada);
+    expect(capabilities.objects).toEqual({});
+    // A chave AUSENTE, e nao `false`: o gate compara o capabilities do zip com o
+    // regerado, e uma chave a mais e uma diferenca.
+    expect('supportsEmptyDataView' in capabilities).toBe(false);
+
+    const source = generateVisualSource(fechada, BUILD_ID);
+    expect(source).not.toContain('FORMATTING');
+    expect(source).not.toContain('./formatting');
+    expect(source).not.toContain('pick(');
+    expect(source).not.toContain('getFormattingModel');
+  });
+
+  it('cada no publicado vira um object, com o id do no como nome', () => {
+    const objects = objetos(publicada);
+    const [container, titulo] = [publicada.root, publicada.root.children?.[0]];
+
+    expect(Object.keys(objects)).toEqual([container.id, titulo?.id]);
+    // O apelido vira o titulo do card; sem apelido, o rotulo do descritor.
+    expect(objects[container.id]?.displayName).toBe('Container');
+    expect(objects[titulo?.id ?? '']?.displayName).toBe('Titulo do painel');
+  });
+
+  it('o no que nao publicou nada nao ganha object', () => {
+    const nota = publicada.root.children?.[1];
+    expect(nota?.exposed).toBeUndefined();
+    expect(Object.keys(objetos(publicada))).not.toContain(nota?.id);
+  });
+
+  it('cada tipo de campo vira o tipo de propriedade que o host entende', () => {
+    const titulo = publicada.root.children?.[0];
+    const properties = objetos(publicada)[titulo?.id ?? '']?.properties ?? {};
+
+    expect(properties.content?.type).toEqual({ text: true });
+    // `integer`, e nao `numeric`: meio pixel nao e uma escolha.
+    expect(properties.fontSize?.type).toEqual({ integer: true });
+    expect(properties.color?.type).toEqual({ fill: { solid: { color: true } } });
+    expect(properties.showBackground?.type).toEqual({ bool: true });
+    // O rotulo humano do registro chega ao dropdown do Power BI.
+    expect(properties.fontWeight?.type).toEqual({
+      enumeration: [
+        { value: 'normal', displayName: 'Normal' },
+        { value: 'medium', displayName: 'Medio' },
+        { value: 'semibold', displayName: 'Semi-negrito' },
+        { value: 'bold', displayName: 'Negrito' },
+      ],
+    });
+  });
+
+  /**
+   * Sem esta chave o painel aparece, o consumidor mexe e NADA muda no visual:
+   * com `dataRoles: []`, e ela que faz os valores chegarem ao `update()`. E o
+   * modo de falha mais caro deste sprint, porque nao produz erro nenhum.
+   */
+  it('declara supportsEmptyDataView quando ha painel', () => {
+    expect(generateCapabilities(publicada).supportsEmptyDataView).toBe(true);
+  });
+
+  it('o capabilities publicado continua valido contra o schema oficial', () => {
+    const ajv = new Ajv({ strict: false, allErrors: false, validateSchema: true });
+    const validate = ajv.compile(capabilitiesSchema);
+    const explique = (): string =>
+      (validate.errors ?? []).map((e) => `${e.instancePath || '/'} ${e.message ?? ''}`).join('; ');
+
+    expect(validate(generateCapabilities(publicada)), explique()).toBe(true);
+  });
+
+  it('campo publicado le o override; campo fechado sai literal', () => {
+    const source = generateVisualSource(publicada, BUILD_ID);
+    const titulo = publicada.root.children?.[0];
+    const element = source.slice(source.indexOf('<TextBox'));
+
+    // Publicado: o valor do autor vira o ULTIMO argumento do `pick`, nao some.
+    expect(element).toContain(
+      `fontSize={pick(overrides, ${jsString(titulo?.id ?? '')}, "fontSize", 20)}`,
+    );
+    // Fechado: literal, como sempre. E o que torna "ignorar o override" uma
+    // propriedade estrutural do pacote — nao ha por onde ler o `objects` ali.
+    expect(element).toContain('padding={8}');
+    expect(element).not.toContain('padding={pick(');
+  });
+
+  it('a tabela FORMATTING leva rotulo, faixa e opcoes — o registro nao vai ao bundle', () => {
+    const source = generateVisualSource(publicada, BUILD_ID);
+    const table = source.slice(source.indexOf('const FORMATTING'), source.indexOf('function Tree'));
+
+    expect(table).toContain('"label": "Tamanho"');
+    expect(table).toContain('"min": 8');
+    expect(table).toContain('"max": 200');
+    expect(table).toContain('"maxLength": 500');
+    expect(table).toContain('"label": "Semi-negrito"');
+  });
+
+  it('a ordem dos campos e a do descritor, nao a do clique', () => {
+    const source = generateVisualSource(publicada, BUILD_ID);
+    const titulo = publicada.root.children?.[0];
+    // A fixture publica embaralhado de proposito.
+    expect(titulo?.exposed?.[0]).toBe('color');
+
+    const table = source.slice(source.indexOf('const FORMATTING'), source.indexOf('function Tree'));
+    const ordem = NODE_DESCRIPTORS.text.fields
+      .map((field) => field.key)
+      .filter((key) => titulo?.exposed?.includes(key))
+      .map((key) => table.indexOf(`"key": ${jsString(key)}`));
+
+    expect(ordem).toEqual([...ordem].sort((a, b) => a - b));
+    expect(ordem[0]).toBeGreaterThan(-1);
+  });
+
+  it('o governante de um showWhen viaja mesmo sem ser publicado', () => {
+    // `background` so aparece com `showBackground` ligado. Na fixture os dois
+    // estao publicados; aqui fica so o governado, e o valor do governante tem de
+    // viajar assim mesmo — senao o painel avalia a condicao contra nada.
+    const spec = specWithExposure('Governante Fechado');
+    const titulo = spec.root.children?.[0];
+    if (titulo) titulo.exposed = ['background'];
+
+    const source = generateVisualSource(assertValidSpec(spec), BUILD_ID);
+    const table = source.slice(source.indexOf('const FORMATTING'), source.indexOf('function Tree'));
+
+    expect(table).toContain('"showBackground": false');
+    expect(table).toContain('"showWhen"');
+  });
+
+  it('o apelido do no e o conteudo do texto passam por literal de string', () => {
+    // RN-11: os dois sao coisa que o USUARIO escreveu, e nenhum dos dois pode
+    // escapar das aspas no fonte gerado.
+    const spec = specWithExposure('Aspas');
+    const titulo = spec.root.children?.[0];
+    if (titulo) {
+      titulo.name = 'Fecha "aspas" </script>';
+      titulo.props.content = 'Conteudo </script>';
+    }
+
+    const source = generateVisualSource(assertValidSpec(spec), BUILD_ID);
+    expect(source).not.toContain('</script>');
+    expect(source).toContain(jsString('Fecha "aspas" </script>'));
   });
 });

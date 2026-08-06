@@ -3,6 +3,8 @@
 Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige as duas skills** — plano com
 `frontend-design` antes do JSX, auditoria com `web-design-guidelines` sobre o diff.
 
+- **O catálogo tem DOIS tipos: `container` e `text`.** KPI e os quatro gráficos saíram na spec 5.0.0, e com eles
+  o Recharts. Não há migração 4→5: a chave do `localStorage` é `vislow:project:v5` e a antiga nunca é lida.
 - **Nada de lista de tipos ou de propriedades escrita à mão.** Paleta, painel de propriedades, schema e codegen
   saem todos de `NODE_DESCRIPTORS`. Uma lista paralela é a quinta cópia do catálogo e a primeira a divergir.
 - **`lib/nodeComponents.ts` é o gêmeo por referência do que o codegen faz por texto.** `nodeComponents.test.ts`
@@ -32,6 +34,11 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **Seletor de zustand nunca constrói valor.** O v5 compara com `Object.is`, então devolver um `Map` ou objeto
   novo re-renderiza em loop e trava a aba. Derivação que cria objeto vive em `lib/issues.ts`, memoizada no
   componente.
+- **Publicar um campo é uma edição, e a calha é da esquerda.** O painel de propriedades tem uma coluna de
+  alternadores antes do rótulo — publicar põe o controle no painel de formatação do Power BI (spec 5.1.0).
+  **Fechado é o padrão**; campo estrutural (`placement`) não ganha alternador e a célula fica vazia. As
+  invariantes (ordem do descritor, batismo do nó na primeira publicação) moram em `setFieldExposed`, no
+  registro; o store só passa pelo `commit`, então isso desfaz como qualquer outra edição.
 - **`selectedId` é `string | null`.** `null` é estado de primeira classe — clicar no vazio da prancheta limpa a
   seleção e o painel da direita passa a falar do projeto (é lá que a prancheta mora agora, não mais nas
   propriedades da raiz). O editor abre nesse estado.
@@ -43,6 +50,11 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **O painel fala pixel, a spec guarda `%`.** A conversão é `lib/units.ts`; o tamanho do pai vem do
   `ResizeObserver` da camada de manipulação, numa fatia do store **fora da spec** — medida de tela não passa
   pelo `commit`.
+- **Não há mais estado de "campo pendente" no preview.** Todo nó nasce válido na spec 5.0.0: sem campo de papel
+  no catálogo, nenhum nó nasce inválido. O estado ainda é alcançável — o campo hexadecimal grava a cada tecla, e
+  `#1e2` é inválido no caminho para `#1e293b` —, mas trocar o nó inteiro por uma ficha no meio da digitação é
+  pior do que deixar o navegador ignorar uma cor que não entende. O erro continua sendo dito embaixo do campo, e
+  continua bloqueando o export.
 - **Não existe mais grade no canvas.** O encaixe é atração de 6px de tela por aresta de irmão; a tolerância se
   converte de pixel para `%` pela caixa do container, senão gruda com força diferente conforme o tamanho dele.
 - **Seleção no preview depende de quem posiciona.** Container que empilha: nenhuma (ADR-14) — um wrapper
@@ -57,9 +69,10 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
   cada chave como atributo JSX; geometria é relação com o pai.
 - **A matemática do canvas fica em `lib/canvasGeometry.ts`**, sem React, e é lá que ela se testa. No componente
   sobra o gesto, que jsdom não exercita.
-- **A tabela de exemplo é a fonte única dos campos.** Cada coluna de `spec.data.columns` é, ao mesmo tempo, o
-  dado do preview e um `dataRole` do `capabilities.json` — não existe uma segunda lista. Edição de coluna,
-  linha e célula passa por `table.ts` no registro; o store só delega.
+- **A tabela de exemplo está DORMENTE na spec 5.0.0.** Cada coluna continua sendo, em desenho, o dado do preview
+  e um `dataRole` do `capabilities.json` — mas nenhum nó consome dados desde a poda, então `usedRoles` devolve
+  vazio e o pacote sai sem poço de campos. O DataPanel e o `table.ts` continuam de pé, e voltam a produzir
+  `dataRole` com o KPI Card da Fase 4. Edição de coluna, linha e célula passa por `table.ts`; o store só delega.
 - **Nome de coluna é imutável** (ADR-13). O usuário edita `displayName`; o `name` nasce em `createColumn` e
   amarra as referências da árvore e o `capabilities.json`.
 - **Os valores da tabela não vão para o pacote**, como a prancheta. O que viaja é o esquema: coluna, tipo e
@@ -73,17 +86,17 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **O lucide marca `aria-hidden` sozinho — e é justamente por isso que ícone com significado precisa ser
   declarado.** O `createLucideIcon` só omite o `aria-hidden` quando o ícone já traz uma prop de acessibilidade.
   Ícone decorativo dentro de um botão rotulado: não escreva nada, já está certo. Ícone que **é** a informação
-  (o ponto de campo pendente na árvore) precisa de `role="img"` mais `aria-label`, senão desaparece em silêncio
-  para o leitor de tela.
+  (o ponto de pendência na árvore) precisa de `role="img"` mais `aria-label`, senão desaparece em silêncio para
+  o leitor de tela.
 - **Ícone fora de um `Button` precisa de `size-*` explícito.** O lucide nasce em 24px e quem o encolhe para 16 é
   a regra `[&_svg:not([class*='size-'])]:size-4` da cva do `Button`. Num `<button>` cru — como o gatilho do
   `ProjectMenu` — não há essa regra, e o ícone entra gigante sem erro nenhum.
 - **Teste que monta popup do Base UI ou consumidor do next-themes precisa do stub de `window.matchMedia`.** O
   jsdom não implementa, o componente não monta e a mensagem não diz o motivo. Precedente em `Header.test.tsx`.
-- **`react-is` é declarado explicitamente** — é peer do Recharts e o repo usa `autoInstallPeers: false`. O
-  visual compilado esconde esse problema porque o `npm ci` do template instala peers sozinho.
 - **Testes `.tsx` precisam do `oxc.jsx` no `vitest.config.ts`**: o `tsconfig.json` daqui usa `jsx: "preserve"`
   (exigência do Next) e o vitest lê o mesmo arquivo. Definir `esbuild.jsx` é ignorado em silêncio no Vite 8.
 - **`react` no vitest vem por alias para a cópia do editor** — o `visual-kit` não pode declarar react.
-- **Teste que monta componentes do `visual-kit` mora aqui**, não no kit (`kitInteraction.test.tsx`): sem
-  `react-dom` resolvível lá, o ESLint com tipos reprova o arquivo inteiro.
+- **Teste que monta componentes do `visual-kit` mora aqui**, não no kit (`SpecPreview.test.tsx`): sem
+  `react-dom` resolvível lá, o ESLint com tipos reprova o arquivo inteiro. É por isso que a prova de que a
+  caixa de texto embrulha cor e fundo em `var(--vislow-hc-*)` — o alto contraste do lado do HTML — vive no
+  editor, e não no pacote que ela protege.

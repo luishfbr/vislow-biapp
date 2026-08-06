@@ -8,5 +8,8 @@
     "rootDir": "./src",
     "tsBuildInfoFile": "./dist/.tsbuildinfo"
   },
-  "exclude": ["src/**/*.test.ts"]
+  // `test/` fica de fora da EMISSAO: e o que impede o `rootDir: ./src` de
+  // reclamar de um arquivo fora dele, e o `template/` que ele importa de virar
+  // `dist/`.
+  "exclude": ["src/**/*.test.ts", "test/**/*"]
 }
