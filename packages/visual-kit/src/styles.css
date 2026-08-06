@@ -191,6 +191,79 @@
   height: 100%;
 }
 
+/* ================================= KPI ==================================== */
+
+/*
+ * O card de KPI. Mesma caixa flex do texto — o alinhamento vertical depende dela
+ * —, mais o que so ele tem: e o unico no FOCALIZAVEL do catalogo.
+ *
+ * Nao reaproveita `.vsl-box` porque precisa de regra propria para o foco, e
+ * pendurar `:focus-visible` na caixa de texto daria anel de foco a um elemento
+ * que nao recebe foco.
+ */
+.vsl-kpi {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+/*
+ * RF-23 — foco visivel. `currentColor` e deliberado: o anel herda a cor de texto
+ * ja resolvida do card, entao ele acompanha o alto contraste do host sem precisar
+ * de uma cor propria, que este arquivo nao pode ter.
+ *
+ * `:focus-visible`, e nao `:focus`: o clique do mouse tambem foca o card, e um
+ * anel a cada clique dentro de um relatorio seria ruido.
+ */
+.vsl-kpi:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/*
+ * As tres linhas nunca quebram.
+ *
+ * Um KPI que quebra o numero em duas linhas deixou de ser um numero para ser um
+ * paragrafo, e a caixa some por baixo do vizinho no canvas. Cortar com reticencia
+ * e a degradacao honesta: o valor inteiro continua no balao do tooltip.
+ */
+.vsl-kpi-figure,
+.vsl-kpi-label,
+.vsl-kpi-delta {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/*
+ * O fio que separa a variacao do numero.
+ *
+ * Elemento proprio, e nao `border-top` na linha de variacao: como irmao no flex
+ * ele participa do `gap`, entao sobra o mesmo espaco acima e abaixo dele. Uma
+ * borda ficaria colada no texto de baixo.
+ *
+ * So a espessura e o estilo aqui — a COR vem inline, por `hcLine`, como toda cor
+ * deste pacote.
+ */
+.vsl-kpi-rule {
+  flex-shrink: 0;
+  border-top-width: 1px;
+  border-top-style: solid;
+}
+
+/*
+ * O slot da seta. Largura fixa em `em` para acompanhar o tamanho da variacao.
+ *
+ * Sem largura fixa, trocar `▲` por `▼` — ou por nada, na variacao zero — mexeria
+ * na posicao do numero ao lado a cada atualizacao do relatorio.
+ */
+.vsl-kpi-arrow {
+  display: inline-block;
+  width: 1.2em;
+  text-align: center;
+}
+
 /* ================================ SOMBRA ================================== */
 
 /*

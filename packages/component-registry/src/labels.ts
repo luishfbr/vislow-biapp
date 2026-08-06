@@ -41,6 +41,18 @@ const VALUE_LABELS: Record<string, string> = {
   column: 'Coluna',
   wrap: 'Quebrar linha',
   truncate: 'Cortar com reticencias',
+  // Polaridade do KPI. Dizem o que e BOM, e nao o que e maior: "Subir e melhor"
+  // se le sem manual, e "higher" no dropdown do Power BI nao.
+  higher: 'Subir e melhor',
+  lower: 'Cair e melhor',
+  neutral: 'Sem juizo',
+  // Posicao do rotulo do KPI.
+  above: 'Acima do numero',
+  below: 'Abaixo do numero',
+  // O que a linha de variacao mostra.
+  both: 'Diferenca e percentual',
+  absolute: 'So a diferenca',
+  percent: 'So o percentual',
 };
 
 export interface ValueOption {

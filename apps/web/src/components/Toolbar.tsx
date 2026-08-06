@@ -1,7 +1,7 @@
 'use client';
 
 import { NODE_DESCRIPTORS, NODE_KINDS, type NodeKind } from '@vislow/component-registry';
-import { Frame, MousePointer2, Type } from 'lucide-react';
+import { Frame, MousePointer2, TrendingUp, Type } from 'lucide-react';
 import { useRef, type ComponentType, type KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { SELECT_SHORTCUT } from '@/lib/shortcuts';
@@ -27,6 +27,9 @@ import { useEditorStore } from '@/store/useEditorStore';
 const ICONS: Record<NodeKind, ComponentType<{ className?: string }>> = {
   container: Frame,
   text: Type,
+  // A seta de tendencia, e nao um velocimetro: o que distingue este card de uma
+  // caixa de texto com um numero dentro e a COMPARACAO, e e ela que o icone diz.
+  kpi: TrendingUp,
 };
 
 export function Toolbar() {

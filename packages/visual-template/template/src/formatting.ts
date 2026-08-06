@@ -60,6 +60,11 @@ export interface ExposedField {
   /** `token` e `select`. */
   options?: ExposedOption[];
   /**
+   * Secao dentro do card, vinda do descritor. Ausente = o bloco inicial sem
+   * titulo, que e como `container` e `text` sempre desenharam.
+   */
+  group?: string;
+  /**
    * A mesma condicao do descritor, avaliada contra o valor VIGENTE — o override
    * quando ha um, o valor do autor quando nao ha. Fundo desligado, "Cor de
    * fundo" nao aparece; o consumidor liga o interruptor e ela aparece.
@@ -329,32 +334,48 @@ function isVisible(node: ExposedNode, overrides: Overrides, field: ExposedField)
  * Um card por no publicado, na ordem da arvore; um slice por campo publicado, na
  * ordem do descritor. Card sem slice visivel nao entra: um card vazio no painel
  * do Power BI parece um visual quebrado.
+ *
+ * Os slices sao repartidos pelo `group` do descritor, na ordem da PRIMEIRA
+ * aparicao de cada secao. Campo sem grupo cai num bloco inicial sem titulo — que
+ * e o unico bloco que `container` e `text` produzem, entao os dois continuam
+ * desenhando exatamente como desenhavam antes de o KPI existir, com o mesmo
+ * `uid` de sempre.
  */
 export function buildFormattingModel(spec: FormattingSpec, overrides: Overrides): FormattingModel {
   const cards: FormattingCard[] = [];
 
   for (const node of spec) {
-    const slices: FormattingSlice[] = [];
+    // Ordem de insercao, e nao a ordem alfabetica de um `Map` de chaves: as
+    // secoes aparecem no painel na ordem em que o descritor as declara.
+    const sections: { name: string; slices: FormattingSlice[] }[] = [];
+
     for (const field of node.fields) {
       if (!isVisible(node, overrides, field)) continue;
-      slices.push(sliceFor(node, field, currentValue(node, overrides, field.key)));
+      const name = field.group ?? '';
+      let section = sections.filter((candidate) => candidate.name === name)[0];
+      if (!section) {
+        section = { name, slices: [] };
+        sections.push(section);
+      }
+      section.slices.push(sliceFor(node, field, currentValue(node, overrides, field.key)));
     }
 
-    if (slices.length === 0) continue;
+    if (sections.length === 0) continue;
 
     cards.push({
       uid: node.id,
       displayName: node.title,
-      groups: [
-        {
-          uid: `${node.id}-group`,
-          // Um grupo so, sem cabecalho proprio: os campos de um componente sao a
-          // mesma coisa, e um titulo repetido dentro do card so ocupa espaco.
-          displayName: '',
-          suppressDisplayName: true,
-          slices,
-        },
-      ],
+      groups: sections.map((section) => ({
+        // O `uid` do bloco sem titulo continua sendo `<id>-group`, e nao um
+        // indice: e o que mantem o modelo de um no sem grupos identico ao que o
+        // Sprint B entregou.
+        uid: section.name === '' ? `${node.id}-group` : `${node.id}-group-${section.name}`,
+        displayName: section.name,
+        // Sem grupos, um titulo repetido dentro do card so ocuparia espaco. Com
+        // eles, o titulo E a razao de existirem.
+        suppressDisplayName: section.name === '',
+        slices: section.slices,
+      })),
       // Cada campo publicado entra aqui, INCLUSIVE o escondido pelo `showWhen`:
       // e esta lista que o "Redefinir para o padrao" do Power BI percorre, e um
       // campo de fora dela ficaria com o valor do consumidor depois de um reset

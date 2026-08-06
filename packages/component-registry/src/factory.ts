@@ -1,5 +1,5 @@
 import { createProjectId, INITIAL_PACKAGE_VERSION, type ColumnType } from '@vislow/config-schema';
-import { CONTAINER_CANVAS, defaultPropsFor } from './registry.js';
+import { CONTAINER_CANVAS, defaultPropsFor, roleFieldsOf } from './registry.js';
 import {
   ARTBOARD_DEFAULT,
   KIND_FOR_TYPE,
@@ -29,10 +29,54 @@ export function nextNodeId(kind: NodeKind): string {
  * Quando o KPI Card da Fase 4 trouxer o papel de volta, o parametro de ligacao
  * volta com ele.
  */
-export function createNode(kind: NodeKind): SpecNode {
-  const node: SpecNode = { id: nextNodeId(kind), kind, props: { ...defaultPropsFor(kind) } };
+export function createNode(kind: NodeKind, roleBindings: Record<string, string> = {}): SpecNode {
+  const props: Record<string, unknown> = { ...defaultPropsFor(kind) };
+  for (const field of roleFieldsOf(kind)) {
+    const bound = roleBindings[field.key];
+    if (bound !== undefined) props[field.key] = bound;
+  }
+
+  const node: SpecNode = { id: nextNodeId(kind), kind, props };
   if (kind === 'container') node.children = [];
   return node;
+}
+
+/**
+ * Papeis que um no novo deve ligar: a primeira coluna livre de cada tipo exigido.
+ *
+ * Existe para o EDITOR. `createNode` sozinho deixa o campo em branco de
+ * proposito, e isso e certo como default do dominio — mas na tela significaria
+ * que todo KPI nasce no estado vazio, com o usuario tendo de ligar um campo antes
+ * de ver qualquer coisa. Ligar no palpite obvio e reversivel em um clique; a tela
+ * vazia so parece defeito.
+ *
+ * UMA COLUNA POR CAMPO: os dois papeis de medida do KPI nao caem na mesma coluna,
+ * senao o card nasceria comparando um numero com ele mesmo — variacao zero, que e
+ * o unico resultado que nao ensina nada sobre o que o componente faz.
+ *
+ * Sem coluna do tipo certo, o campo continua pendente — que ai e a informacao
+ * correta, e o export trava ate o autor resolver.
+ *
+ * Apagada na spec 5.0.0, quando o catalogo ficou sem campo de papel e ela nao
+ * tinha o que sugerir. Voltou com o KPI Card.
+ */
+export function suggestRoleBindings(
+  kind: NodeKind,
+  columns: readonly DataColumn[],
+): Record<string, string> {
+  const bindings: Record<string, string> = {};
+  const taken = new Set<string>();
+
+  for (const field of roleFieldsOf(kind)) {
+    const match = columns.find(
+      (column) => column.kind === field.roleKind && !taken.has(column.name),
+    );
+    if (!match) continue;
+    bindings[field.key] = match.name;
+    taken.add(match.name);
+  }
+
+  return bindings;
 }
 
 /**

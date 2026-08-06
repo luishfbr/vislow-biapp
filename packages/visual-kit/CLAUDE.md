@@ -32,9 +32,15 @@ visual, e é isso que explica cada restrição. Detalhe em [docs/frontend.md](..
 - **`/nodes` fica fora do barril** — o barril carrega o que TODO consumidor precisa (tokens, alto contraste,
   estados, `VisualRoot`), e o editor importa isso sem querer a árvore de componentes junto. A razão original era
   manter o Recharts fora; ele saiu na 5.0.0 e a separação ficou pela razão que sobrou.
-- **`nodes/frame.ts` e `nodes/sampleFrame.ts` não têm consumidor hoje.** São o contrato de dados que o KPI Card
-  da Fase 4 reocupa; não entram em bundle nenhum enquanto ninguém os importar. Não os apague por parecerem
-  mortos.
+- **`nodes/frame.ts` e `nodes/sampleFrame.ts` voltaram a ter consumidor na spec 5.2.0** — o `KpiCard`, único nó
+  que lê o `DataFrame`. `sumOf` é a agregação dele; `seriesOf` continua sem sujeito e espera os gráficos.
+- **O `KpiCard` é o único nó FOCALIZÁVEL do kit** (`tabIndex`, `role="group"`, `.vsl-kpi:focus-visible`). É
+  `group` e não `button` de propósito: sem papel de agrupamento não há identidade para selecionar, e um
+  `button` prometeria uma ação que não existe. O tooltip nativo sai no ponteiro **e** no foco — quem chega por
+  `Tab` não tem coordenada de mouse.
+- **A cor do número passa por `hcAccent`, não `hcInk`.** O número é *marca de dados*, e é para isso que a
+  variável existe; rótulo e legenda são texto e ficam em `hcInk`. As duas recebem o `foreground` do host hoje,
+  e confundi-las apagaria a distinção no dia em que deixarem de receber.
 - **A moldura mais externa é o `VisualRoot`, um COMPONENTE** — não uma string de classes repetida no preview e
   no codegen, que era como funcionava até a 4.0.0. Divergir ali daria ao preview uma moldura e ao pacote outra,
   e a diferença só apareceria dentro do Power BI.

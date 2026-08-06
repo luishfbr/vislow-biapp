@@ -70,8 +70,8 @@ Todo o desenho decorre destas. Verificadas na documentação da Microsoft e no s
 ### 4.1 Editor — composição
 
 **RF-01 `[P0]` — Compor uma árvore de componentes**
-O usuário monta o visual a partir de sete tipos de nó (`container`, `text`, `kpi`, `barChart`, `lineChart`,
-`areaChart`, `pieChart`), aninhando dentro de containers.
+O usuário monta o visual a partir dos tipos de nó do catálogo (`container`, `text` e `kpi` na spec 5.2.0),
+aninhando dentro de containers. Os quatro gráficos saíram na 5.0.0 e voltam quando houver nó de agrupamento.
 *Dado* o editor aberto, *quando* o usuário adiciona um componente, *então* ele entra **dentro** da seleção se
 ela aceita filhos, senão como irmão logo depois; a seleção passa a ser o nó novo; e o preview reflete a mudança
 sem recarregar a página.
@@ -150,19 +150,28 @@ tenant (C-05).
 
 Requisitos do artefato que o usuário importa no Power BI. Valem para o `.pbiviz` compilado, não para o editor.
 
-**RF-15 `[P0]` — Renderizar os sete tipos de nó** com os dados das roles ligadas e os tokens aplicados.
+**RF-15 `[P0]` — Renderizar os tipos de nó do catálogo** com os dados das roles ligadas e os tokens aplicados.
 
 **RF-16 `[P0]` — KPI Card com comparação** — valor principal formatado, rótulo e, quando o papel opcional de
-comparação estiver ligado, variação absoluta e percentual com indicação de direção. *Pendente — Fase 4.*
+comparação estiver ligado, variação absoluta e percentual com indicação de direção. **ENTREGUE** na spec 5.2.0.
+A direção é sempre redundante — seta mais sinal aritmético —, e `polarity` separa direção de juízo, para que um
+KPI de custo não pinte economia como problema.
 
 **RF-17 `[P0]` — Formatação numérica correta** via `valueFormatter` oficial, respeitando o `format` da medida e
 o `host.locale`.
 *Dado* uma medida em moeda pt-BR, *então* aparece `R$ 1.234,57`, não `1234.5678`.
+**PARCIAL na spec 5.2.0:** o `format` da coluna é aplicado (agrupamento e casas decimais), mas os **separadores
+saem em `en-US`**. O `formattingService` só conhece culturas se `globalize.cultures` for importado, e a tabela
+pesa 1,17 MB — estouraria o RNF-04. Decisão pendente: pagar o bundle, trocar por `Intl`, ou aceitar. A lacuna
+está documentada no gate (`compiledVisual.e2e.test.ts`).
 
 **RF-18 `[P0]` — Cross-filter** — clicar numa marca filtra os demais visuais; `Ctrl`+clique acumula; clicar fora
 limpa; não selecionados esmaecem; o estado sobrevive a atualizações vindas de outros visuais.
+*Pendente.* Só coluna vinda de `categories` gera selection id, e o KPI é o único nó que lê dados — um card de
+número único não tem marca para clicar. Volta com o primeiro nó de agrupamento.
 
-**RF-19 `[P0]` — Tooltip nativo** do Power BI, com categoria e valor formatado.
+**RF-19 `[P0]` — Tooltip nativo** do Power BI, com categoria e valor formatado. **ENTREGUE** na spec 5.2.0, no
+ponteiro e no foco; sem identidade, o balão mostra só o que o visual dá.
 
 **RF-20 `[P0]` — Estado vazio** — com as roles obrigatórias não preenchidas, orienta quais campos arrastar. Não
 um gráfico vazio, não um erro.
@@ -172,10 +181,14 @@ um gráfico vazio, não um erro.
 **RF-22 `[P0]` — Responsividade** — reage a resize sem recriar a árvore React; rótulos degradam graciosamente.
 
 **RF-23 `[P1]` — Navegação por teclado** — `Tab` entra, setas navegam, `Enter`/`Espaço` seleciona, foco visível.
+**PARCIAL na spec 5.2.0:** o KPI é alcançável por `Tab`, rotulado e com foco visível. Setas e acionamento
+esperam a RF-18 — sem identidade não há o que `Enter` selecione, e um `button` prometeria ação inexistente.
 
-**RF-24 `[P1]` — Menu de contexto** nativo do Power BI no botão direito.
+**RF-24 `[P1]` — Menu de contexto** nativo do Power BI no botão direito. **ENTREGUE**: o ouvinte está no
+elemento do visual, então vale para qualquer composição, inclusive uma só de texto.
 
 **RF-25 `[P0]` — Aviso de truncamento** quando o `dataReductionAlgorithm` cortar o conjunto (RN-10).
+*Pendente*, pela mesma razão da RF-18: `truncationOf` só olha coluna de categoria.
 
 **RF-28 `[P0]` — Painel de formatação no visual gerado**
 O autor **publica** os campos que quiser (`exposed` no nó); cada nó publicado vira um card no painel de

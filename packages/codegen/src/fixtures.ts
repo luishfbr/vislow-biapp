@@ -6,12 +6,13 @@ import {
   createNode,
   defaultPropsFor,
   insertChild,
+  suggestRoleBindings,
   type SampleTable,
   type SpecNode,
   type VisualSpec,
   type NodeKind,
 } from '@vislow/component-registry';
-import { INITIAL_PACKAGE_VERSION, createProjectId } from '@vislow/config-schema';
+import { INITIAL_PACKAGE_VERSION, createProjectId, type ColumnType } from '@vislow/config-schema';
 
 /**
  * Specs de teste, derivadas do REGISTRO — nunca escritas a mao.
@@ -38,31 +39,41 @@ import { INITIAL_PACKAGE_VERSION, createProjectId } from '@vislow/config-schema'
  *
  * Os tipos cobrem os dois extremos do `requiredTypes`: texto (o mais estreito
  * do lado do agrupamento) e inteiro (o mais estreito do lado da medida).
+ *
+ * DUAS medidas, e nao uma: o KPI Card tem dois campos de papel de medida, e com
+ * uma coluna so os dois cairiam na mesma — a variacao seria sempre zero, e a
+ * fixture exercitaria justamente o caso que menos importa.
  */
 export const TEST_TABLE: SampleTable = {
   columns: [
     { name: 'categoria', displayName: 'Categoria', kind: 'grouping', type: 'text' },
     { name: 'valor', displayName: 'Valor', kind: 'measure', type: 'integer' },
+    { name: 'meta', displayName: 'Meta', kind: 'measure', type: 'integer' },
   ],
   rows: [
-    ['SENTINELA_DE_LINHA', 424242],
-    ['SENTINELA_SEGUNDA_LINHA', 987654],
+    ['SENTINELA_DE_LINHA', 424242, 555777],
+    ['SENTINELA_SEGUNDA_LINHA', 987654, 666888],
     // Celula vazia: o preview tem de aguentar, e a guarda tem de pular.
-    [null, null],
+    [null, null, null],
   ],
 };
 
 /**
- * Um no do tipo pedido.
+ * Um no do tipo pedido, com os campos de papel JA LIGADOS as colunas de teste.
  *
- * Ate a spec 4.0.0 esta funcao LIGAVA os campos de papel do tipo as colunas de
- * teste — era o que fazia a fixture produzir um `capabilities.json` com
- * `dataRoles`. Nenhum descritor declara campo de papel na 5.0.0, entao nao ha o
- * que ligar, e a fixture passou a exercitar um pacote sem poco de campos. Volta
- * a ter conteudo com o KPI Card da Fase 4.
+ * A ligacao e o que faz a fixture produzir um `capabilities.json` com
+ * `dataRoles`. Entre a poda da 5.0.0 e o KPI Card nao havia o que ligar — nenhum
+ * descritor declarava papel — e esta funcao era um `createNode` puro.
+ *
+ * Ligar tambem e o que mantem a fixture VALIDA: papel obrigatorio sem ligacao
+ * reprova no schema de proposito (RF-12), e o portao de aceite compila esta spec
+ * de verdade.
+ *
+ * Uma coluna por campo, sem repetir: os dois papeis de medida do KPI caem em
+ * colunas diferentes, senao a variacao da fixture seria sempre zero.
  */
 export function nodeOf(kind: NodeKind): SpecNode {
-  return createNode(kind);
+  return createNode(kind, suggestRoleBindings(kind, TEST_TABLE.columns));
 }
 
 /** Projeto minimo com um unico no na raiz de um container. */
@@ -121,19 +132,35 @@ export function specWithEveryKind(name = 'Teste de Codegen'): VisualSpec {
   };
 }
 
-/*
- * Aqui vivia `specWithColumnType(type)`: um projeto cuja primeira coluna era do
- * tipo pedido, LIGADA num grafico de barras. Era a fixture da bateria que
- * conferia o `requiredTypes` de cada `ColumnType` no `capabilities.json` — e a
- * que provava que `date` fica de fora, porque o schema oficial nao tem tipo
- * temporal e o `pbiviz package` lanca.
+/**
+ * Um projeto com UMA coluna, do tipo pedido, ligada ao valor de um KPI.
  *
- * Saiu na spec 5.0.0 junto com os graficos. Sem no que consuma dados nao ha como
- * LIGAR uma coluna, e sem ligacao o `usedRoles` devolve vazio: a fixture nao
- * teria como produzir um `dataRole` para conferir. A bateria correspondente esta
- * em quarentena declarada no `codegen.test.ts`, e as duas voltam juntas com o
- * KPI Card da Fase 4.
+ * E a fixture da bateria que confere o `requiredTypes` de cada `ColumnType` no
+ * `capabilities.json` — e a que prova que `date` fica de fora, porque o schema
+ * oficial nao tem tipo temporal e o `pbiviz package` lanca.
+ *
+ * Saiu na spec 5.0.0 com os graficos, porque sem no que consumisse dados nao
+ * havia o que ligar, e voltou com o KPI Card. O `kind` da coluna e `measure` em
+ * todos os casos: quem varia aqui e o TIPO, e o papel-agrupar-ou-somar e outra
+ * dimensao — um "Ano" e inteiro e ainda assim agrupa.
  */
+export function specWithColumnType(type: ColumnType): VisualSpec {
+  const kpi = createNode('kpi');
+  kpi.props.valueRole = 'valor';
+
+  const container = createNode('container');
+  container.children = [kpi];
+
+  return {
+    ...specWith(container),
+    data: {
+      columns: [{ name: 'valor', displayName: 'Valor', kind: 'measure', type }],
+      // Uma linha vazia: o schema exige ao menos uma, e `null` e celula valida em
+      // qualquer tipo — o que esta fixture mede e o TIPO da coluna, nao o valor.
+      rows: [[null]],
+    },
+  };
+}
 
 /**
  * Uma spec com campos PUBLICADOS no painel de formatacao do visual gerado.

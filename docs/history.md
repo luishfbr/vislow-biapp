@@ -1287,6 +1287,60 @@ rótulos de larguras diferentes formariam uma borda irregular. Publicar o primei
 apelido vira o título do card), e a invariante mora em `setFieldExposed`, no registro, não na tela. O mesmo
 glifo marca o nó na árvore.
 
+### KPI Card — o poço de campos volta — ✅ **CONCLUÍDO em 2026-08-06** (spec 5.2.0)
+
+RF-16, e o primeiro nó a consumir dados desde a poda da 5.0.0. O `kpi` já tinha existido **duas** vezes: o
+`KpiCard` da Fase 1 (morto em `ebe4f8b`, o único com comparação) e o `KpiNode` da 4.x (morto em `09f7c9b`, que
+já tinha regredido para valor + rótulo). Esta é a terceira, e a primeira a entregar a comparação de novo.
+
+**Quase nada de plataforma foi construído.** `sumOf` estava vivo em `frame.ts`, documentado como *"a agregação
+do KPI"*; `EmptyState`, `missingRoles` e `hostOf` também; `SpecPreview` já chamava `sampleFrame(spec.data)` e
+já injetava `props.frame` quando `consumesData(kind)`; o `case 'role'` do painel estava escrito e nunca
+executado; `usedRoles` → `dataRoles` → `requiredTypes` estavam de pé, sempre vazios. A poda deixou o caminho
+inteiro e tirou só o sujeito.
+
+**Os três testes-âncora falharam por construção, e era esse o combinado.** Eles afirmavam o estado da 5.0.0 —
+"a árvore não lê dados", "não passa o quadro a nó nenhum", "`dataRoles: []` no pacote" — e o commit que
+declarou a quarentena dizia que falhar ali seria o lembrete de descongelar o resto. Foram reescritos como
+afirmação do estado novo, não apagados. Voltaram com eles: `requiredTypes` por `ColumnType` (com `date`
+deliberadamente de fora), a proibição de `min` medida **dentro do zip**, o estado vazio, o tooltip nativo e o
+menu de contexto.
+
+**O que NÃO voltou, e por quê.** O card só declara papel de **medida**, e só coluna vinda de `categories` gera
+selection id. Cross-filter (RF-18) e truncamento (RF-25) continuam sem sujeito; o teclado voltou como
+"alcançável e rotulado", não como "aciona e filtra". Declarar um papel de agrupamento que não desenha nada só
+para produzir identidade seria um campo no poço que existe para satisfazer teste.
+
+**A decisão de produto que mais mudou o componente foi `polarity`.** Um KPI de custo, churn ou prazo inverte o
+sinal: sem ele, queda de despesa é pintada como problema. A separação é entre **direção** — a seta, que segue
+sempre o sinal aritmético — e **juízo** — a cor. E as duas cores **nascem acromáticas**: verde e vermelho por
+padrão exigiriam valor cromático em `design.ts`, quebrando a invariante da linha 6 e o argumento inteiro de
+"papel, não tinta". A seta e o sinal carregam a direção sozinhos, que é o que faz o card funcionar em
+daltonismo, em alto contraste e impresso.
+
+**Controle total por linha custou 27 campos, e daí nasceu o `group`.** Vinte e sete controles num card só são
+um paredão nos dois painéis, e a API do host tem `groups[]` exatamente para isso — até a 5.1.0 emitíamos um só,
+com `displayName: ''`. O campo vive no descritor, não num mapa dentro de cada painel, pela mesma regra de
+`keywords` e `shortcut`; campo sem grupo cai no bloco inicial sem título, com o `uid` de sempre, e é por isso
+que `container` e `text` continuam produzindo o card idêntico ao do Sprint B.
+
+**`suggestRoleBindings` voltou**, apagada na 5.0.0 com a nota "volta com o KPI Card da Fase 4". A tese não
+mudou: ligar no palpite óbvio é reversível em um clique, e tela vazia parece defeito. Uma coluna por campo, para
+o card não nascer comparando um número com ele mesmo. Sem medida na tabela, o campo fica pendente e o export
+trava — que aí é a informação correta (RF-12).
+
+**Achado 62 — o separador de locale nunca funcionou, e ninguém tinha como notar.** O `format` da coluna chega ao
+número, mas os separadores saem em `en-US` mesmo com `host.locale` em pt-BR: o `formattingService` do
+`powerbi-visuals-utils-formattingutils` chama `Globalize.findClosestCulture`, e as culturas só existem se
+`lib/globalize/globalize.cultures` for importado — o que ninguém faz. Sem elas ele cai em `culture("en-US")`.
+Importar custa **1,17 MB** de tabela e estouraria o `content.js` (RNF-04). **Não é regressão deste sprint:** o
+caminho é o mesmo desde a 3.0.0, e ficou invisível porque o teste equivalente da 4.x media `120` — abaixo de
+mil, sem separador para errar. O KPI trouxe um número grande e o expôs. A RF-17 está marcada como parcial, e a
+escolha (pagar o bundle, trocar por `Intl`, ou aceitar) é de produto.
+
+Custo: pacote 93,7 KB → **95,2 KB**; `content.js` 288,1 KB → **292,4 KB**. Um componente inteiro por 4,3 KB —
+o kit escrito à mão, sem biblioteca de gráfico, é o que torna isso possível.
+
 ## 8. Anexo A — achados numerados
 
 Correções aplicadas na v2.0 sobre o rascunho v1.0, com a razão de cada uma.

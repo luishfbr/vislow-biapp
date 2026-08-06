@@ -252,3 +252,103 @@ describe('o modelo que o host desenha', () => {
     expect(buildFormattingModel([], {}).cards).toEqual([]);
   });
 });
+
+/**
+ * As secoes dentro do card (spec 5.2.0).
+ *
+ * Nasceram com o KPI Card: vinte e sete controles num card so sao um paredao, e
+ * `groups[]` existe na API do host exatamente para isso. Ate a 5.1.0 emitiamos
+ * sempre UM grupo, com `displayName: ''`.
+ */
+describe('secoes dentro do card', () => {
+  /** Um no com campos em duas secoes, mais um campo sem secao nenhuma. */
+  const AGRUPADO: FormattingSpec = [
+    {
+      id: 'kpi-1',
+      title: 'Receita',
+      values: { polarity: 'higher', valueColor: '#1e231c', labelColor: '#656b60', gap: 4 },
+      fields: [
+        { key: 'gap', label: 'Espaco entre linhas', kind: 'length', min: 0, max: 200 },
+        { key: 'polarity', label: 'Sentido', kind: 'select', group: 'Dados', options: [
+          { value: 'higher', label: 'Subir e melhor' },
+          { value: 'lower', label: 'Cair e melhor' },
+        ] },
+        { key: 'valueColor', label: 'Cor', kind: 'color', group: 'Valor' },
+        { key: 'labelColor', label: 'Cor', kind: 'color', group: 'Rotulo' },
+      ],
+    },
+  ];
+
+  const groupsOf = (spec: FormattingSpec) => {
+    const card = buildFormattingModel(spec, {}).cards[0] as powerbi.visuals.FormattingCard;
+    return card.groups as powerbi.visuals.FormattingGroup[];
+  };
+
+  it('um grupo por secao, na ordem do descritor', () => {
+    // A ordem e a da PRIMEIRA aparicao de cada secao nos campos — nao alfabetica,
+    // que poria "Dados" depois de nada e "Valor" antes de "Rotulo".
+    expect(groupsOf(AGRUPADO).map((group) => group.displayName)).toEqual([
+      '',
+      'Dados',
+      'Valor',
+      'Rotulo',
+    ]);
+  });
+
+  it('o campo sem secao cai no bloco inicial, sem titulo', () => {
+    const [primeiro] = groupsOf(AGRUPADO);
+    expect(primeiro?.displayName).toBe('');
+    expect(primeiro?.suppressDisplayName).toBe(true);
+    expect(primeiro?.slices).toHaveLength(1);
+  });
+
+  it('a secao nomeada MOSTRA o titulo — e a razao de existir', () => {
+    const dados = groupsOf(AGRUPADO).find((group) => group.displayName === 'Dados');
+    expect(dados?.suppressDisplayName).toBe(false);
+    expect(dados?.slices).toHaveLength(1);
+  });
+
+  it('um no SEM secao nenhuma gera o mesmo card de antes da 5.2.0', () => {
+    // A garantia de que `container` e `text` nao mudaram: um grupo so, sem
+    // titulo, com o `uid` de sempre. E o que mantem o pacote de um projeto que
+    // so compoe texto identico ao que o Sprint B entregou.
+    const groups = groupsOf(SPEC);
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.uid).toBe('text-1-group');
+    expect(groups[0]?.displayName).toBe('');
+    expect(groups[0]?.suppressDisplayName).toBe(true);
+  });
+
+  it('o reset continua alcancando todo campo publicado, em qualquer secao', () => {
+    const card = buildFormattingModel(AGRUPADO, {}).cards[0] as powerbi.visuals.FormattingCard;
+    expect(card.revertToDefaultDescriptors?.map((d) => d.propertyName)).toEqual([
+      'gap',
+      'polarity',
+      'valueColor',
+      'labelColor',
+    ]);
+  });
+
+  it('secao que fica sem slice visivel nao vira grupo vazio', () => {
+    // Um grupo com cabecalho e nada embaixo parece um painel quebrado.
+    const comEscondido: FormattingSpec = [
+      {
+        id: 'kpi-2',
+        title: 'Custo',
+        values: { showRule: false, borderColor: '#d3d7cd', valueColor: '#1e231c' },
+        fields: [
+          { key: 'valueColor', label: 'Cor', kind: 'color', group: 'Valor' },
+          {
+            key: 'borderColor',
+            label: 'Cor do fio',
+            kind: 'color',
+            group: 'Variacao',
+            showWhen: { key: 'showRule', equals: 'true' },
+          },
+        ],
+      },
+    ];
+
+    expect(groupsOf(comEscondido).map((group) => group.displayName)).toEqual(['Valor']);
+  });
+});

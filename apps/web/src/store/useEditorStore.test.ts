@@ -28,6 +28,16 @@ function kindsOf(node: SpecNode): string[] {
   return [node.kind, ...(node.children ?? []).flatMap(kindsOf)];
 }
 
+/** O primeiro no do tipo pedido, em profundidade. */
+function findByKind(node: SpecNode, kind: string): SpecNode | undefined {
+  if (node.kind === kind) return node;
+  for (const child of node.children ?? []) {
+    const found = findByKind(child, kind);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 /**
  * O no selecionado, exigindo que haja um.
  *
@@ -96,27 +106,47 @@ describe('adicionar componentes', () => {
   });
 
   /*
-   * ============ AS LIGACOES AUTOMATICAS DE PAPEL ESTAO DORMENTES =============
-   * Havia aqui dois testes sobre `suggestRoleBindings`:
+   * ========== AS LIGACOES AUTOMATICAS DE PAPEL VOLTARAM NA 5.2.0 =============
+   * `suggestRoleBindings` foi apagada na 5.0.0 porque, sem campo de papel no
+   * catalogo, nao tinha o que sugerir. O KPI Card devolveu o sujeito a ela.
    *
-   *   - "liga os papeis automaticamente e a spec continua valida" — sem isso
-   *     todo grafico nascia no estado vazio, com dois campos a preencher antes
-   *     de o usuario ver qualquer coisa
-   *   - "sem coluna do tipo certo, o campo fica pendente e o export trava"
-   *
-   * `suggestRoleBindings` foi APAGADA na spec 5.0.0: sem campo de papel no
-   * catalogo ela nao tinha o que sugerir, e `createNode` voltou a ser so os
-   * defaults. Volta com o KPI Card da Fase 4.
+   * A tese continua a mesma: ligar no palpite obvio e reversivel em um clique, e
+   * uma tela vazia so parece defeito.
    * =========================================================================
    */
 
-  it('todo no nasce valido e o export nao trava por causa dele', () => {
-    // A contrapartida do que saiu acima: nao havendo mais campo sem default,
-    // adicionar qualquer componente deixa a spec pronta para exportar.
+  it('liga os papeis automaticamente e a spec continua valida', () => {
+    // Um projeto novo tem uma coluna de medida (`receita`), entao o KPI nasce
+    // ligado a ela e desenhando um numero — nao no estado vazio.
     for (const kind of NODE_KINDS) store().addNode(kind);
 
     expect(store().issues).toEqual([]);
     expect(selectCanExport(useEditorStore.getState())).toBe(true);
+
+    const kpi = findByKind(store().spec.root, 'kpi');
+    expect(kpi?.props.valueRole).toBe('receita');
+  });
+
+  it('a comparacao NAO rouba a coluna do valor', () => {
+    // Com uma medida so, o papel opcional fica em branco. Ligar as duas na mesma
+    // coluna faria o card nascer comparando um numero com ele mesmo — variacao
+    // zero, o unico resultado que nao ensina nada sobre o componente.
+    store().addNode('kpi');
+    const kpi = findByKind(store().spec.root, 'kpi');
+    expect(kpi?.props.compareRole).toBe('');
+  });
+
+  it('sem coluna do tipo certo, o campo fica pendente e o export trava', () => {
+    // A outra metade, e a que importa mais: o palpite e um atalho, nao uma
+    // garantia. Sem medida nenhuma na tabela nao ha o que sugerir, e a pendencia
+    // e a informacao correta — bloquear o export aqui e a RF-12 funcionando.
+    for (const column of [...store().spec.data.columns]) {
+      if (column.kind === 'measure') store().removeColumn(column.name);
+    }
+    store().addNode('kpi');
+
+    expect(store().issues.length).toBeGreaterThan(0);
+    expect(selectCanExport(useEditorStore.getState())).toBe(false);
   });
 });
 

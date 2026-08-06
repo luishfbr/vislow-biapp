@@ -22,7 +22,7 @@ import type { NodeKind, RoleKind } from './types.js';
  * mudou de CHAVE: o projeto antigo continua no navegador e nunca mais e lido.
  * Nada e descartado em silencio porque nada e sequer tentado.
  */
-export const SPEC_VERSION = '5.1.0';
+export const SPEC_VERSION = '5.2.0';
 
 /**
  * Uma coluna da tabela de exemplo — que e, ao mesmo tempo, um CAMPO do visual.
@@ -306,6 +306,15 @@ export function clampArtboard(size: Artboard): Artboard {
 
 /** Padrao do nome de papel: identificador valido para o capabilities.json. */
 export const ROLE_NAME_PATTERN = '^[a-z][A-Za-z0-9]{1,29}$';
+
+/**
+ * O mesmo, mais a string vazia: campo de papel OPCIONAL nao ligado.
+ *
+ * Alternancia de dois ramos ANCORADOS, e nao um `anyOf` no schema: o Ajv reporta
+ * um erro so por padrao que falha, e `anyOf` reportaria um por ramo — a mesma
+ * razao pela qual `$defs.node` usa `if`/`then` em vez de `oneOf`.
+ */
+export const OPTIONAL_ROLE_NAME_PATTERN = `^$|${ROLE_NAME_PATTERN}`;
 
 /** Padrao do id de no. */
 export const NODE_ID_PATTERN = '^[A-Za-z0-9_-]{1,40}$';
