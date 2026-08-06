@@ -27,6 +27,20 @@ interface FieldBase {
    * catalogo deixa de descrever o que a tela mostra.
    */
   showWhen?: { key: string; equals: string };
+  /**
+   * O CODEGEN le este campo para decidir a FORMA da arvore emitida.
+   *
+   * Consequencia: ele nao pode ir para o painel de formatacao do visual gerado,
+   * porque a escolha ja foi gasta em tempo de geracao. `placement` e o unico
+   * hoje — e ele que decide se o codegen embrulha cada filho num `CanvasSlot`
+   * (`positionsChildren`). Um override em runtime deixaria filhos absolutos
+   * dentro de um pai que empilha: composicao desmontada, sem erro nenhum.
+   *
+   * Vive AQUI, no descritor, e nao numa lista de excecoes dentro do codegen,
+   * pela mesma regra do `showWhen`: a proxima excecao nasceria do outro lado e o
+   * catalogo deixaria de descrever o que o pacote faz.
+   */
+  structural?: true;
 }
 
 /**

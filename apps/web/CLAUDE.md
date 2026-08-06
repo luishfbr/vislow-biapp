@@ -34,6 +34,11 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **Seletor de zustand nunca constrói valor.** O v5 compara com `Object.is`, então devolver um `Map` ou objeto
   novo re-renderiza em loop e trava a aba. Derivação que cria objeto vive em `lib/issues.ts`, memoizada no
   componente.
+- **Publicar um campo é uma edição, e a calha é da esquerda.** O painel de propriedades tem uma coluna de
+  alternadores antes do rótulo — publicar põe o controle no painel de formatação do Power BI (spec 5.1.0).
+  **Fechado é o padrão**; campo estrutural (`placement`) não ganha alternador e a célula fica vazia. As
+  invariantes (ordem do descritor, batismo do nó na primeira publicação) moram em `setFieldExposed`, no
+  registro; o store só passa pelo `commit`, então isso desfaz como qualquer outra edição.
 - **`selectedId` é `string | null`.** `null` é estado de primeira classe — clicar no vazio da prancheta limpa a
   seleção e o painel da direita passa a falar do projeto (é lá que a prancheta mora agora, não mais nas
   propriedades da raiz). O editor abre nesse estado.

@@ -4,7 +4,16 @@
   // proprias dependencias (powerbi-visuals-api, visual-kit vendorizado). Tentar
   // compila-lo neste grafo falharia por modulos que so existem depois do
   // `npm ci` do build.
+  //
+  // `test/` e a excecao PREVISTA (o `include` do vitest ja reservava
+  // `packages/*/test/**`): dali um teste importa `template/src/formatting.ts`,
+  // que so depende de `powerbi-visuals-api` — declarado como devDependency
+  // deste pacote justamente para isso. O arquivo entra no programa por ser
+  // importado, entao o `tsc` daqui o confere sob o regime ESTRITO do monorepo,
+  // alem do regime frouxo da toolchain do pbiviz. Um `dataFrame.ts` ou
+  // `interaction.ts` nao caberia: os dois importam o `@vislow/visual-kit`
+  // vendorizado, que so existe dentro do workdir de um build.
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "noEmit": true, "types": ["node"] },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "test/**/*"]
 }

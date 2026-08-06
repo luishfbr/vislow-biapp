@@ -135,6 +135,56 @@ export function specWithEveryKind(name = 'Teste de Codegen'): VisualSpec {
  * KPI Card da Fase 4.
  */
 
+/**
+ * Uma spec com campos PUBLICADOS no painel de formatacao do visual gerado.
+ *
+ * Escolhida para exercitar, num pacote so, os seis tipos de `FieldSpec` que
+ * podem virar slice — `text`, `length`, `token`, `color`, `boolean`, `select` —
+ * mais os tres casos que o codigo trata a parte:
+ *
+ *   1. um campo governado por `showWhen` cujo governante TAMBEM foi publicado
+ *      (`background` sob `showBackground`): o consumidor liga o interruptor e o
+ *      controle de cor aparece;
+ *   2. um no publicado SEM apelido, que cai no rotulo do descritor;
+ *   3. um no que nao publica nada, que nao pode ganhar card nenhum.
+ */
+export function specWithExposure(name = 'Teste de Publicacao'): VisualSpec {
+  const titulo = nodeOf('text');
+  titulo.props.content = 'Receita total';
+  titulo.name = 'Titulo do painel';
+  // Ordem embaralhada de proposito: quem impoe a ordem do descritor e o codegen,
+  // e uma fixture ja ordenada esconderia a regressao.
+  titulo.exposed = [
+    'color',
+    'content',
+    'showBackground',
+    'background',
+    'overflow',
+    'fontSize',
+    'fontWeight',
+  ];
+
+  const nota = nodeOf('text');
+  nota.props.content = 'Nota de rodape';
+
+  let container = createNode('container');
+  container.props.placement = CONTAINER_CANVAS;
+  // Sem apelido: o card tem de se chamar "Container", e nao ficar sem titulo.
+  container.exposed = ['padding'];
+  for (const child of [titulo, nota]) {
+    container = insertChild(container, container.id, child) ?? container;
+  }
+
+  return {
+    ...specWith(container, name),
+    project: {
+      id: createProjectId(name),
+      name,
+      packageVersion: INITIAL_PACKAGE_VERSION,
+    },
+  };
+}
+
 /** Um container com um unico filho do tipo pedido. */
 export function specWithKind(kind: NodeKind): VisualSpec {
   if (kind === 'container') {

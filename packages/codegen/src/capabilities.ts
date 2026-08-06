@@ -1,5 +1,6 @@
 import type { VisualSpec } from '@vislow/component-registry';
 import type { ColumnType } from '@vislow/config-schema';
+import { exposedNodes, type ExposedField } from './exposure.js';
 import { usedRoles } from './roles.js';
 
 /**
@@ -63,10 +64,84 @@ export interface Capabilities {
   dataViewMappings: unknown[];
   objects: Record<string, unknown>;
   privileges: unknown[];
+  /**
+   * A chave que faz o painel de formatacao FUNCIONAR num visual sem poco de
+   * campos — o nosso caso desde a spec 5.0.0, em que `dataRoles` sai vazio.
+   *
+   * O schema oficial a descreve por extenso: "whether the visual can receive
+   * formatting pane properties when it has no dataroles". Sem ela o painel
+   * aparece, o consumidor mexe nos controles e o `update()` nunca recebe os
+   * valores — o visual nao muda e nao ha erro em lugar nenhum.
+   *
+   * OPCIONAL, e ausente quando nada foi publicado: e o que mantem o
+   * `capabilities.json` de um projeto sem painel identico ao de antes do
+   * Sprint B.
+   */
+  supportsEmptyDataView?: boolean;
+}
+
+/**
+ * O tipo do campo virando tipo de propriedade do host.
+ *
+ * E ele que decide o controle padrao do painel e o formato em que o valor volta
+ * em `metadata.objects` — `fill` volta embrulhado em `{ solid: { color } }`, e e
+ * por isso que o `formatting.ts` do template desembrulha.
+ *
+ * `length` sai como `integer` e nao `numeric`: meio pixel nao e uma escolha, e o
+ * schema da spec ja reprova decimal no campo. `enumeration` leva o rotulo humano
+ * do registro, o mesmo que o editor mostra.
+ */
+function valueTypeFor(field: ExposedField): Record<string, unknown> {
+  switch (field.kind) {
+    case 'text':
+      return { text: true };
+    case 'length':
+      return { integer: true };
+    case 'number':
+      return { numeric: true };
+    case 'boolean':
+      return { bool: true };
+    case 'color':
+      return { fill: { solid: { color: true } } };
+    case 'token':
+    case 'select':
+      return {
+        enumeration: (field.options ?? []).map((option) => ({
+          value: option.value,
+          displayName: option.label,
+        })),
+      };
+  }
+}
+
+/**
+ * Um `object` por no publicado; uma propriedade por campo publicado.
+ *
+ * `objectName` e o ID do no — e por ele que o valor gravado no relatorio
+ * reencontra o componente depois de um reexport. O apelido vira o `displayName`,
+ * que e o titulo do card.
+ */
+function generateObjects(spec: VisualSpec): Record<string, unknown> {
+  const objects: Record<string, unknown> = {};
+
+  for (const node of exposedNodes(spec)) {
+    const properties: Record<string, unknown> = {};
+    for (const field of node.fields) {
+      properties[field.key] = { displayName: field.label, type: valueTypeFor(field) };
+    }
+    objects[node.id] = { displayName: node.title, properties };
+  }
+
+  return objects;
 }
 
 export function generateCapabilities(spec: VisualSpec): Capabilities {
   const roles = usedRoles(spec);
+  const objects = generateObjects(spec);
+  // A chave so aparece quando ha painel. Presente com `false` seria uma terceira
+  // situacao para o gate distinguir, e o teste de "nada publicado gera o
+  // capabilities de antes" compara o objeto inteiro.
+  const emptyDataView = Object.keys(objects).length > 0 ? { supportsEmptyDataView: true } : {};
   const groupings = roles.filter((role) => role.kind === 'grouping');
   const measures = roles.filter((role) => role.kind === 'measure');
 
@@ -86,7 +161,7 @@ export function generateCapabilities(spec: VisualSpec): Capabilities {
   // Uma arvore so de texto nao le o modelo. Emitir um mapeamento vazio seria
   // pedir ao host um DataView que ninguem consome; melhor nao declarar nenhum.
   if (dataRoles.length === 0) {
-    return { dataRoles: [], dataViewMappings: [], objects: {}, privileges: [] };
+    return { dataRoles: [], dataViewMappings: [], objects, privileges: [], ...emptyDataView };
   }
 
   const categorical: Record<string, unknown> = {};
@@ -125,7 +200,8 @@ export function generateCapabilities(spec: VisualSpec): Capabilities {
         categorical,
       },
     ],
-    objects: {},
+    objects,
     privileges: [],
+    ...emptyDataView,
   };
 }

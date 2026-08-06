@@ -563,3 +563,54 @@ describe('entrar e sair de container aninhado', () => {
     expect(store().enteredId).toBeNull();
   });
 });
+
+/**
+ * O painel de formatacao do visual gerado (spec 5.1.0), do lado do editor.
+ *
+ * As invariantes de ordem e de batismo estao no `component-registry`, onde se
+ * testam sem React. O que se prova aqui e a fronteira: publicar e uma EDICAO —
+ * passa pelo `commit`, revalida e empilha um passo de desfazer, como qualquer
+ * outra.
+ */
+describe('publicar campo no painel do Power BI', () => {
+  it('projeto novo nao publica nada', () => {
+    const publicados = (node: SpecNode): number =>
+      (node.exposed?.length ?? 0) + (node.children ?? []).reduce((n, c) => n + publicados(c), 0);
+
+    store().addNode('text');
+    expect(publicados(store().spec.root)).toBe(0);
+  });
+
+  it('publicar e uma edicao: entra no historico e continua valida', () => {
+    store().addNode('text');
+    const id = store().selectedId ?? '';
+
+    store().setFieldExposed(id, 'color', true);
+    expect(findNode(store().spec.root, id)?.exposed).toEqual(['color']);
+    expect(validateSpec(store().spec).kind).toBe('valid');
+
+    store().undo();
+    expect(findNode(store().spec.root, id)?.exposed).toBeUndefined();
+  });
+
+  it('o apelido tambem desfaz', () => {
+    store().addNode('text');
+    const id = store().selectedId ?? '';
+
+    store().setFieldExposed(id, 'color', true);
+    store().setNodeName(id, 'Cabecalho');
+    expect(findNode(store().spec.root, id)?.name).toBe('Cabecalho');
+
+    store().undo();
+    // Volta ao apelido que a publicacao sugeriu, nao a coisa nenhuma.
+    expect(findNode(store().spec.root, id)?.name).toBe(String(defaultPropsFor('text').content));
+  });
+
+  it('chave estrutural nao muda nada — a operacao e rejeitada', () => {
+    const id = store().spec.root.id;
+    const antes = store().spec;
+
+    store().setFieldExposed(id, 'placement', true);
+    expect(store().spec).toBe(antes);
+  });
+});

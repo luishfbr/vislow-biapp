@@ -180,6 +180,26 @@ Verificada empiricamente com `powerbi-visuals-tools` 7.2.1. É um ZIP com **trê
 Não existe `assets/icon.png` no ZIP — o ícone é a string `content.iconBase64`. E `pbiviz.json`,
 `capabilities.json` e `bundle.js` soltos na raiz são a estrutura do **projeto-fonte**, não do pacote.
 
+### 4.1 O painel de formatação, do lado do `capabilities.json`
+
+Só existe quando o autor publica algum campo (ADR-20). Aí o `capabilities.json` ganha um `object` por nó
+publicado — `objectName` é o **id do nó** — e a chave que faz tudo funcionar:
+
+```json
+"supportsEmptyDataView": true
+```
+
+O schema oficial a descreve por extenso: *"whether the visual can receive formatting pane properties when it
+has no dataroles"*. Com `dataRoles: []` — o nosso caso desde a spec 5.0.0 — **sem ela o painel aparece, o
+consumidor mexe nos controles e o `update()` nunca recebe os valores**. Nada de errado acontece na tela: o
+visual simplesmente não muda. É o padrão de falha desta toolchain, e por isso ele tem item próprio na matriz
+manual (MT-15).
+
+Os tipos das propriedades saem do `FieldSpec`: `text` → `text`, `length` → `integer`, `color` →
+`fill.solid.color`, `boolean` → `bool`, `token`/`select` → `enumeration` com o rótulo humano do registro. O
+valor de `fill` volta **embrulhado** em `{ solid: { color } }` no `metadata.objects`, e é o `formatting.ts` do
+template que desembrulha.
+
 ## 5. O portão
 
 `inspectPbiviz` abre o pacote e recusa a entrega se qualquer invariante falhar (ADR-11). **Não é teste: é

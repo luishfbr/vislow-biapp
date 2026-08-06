@@ -125,6 +125,30 @@ Todas descobertas empiricamente, todas caras.
   instancia e chama `readFrame`. **Não mova implementação de seleção para o fonte gerado.**
 - Todo pacote carrega um `buildId` que a API passa ao codegen, exibido no canto do visual e no card de erro.
 
+### 4.1 O painel de formatação (spec 5.1.0)
+
+**FECHADO por padrão** (ADR-20). O nó guarda `exposed` — as chaves que o autor publicou —, e quem não publica
+nada gera **o pacote de antes**: sem `objects`, sem `supportsEmptyDataView`, sem `getFormattingModel`, com o
+JSX só de literais. Um teste do codegen afirma exatamente isso, e é ele que falha no dia em que o painel virar
+comportamento padrão.
+
+- **`exposure.ts` é a fonte única** dos dois artefatos que precisam concordar: o `objects` do
+  `capabilities.json` e a tabela `FORMATTING` do `visual.tsx`. Duas travessias da árvore divergiriam no dia em
+  que uma delas esquecesse o `showWhen`.
+- **`objectName` é o id do nó**; o apelido (`name`) vira o `displayName` do card. O id nunca muda, então o valor
+  gravado no relatório reencontra o componente depois de um reexport.
+- **Campo publicado vira `pick(overrides, id, chave, valorDoAutor)` no JSX; campo fechado continua literal.**
+  Ignorar override é propriedade **estrutural**, não verificação em runtime: não há por onde ler o `objects`
+  naquela posição.
+- **`placement` nunca vai ao painel** (`structural: true` no descritor). É o codegen que o lê, para decidir se
+  embrulha os filhos em `CanvasSlot` — um override dele deixaria filhos absolutos dentro de um pai que empilha.
+- **A máquina do painel é ESTÁTICA**, em `visual-template/template/src/formatting.ts`, ao lado do
+  `interaction.ts`: monta o `FormattingModel`, desembrulha o `fill`, avalia o `showWhen` contra o valor vigente
+  e valida o que volta do host. O `component-registry` **não** é vendorizado no visual — rótulo, faixa e opções
+  viajam na tabela emitida.
+- **Valor que volta do host**: tipo errado ou fora de conjunto fechado é **recusado** (vale o valor do autor);
+  tipo certo fora da faixa é **normalizado**. Um `padding={NaN}` desenha caixa de tamanho zero sem avisar.
+
 ## 5. Rodar e testar
 
 ```bash

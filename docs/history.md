@@ -1224,6 +1224,69 @@ em que a Fase 4 devolver o KPI Card — e falhar ali é o lembrete de descongela
 `applyHighContrast` roda. Tirá-la por parecer inútil desligaria o alto contraste em silêncio. O que ficou sem
 cobertura é só a ponta SVG, que só existe com gráfico.
 
+### Painel de formatação no visual gerado — ✅ **CONCLUÍDO em 2026-08-06** (spec 5.1.0)
+
+Sprint B, o par do kit autoral. O visual entregue passou a ter **painel de formatação** dentro do Power BI:
+o consumidor do relatório ajusta o que o autor **publicou**, e nada além disso. RF-28 e ADR-20.
+
+**A decisão que governa o resto: fechado por padrão.** O plano escrito dizia o contrário — o nó guardaria
+`locked`, e "ausente = tudo destravado" cairia de graça. O argumento era sobre custo de representação, não
+sobre qual padrão está certo, e o padrão errado tem consequência: uma composição modesta de oito nós vira ~80
+controles no painel de quem abre o relatório, e todo projeto já salvo passaria a entregar cada cor e cada
+pixel no próximo export sem ninguém ter pedido. Invertido, o nó guarda `exposed` e ganha-se uma propriedade
+**verificável**: projeto que não publica nada gera o pacote de antes.
+
+| | sem publicação | com publicação (2 nós, 8 campos) |
+|---|---|---|
+| Pacote `.pbiviz` | **93,6 KB** (igual ao anterior) | 95,2 KB |
+| `content.js` | **288,1 KB** (igual ao anterior) | 292,0 KB |
+
+**A chave que não produz erro nenhum quando falta:** `supportsEmptyDataView`. O catálogo da 5.0.0 não consome
+dados, então `dataRoles` sai vazio — e o schema oficial descreve essa chave por extenso como "whether the
+visual can receive formatting pane properties when it **has no dataroles**". Sem ela o painel aparece, o
+consumidor mexe nos controles e o `update()` nunca recebe os valores: o visual simplesmente não muda. É o
+padrão de falha desta casa, e por isso virou item próprio da matriz manual (MT-15).
+
+**`placement` não pode ser publicado, e a regra mora no descritor.** Ele é lido pelo **codegen**, não pelo
+runtime: é ele que decide se cada filho sai embrulhado num `CanvasSlot`. Publicá-lo produziria filhos
+absolutos dentro de um pai que empilha — composição desmontada, sem erro. Virou `structural: true` no
+`FieldSpec`, ao lado do `showWhen`, e não uma exceção escrita dentro do codegen.
+
+**A fronteira codegen/template, de novo.** O codegen emite **dado** (a tabela `FORMATTING`, com rótulo, faixa e
+opções); a máquina que vira `FormattingModel` é estática, em `template/src/formatting.ts`, ao lado do
+`interaction.ts`. O `component-registry` não é vendorizado no visual — poria o Ajv e o catálogo inteiro dentro
+do pacote. Quem confere que as duas formas batem é o **compilador do build**: a tabela é anotada com
+`FormattingSpec`, então uma chave a mais reprova o `pbiviz package`.
+
+**Um lugar onde o teste ficou possível sem compilar pacote.** `formatting.ts` depende só de tipos do
+`powerbi-visuals-api`, então o `include` do vitest que reservava `packages/*/test/**` desde o Sprint 7 —
+escrito naquele dia sem consumidor, "porque a saída tem de existir antes da necessidade" — passou a ter um. O
+arquivo compila **duas vezes, com regimes diferentes**: pela toolchain do `pbiviz` (sem `strictNullChecks`) e
+pelo tsconfig do monorepo (estrito, com `noUncheckedIndexedAccess`).
+
+**Os rótulos de valor mudaram de casa.** `TOKEN_LABELS` e `OPTION_LABELS` viviam em `apps/web/src/lib/controls.ts`
+e serviam só ao painel do editor. O dropdown dentro do Power BI precisa exatamente dos mesmos, e o codegen não
+importa o editor: foram para `component-registry/src/labels.ts`, e o `controls.ts` foi apagado. Duas cópias
+divergiriam no dia em que alguém renomeasse "Semi-negrito" — e a divergência apareceria dentro do relatório de
+outra pessoa.
+
+**As três guardas, quebradas de propósito antes de serem declaradas prontas:**
+
+1. codegen — campo publicado lê o override, campo fechado sai literal, e projeto sem publicação gera o mesmo
+   fonte de antes. Com `isExposedKey` forçado a `false`, ela reprovou;
+2. `template/test/formatting.test.ts` — modelo, desembrulho do `fill`, omissão por `showWhen`, mescla e o
+   valor inválido caindo no do autor;
+3. gate — no `.pbiviz` compilado, `getFormattingModel()` devolve os cards **e** um `objects` injetado muda o
+   DOM. Com a mesma quebra do item 1, ela reprovou também. O que o gate **não** alcança está escrito por
+   extenso no arquivo: o host de teste entrega o DataView que o próprio teste montou, então ele não depende do
+   `supportsEmptyDataView` — quem morde ali é a assertiva sobre o capabilities lido do ZIP.
+
+**No editor**, publicar virou uma **calha** de alternadores à esquerda dos rótulos do painel de propriedades —
+a pergunta "o que o consumidor vai poder mexer?" se responde percorrendo uma coluna, e alternadores depois de
+rótulos de larguras diferentes formariam uma borda irregular. Publicar o primeiro campo **batiza o nó** (o
+apelido vira o título do card), e a invariante mora em `setFieldExposed`, no registro, não na tela. O mesmo
+glifo marca o nó na árvore.
+
 ## 8. Anexo A — achados numerados
 
 Correções aplicadas na v2.0 sobre o rascunho v1.0, com a razão de cada uma.

@@ -24,6 +24,8 @@ import {
   setColumnKind,
   setColumnLabel,
   setColumnType,
+  setFieldExposed,
+  setNodeName,
   setNodeProps,
   setNodeRect,
   validateSpec,
@@ -189,6 +191,20 @@ export interface EditorState {
   setProp: (id: string, key: string, value: unknown) => void;
   /** Move ou redimensiona dentro de um pai que posiciona. Prende na borda. */
   setRect: (id: string, rect: NodeRect) => void;
+
+  /**
+   * Apelido do no — o titulo do card no painel de formatacao do visual gerado.
+   * String vazia remove, e o titulo volta a ser o rotulo do descritor.
+   */
+  setNodeName: (id: string, name: string) => void;
+  /**
+   * Publica (ou despublica) um campo no painel do visual gerado.
+   *
+   * Delega para `setFieldExposed`, que e puro e testado sem React: e la que
+   * moram a ordem do descritor e o batismo automatico do no na primeira
+   * publicacao. Aqui so passa pelo `commit`, como toda edicao de arvore.
+   */
+  setFieldExposed: (id: string, key: string, exposed: boolean) => void;
 
   /**
    * A tabela de exemplo. Cada coluna e, ao mesmo tempo, um campo do visual —
@@ -529,6 +545,14 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     setRect: (id, rect) => {
       editTree(setNodeRect(get().spec.root, id, rect));
+    },
+
+    setNodeName: (id, name) => {
+      editTree(setNodeName(get().spec.root, id, name));
+    },
+
+    setFieldExposed: (id, key, exposed) => {
+      editTree(setFieldExposed(get().spec.root, id, key, exposed));
     },
 
     addColumn: (label, type) => {

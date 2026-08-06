@@ -6,7 +6,7 @@ import {
   parentOf,
   type SpecNode,
 } from '@vislow/component-registry';
-import { ArrowDown, ArrowUp, Circle, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Circle, SlidersHorizontal, X } from 'lucide-react';
 import { useMemo } from 'react';
 import { PanelSection } from '@/components/PanelSection';
 import { Button } from '@/components/ui/button';
@@ -60,6 +60,7 @@ function TreeRow({
 
   const selected = node.id === selectedId;
   const faulty = faultyIds.has(node.id);
+  const published = node.exposed?.length ?? 0;
 
   return (
     <>
@@ -77,6 +78,20 @@ function TreeRow({
         }`}
       >
         <span className="truncate">{describe(node)}</span>
+        {published > 0 && (
+          // O MESMO glifo do alternador do painel de propriedades: e a mesma
+          // informacao vista de outro lugar. A arvore e o unico lugar em que da
+          // para responder "o que o consumidor do relatorio vai poder mexer?"
+          // sem abrir no por no.
+          //
+          // Icone que E a informacao precisa ser declarado — o lucide so omite o
+          // `aria-hidden` quando ja ha prop de acessibilidade.
+          <SlidersHorizontal
+            role="img"
+            aria-label={`publica ${String(published)} ${published === 1 ? 'campo' : 'campos'} no painel do Power BI`}
+            className="ml-auto size-3 shrink-0 text-primary"
+          />
+        )}
         {faulty && (
           // Marca tambem os ANCESTRAIS: um problema num no profundo deixaria o
           // export bloqueado sem indicio nenhum na parte visivel da arvore.

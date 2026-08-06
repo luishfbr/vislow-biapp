@@ -2,9 +2,13 @@
 
 import {
   NODE_DESCRIPTORS,
+  NODE_NAME_MAX_LENGTH,
   artboardOf,
+  isExposable,
   parentOf,
   positionsChildren,
+  selectOptions,
+  tokenOptions,
   type DataColumn,
   type FieldSpec,
   type SpecNode,
@@ -16,12 +20,12 @@ import {
   ArtboardField,
   ColorField,
   NumberInput,
+  PublishToggle,
   RectField,
   SelectField,
   TextField,
   ToggleField,
 } from '@/components/controls/Field';
-import { selectOptions, tokenOptions } from '@/lib/controls';
 import { issuesByNode, type NodeIssues } from '@/lib/issues';
 import { selectSelectedNode, useEditorStore } from '@/store/useEditorStore';
 
@@ -40,6 +44,7 @@ function Control({
   node,
   roles,
   error,
+  publish,
   onChange,
   onGestureStart,
   onGestureEnd,
@@ -48,6 +53,8 @@ function Control({
   node: SpecNode;
   roles: readonly DataColumn[];
   error: string | undefined;
+  /** O alternador de publicacao, ou nada num campo que nao pode ser publicado. */
+  publish: ReactNode;
   onChange: (value: unknown) => void;
   onGestureStart: () => void;
   onGestureEnd: () => void;
@@ -59,6 +66,7 @@ function Control({
       return (
         <SelectField
           label={field.label}
+          publish={publish}
           hint={field.hint}
           error={error}
           value={typeof raw === 'string' ? raw : field.default}
@@ -71,6 +79,7 @@ function Control({
       return (
         <SelectField
           label={field.label}
+          publish={publish}
           hint={field.hint}
           error={error}
           value={typeof raw === 'string' ? raw : field.default}
@@ -87,6 +96,7 @@ function Control({
       return (
         <SelectField
           label={field.label}
+          publish={publish}
           hint={
             compatible.length === 0
               ? `Nenhum papel de ${field.roleKind === 'grouping' ? 'categoria' : 'medida'} declarado.`
@@ -111,6 +121,7 @@ function Control({
       return (
         <ColorField
           label={field.label}
+          publish={publish}
           hint={field.hint}
           error={error}
           value={typeof raw === 'string' ? raw : field.default}
@@ -122,6 +133,7 @@ function Control({
       return (
         <ToggleField
           label={field.label}
+          publish={publish}
           hint={field.hint}
           error={error}
           value={typeof raw === 'boolean' ? raw : field.default}
@@ -133,6 +145,7 @@ function Control({
       return (
         <TextField
           label={field.label}
+          publish={publish}
           hint={field.hint}
           error={error}
           value={typeof raw === 'string' ? raw : field.default}
@@ -149,6 +162,7 @@ function Control({
       return (
         <NumberInput
           label={field.label}
+          publish={publish}
           hint={field.hint}
           error={error}
           value={typeof raw === 'number' ? raw : field.default}
@@ -164,6 +178,7 @@ function Control({
       return (
         <NumberInput
           label={field.label}
+          publish={publish}
           hint={field.hint}
           error={error}
           value={typeof raw === 'number' ? raw : field.default}
@@ -247,6 +262,8 @@ export function PropertiesPanel() {
   const setProp = useEditorStore((s) => s.setProp);
   const setRect = useEditorStore((s) => s.setRect);
   const setArtboard = useEditorStore((s) => s.setArtboard);
+  const setNodeName = useEditorStore((s) => s.setNodeName);
+  const setFieldExposed = useEditorStore((s) => s.setFieldExposed);
   // O registro inteiro, e nao um tamanho por seletor: e uma REFERENCIA vinda do
   // estado (o zustand v5 compara por `Object.is`), e ela so muda quando alguma
   // medida muda de fato — o que acontece ao redimensionar a janela, nao a cada
@@ -287,6 +304,7 @@ export function PropertiesPanel() {
   // que o campo mostra. Publicado pela camada de manipulacao, que ja cobre
   // exatamente este container.
   const parentSize = parent ? containerSizes[parent.id] : undefined;
+  const exposed = node.exposed ?? [];
 
   return (
     <Panel eyebrow="Propriedades" title={descriptor.label} hint={descriptor.hint}>
@@ -303,6 +321,27 @@ export function PropertiesPanel() {
         </div>
       )}
 
+      {/* So aparece depois da primeira publicacao. Um campo de apelido num no
+          que nao publica nada seria um controle sem efeito nenhum — e o apelido
+          existe justamente para batizar o card que passou a existir. */}
+      {exposed.length > 0 && (
+        <section className="mb-2 border-b border-border pb-2">
+          <PanelSectionHeading className="mb-1.5">Painel de formatacao</PanelSectionHeading>
+          <TextField
+            label="Apelido"
+            hint="Titulo do card no painel do Power BI."
+            value={node.name ?? ''}
+            maxLength={NODE_NAME_MAX_LENGTH}
+            // Vazio, o card se chama pelo rotulo do descritor. O campo mostra
+            // qual e esse nome em vez de ficar em branco.
+            placeholder={descriptor.label}
+            onChange={(value) => {
+              setNodeName(node.id, value);
+            }}
+          />
+        </section>
+      )}
+
       <div className="divide-y divide-border">
         {descriptor.fields.filter((field) => isVisible(field, node)).map((field) => (
           <Control
@@ -311,6 +350,21 @@ export function PropertiesPanel() {
             node={node}
             roles={spec.data.columns}
             error={errorFor(problems, field.key)}
+            // Campo estrutural nao ganha alternador, e a celula fica vazia: o
+            // codegen ja gastou a escolha para decidir a forma da arvore, e um
+            // alternador ali prometeria um controle que o pacote nao tem como
+            // obedecer.
+            publish={
+              isExposable(field) ? (
+                <PublishToggle
+                  label={field.label}
+                  exposed={exposed.includes(field.key)}
+                  onToggle={(next) => {
+                    setFieldExposed(node.id, field.key, next);
+                  }}
+                />
+              ) : null
+            }
             onChange={(value) => {
               setProp(node.id, field.key, value);
             }}

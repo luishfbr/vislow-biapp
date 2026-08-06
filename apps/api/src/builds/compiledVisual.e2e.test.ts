@@ -21,7 +21,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import { JSDOM, VirtualConsole } from 'jsdom';
 import { join } from 'node:path';
 import { assertValidSpec, defaultPropsFor, type VisualSpec } from '@vislow/component-registry';
-import { generateCapabilities, specWithEveryKind } from '@vislow/codegen';
+import { generateCapabilities, specWithEveryKind, specWithExposure } from '@vislow/codegen';
 import { inspectPbiviz } from '@vislow/config-schema/packaging';
 import { VENDOR_DIR } from '@vislow/visual-template';
 import { MAX_JS_BYTES, MAX_PACKAGE_BYTES } from './budgets.js';
@@ -141,6 +141,20 @@ interface RenderOutcome {
   calls: HostCalls;
   /** Re-serializa depois de uma interacao. */
   redraw: () => Promise<string>;
+  /**
+   * A instancia do visual compilado.
+   *
+   * E por ela que o gate alcanca o painel de formatacao: `getFormattingModel()`
+   * e um metodo do visual, nao algo que apareca no DOM. Sem isto, a unica prova
+   * de que o painel existe seria abrir o Power BI.
+   */
+  visual: CompiledVisual;
+}
+
+/** O que o gate usa do visual compilado. */
+interface CompiledVisual {
+  update: (options: unknown) => void;
+  getFormattingModel?: () => { cards: unknown[] };
 }
 
 const VIEWPORT = { width: 800, height: 600 };
@@ -211,6 +225,14 @@ async function renderCompiled(
   guid: string,
   withData: boolean,
   highContrast = false,
+  /**
+   * O que o consumidor do relatorio escolheu no painel de formatacao.
+   *
+   * Chega ao visual pelo mesmo caminho do Power BI — `metadata.objects` do
+   * DataView —, que e o que faz este teste valer alguma coisa: um atalho por
+   * dentro provaria so que a funcao de merge funciona.
+   */
+  objects?: Record<string, Record<string, unknown>>,
 ): Promise<RenderOutcome> {
   const errors: string[] = [];
   const virtualConsole = new VirtualConsole();
@@ -243,11 +265,18 @@ async function renderCompiled(
 
   const element = window.document.getElementById('host')!;
   const calls: HostCalls = { selections: [], contextMenus: 0, tooltips: [] };
-  const visual = plugin!.create({ element, host: fakeHost(calls, highContrast) }) as {
-    update: (options: unknown) => void;
-  };
+  const visual = plugin!.create({
+    element,
+    host: fakeHost(calls, highContrast),
+  }) as CompiledVisual;
   visual.update({
-    dataViews: withData ? [fakeDataView()] : [],
+    // Sem papel declarado o host ainda entrega um DataView so com metadados —
+    // e para isso que o capabilities gerado declara `supportsEmptyDataView`.
+    dataViews: withData
+      ? [fakeDataView()]
+      : objects
+        ? [{ metadata: { columns: [], objects } }]
+        : [],
     viewport: VIEWPORT,
     type: 62,
   });
@@ -258,7 +287,7 @@ async function renderCompiled(
     return new window.XMLSerializer().serializeToString(element);
   };
 
-  return { html: await settle(), errors, element, window, calls, redraw: settle };
+  return { html: await settle(), errors, element, window, calls, redraw: settle, visual };
 }
 
 /*
@@ -514,4 +543,123 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
    * editor, foi apagado pelo mesmo motivo.
    * =========================================================================
    */
+});
+
+/**
+ * O PAINEL DE FORMATACAO, no pacote compilado (spec 5.1.0).
+ *
+ * Um segundo `.pbiviz` de verdade, e nao uma variacao do primeiro: a afirmacao
+ * que sustenta o sprint e que um projeto SEM publicacao continua gerando o
+ * pacote de antes — e ela so vale se o pacote sem publicacao for compilado como
+ * estava. O `specWithEveryKind` do bloco acima e esse baseline.
+ *
+ * O que so este bloco alcanca:
+ *
+ *   1. `getFormattingModel()` existe no bundle MINIFICADO e devolve os cards. O
+ *      teste de fonte prova que o codegen emite a chamada; so aqui se sabe que
+ *      ela sobreviveu ao webpack e que a tabela emitida casa com os tipos do
+ *      `formatting.ts` — o `pbiviz package` compila com verificacao de tipos, e
+ *      uma forma errada reprovaria a build inteira antes deste teste rodar;
+ *   2. o valor escolhido pelo consumidor chega ao DOM pelo caminho do host —
+ *      `metadata.objects` — com `dataRoles` vazio.
+ *
+ * O QUE ELE NAO ALCANCA, e vale dizer por extenso: o host de teste entrega o
+ * DataView que o teste montou, entao ele nao depende do `supportsEmptyDataView`.
+ * Quem morde se essa chave sumir e a assertiva sobre o capabilities LIDO DO ZIP,
+ * logo abaixo — dentro do Power BI de verdade, sem ela o painel aparece, o
+ * consumidor mexe e nada chega ao `update()`. E o item MT-15 da matriz manual.
+ */
+describe('o pacote compilado leva o painel de formatacao', () => {
+  let spec: VisualSpec;
+  let js: string;
+  let guid: string;
+  let embutido: { objects: Record<string, unknown>; supportsEmptyDataView?: boolean };
+  /** O no de texto da fixture — o que publica sete campos. */
+  let textoId: string;
+
+  beforeAll(async () => {
+    spec = assertValidSpec(specWithExposure('Painel Publicado'));
+    textoId = spec.root.children?.[0]?.id ?? '';
+    const outcome = await runBuildPipeline(spec, BUILD_ID);
+    const inspection = await inspectPbiviz(outcome.artifact);
+    js = inspection.js;
+    guid = inspection.packageIdentity.guid;
+    embutido = inspection.capabilities as typeof embutido;
+  }, 300_000);
+
+  it('o capabilities do PACOTE declara os objects e o supportsEmptyDataView', () => {
+    // Lido do ZIP, nao regerado em memoria: e a unica leitura que prova o que
+    // o Power BI vai receber.
+    expect(Object.keys(embutido.objects)).toContain(textoId);
+    expect(embutido.supportsEmptyDataView).toBe(true);
+    expect(embutido).toEqual(generateCapabilities(spec));
+  });
+
+  it('getFormattingModel devolve os cards do bundle minificado', async () => {
+    const { visual, errors } = await renderCompiled(js, guid, false, false, {});
+    const model = visual.getFormattingModel?.();
+
+    expect(model).toBeDefined();
+    // Dois nos publicam: o container (sem apelido) e a caixa de texto.
+    expect(model?.cards).toHaveLength(2);
+
+    const cards = (model?.cards ?? []) as { uid: string; displayName: string }[];
+    expect(cards.map((card) => card.uid)).toContain(textoId);
+    expect(cards.map((card) => card.displayName)).toEqual(['Container', 'Titulo do painel']);
+    expect(errors).toEqual([]);
+  }, 60_000);
+
+  it('o campo escondido pelo showWhen nao vira slice — e volta quando ligam o governante', async () => {
+    const { visual } = await renderCompiled(js, guid, false, false, {});
+    const slices = (model: unknown): string[] =>
+      (((model as { cards: { uid: string; groups: { slices: { uid: string }[] }[] }[] }).cards.find(
+        (card) => card.uid === textoId,
+      )?.groups[0]?.slices ?? []) as { uid: string }[]).map((slice) => slice.uid);
+
+    expect(slices(visual.getFormattingModel?.())).not.toContain(`${textoId}-background`);
+
+    visual.update({
+      dataViews: [{ metadata: { columns: [], objects: { [textoId]: { showBackground: true } } } }],
+      viewport: VIEWPORT,
+      type: 62,
+    });
+    expect(slices(visual.getFormattingModel?.())).toContain(`${textoId}-background`);
+  }, 60_000);
+
+  it('o que o consumidor escolhe chega ao DOM, sem poco de campos', async () => {
+    const escolhido = 'Texto trocado no relatorio';
+    const { html, errors } = await renderCompiled(js, guid, false, false, {
+      [textoId]: { content: escolhido, color: { solid: { color: '#ff0000' } } },
+    });
+
+    expect(html).toContain(escolhido);
+    // O valor do autor saiu da tela: o override venceu de verdade.
+    expect(html).not.toContain('Receita total');
+    expect(html).toContain('#ff0000');
+    expect(errors).toEqual([]);
+  }, 60_000);
+
+  it('valor invalido vindo do host cai no valor do autor, sem quebrar a tela', async () => {
+    // O padrao de falha desta toolchain e o silencio: um `fontSize` que nao e
+    // numero viraria `NaN` no `style` inline e o texto sumiria sem erro.
+    const { html, errors } = await renderCompiled(js, guid, false, false, {
+      [textoId]: { fontSize: 'gigante', color: { solid: { color: 'vermelho' } } },
+    });
+
+    expect(html).toContain('Receita total');
+    expect(html).not.toContain('NaN');
+    expect(html).not.toContain('Não foi possível renderizar o visual');
+    expect(errors).toEqual([]);
+  }, 60_000);
+
+  it('o campo NAO publicado ignora o override — e propriedade estrutural', async () => {
+    // `padding` da caixa de texto ficou fechado na fixture: o valor do autor
+    // esta literal no JSX e nao ha por onde ler o `objects` naquela posicao.
+    const { html } = await renderCompiled(js, guid, false, false, {
+      [textoId]: { padding: 99 },
+    });
+
+    expect(html).not.toContain('padding: 99px');
+    expect(html).toContain(`padding: ${String(defaultPropsFor('text').padding)}px`);
+  }, 60_000);
 });

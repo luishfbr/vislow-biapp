@@ -19,13 +19,14 @@ import {
   TOKEN_CATALOG,
   type ValidationIssue,
 } from '@vislow/config-schema';
-import { NODE_DESCRIPTORS, NODE_KINDS } from './registry.js';
+import { exposableFields, NODE_DESCRIPTORS, NODE_KINDS } from './registry.js';
 import {
   ARTBOARD_MAX,
   ARTBOARD_MIN,
   MAX_COLUMNS,
   MAX_ROWS,
   NODE_ID_PATTERN,
+  NODE_NAME_MAX_LENGTH,
   PROJECT_NAME_MAX_LENGTH,
   PROJECT_NAME_MIN_LENGTH,
   RECT_MIN_SIZE,
@@ -119,6 +120,23 @@ function nodeSchemaFor(kind: (typeof NODE_KINDS)[number]): Record<string, unknow
       kind: { const: kind },
       props: { type: 'object', additionalProperties: false, required, properties },
       rect: rectSchema,
+      /**
+       * Apelido do no. OPCIONAL: so o painel de formatacao do visual gerado o
+       * usa, e um no que nao publica nada nao precisa de titulo.
+       */
+      name: { type: 'string', minLength: 1, maxLength: NODE_NAME_MAX_LENGTH },
+      /**
+       * Chaves publicadas — o `enum` sai do REGISTRO, entao chave inexistente e
+       * chave estrutural (`placement`) reprovam aqui, sem regra semantica
+       * paralela em `validateSpec`. Um `exposed: ['placement']` chegado por
+       * importacao produziria `objects` para uma escolha que o codegen ja gastou
+       * ao decidir a forma da arvore.
+       */
+      exposed: {
+        type: 'array',
+        uniqueItems: true,
+        items: { enum: exposableFields(kind).map((field) => field.key) },
+      },
       ...(descriptor.acceptsChildren
         ? { children: { type: 'array', items: { $ref: '#/$defs/node' }, maxItems: 50 } }
         : {}),
