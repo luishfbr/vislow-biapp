@@ -49,7 +49,26 @@ export default function EditorPage() {
   return (
     <>
       <SmallScreenNotice />
-      <div className="hidden h-full flex-col md:flex">
+      {/*
+       * `h-dvh overflow-hidden`: A JANELA NUNCA ROLA.
+       *
+       * Num editor de canvas a rolagem pertence aos PAINEIS, nunca ao documento
+       * — o cabecalho e a barra de status sao ancorados, e rolar a pagina os
+       * tira de vista. Ate aqui a invariante era EMERGENTE: `h-full` dependia da
+       * corrente `html` -> `body` -> este div, e nenhum painel tinha conteudo
+       * alto o bastante para testa-la. O KPI Card tem vinte e sete campos, e foi
+       * o primeiro a passar da altura da tela.
+       *
+       * `h-dvh` em vez de `h-full` para a altura ser definida por si, sem
+       * depender de ancestral nenhum resolver `height: 100%` — e, de quebra,
+       * para acompanhar a barra do navegador no celular. `overflow-hidden` e o
+       * que impede qualquer descendente que transborde de esticar a area
+       * rolavel da janela.
+       *
+       * O painel da direita continua com a propria rolagem (`overflow-y-auto`),
+       * entao nada fica inalcancavel: o que passa da altura rola LA DENTRO.
+       */}
+      <div className="hidden h-dvh flex-col overflow-hidden md:flex">
         <Header />
         {hydrated ? <Workbench /> : <Loading />}
         <StatusBar />
