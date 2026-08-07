@@ -1,7 +1,7 @@
 'use client';
 
 import { type NodeRect } from '@vislow/component-registry';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   applyGesture,
   applyGroupMove,
@@ -54,6 +54,7 @@ export function CanvasOverlay({
   onGestureStart,
   onGestureEnd,
   onEnter,
+  menu,
 }: {
   items: readonly OverlayChild[];
   selectedIds: readonly string[];
@@ -67,6 +68,8 @@ export function CanvasOverlay({
   onGestureStart?: (() => void) | undefined;
   onGestureEnd?: (() => void) | undefined;
   onEnter?: ((id: string) => void) | undefined;
+  /** Embrulho de cada no. E por aqui que o menu de contexto entra, sem esta camada conhecer o store. */
+  menu?: ((id: string, children: ReactNode) => ReactNode) | undefined;
 }) {
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
@@ -252,7 +255,7 @@ export function CanvasOverlay({
           height: `${String(child.rect.h)}%`,
         };
 
-        return (
+        const node = (
           <div
             key={child.id}
             data-node-id={child.id}
@@ -375,6 +378,8 @@ export function CanvasOverlay({
             )}
           </div>
         );
+
+        return menu ? menu(child.id, node) : node;
       })}
 
       {/* A moldura do bloco: tracejada e SEM alca, porque nao ha o que arrastar

@@ -91,6 +91,12 @@ export interface PreviewEdit {
   enteredId: string;
   /** Duplo clique num container filho: desce um nivel. */
   onEnter: (id: string) => void;
+  /**
+   * Embrulho de cada no da camada — e por onde o menu de contexto entra. Vem
+   * daqui e nao de dentro do `CanvasOverlay` para aquele continuar sem store, e
+   * nao deste arquivo para o gemeo do codegen ficar sem movel do editor.
+   */
+  menu?: ((id: string, children: ReactNode) => ReactNode) | undefined;
 }
 
 /**
@@ -199,6 +205,7 @@ function renderNode(node: SpecNode, frame: DataFrame, edit: PreviewEdit | undefi
           onGestureStart={edit.onGestureStart}
           onGestureEnd={edit.onGestureEnd}
           onEnter={edit.onEnter}
+          menu={edit.menu}
         />,
       );
     }

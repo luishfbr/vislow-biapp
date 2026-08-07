@@ -74,6 +74,14 @@ export interface UiState {
    */
   simulateSelection: boolean;
 
+  /**
+   * Ha menu de contexto aberto. Existe para o `useEditorShortcuts` SAIR CEDO:
+   * ele escuta no documento, e sem a guarda o `Esc` fecharia o menu e limparia a
+   * selecao no mesmo toque, e o `Delete` apagaria duas vezes.
+   */
+  menuOpen: boolean;
+
+  setMenuOpen: (open: boolean) => void;
   toggleSimulateSelection: () => void;
   setLeftWidth: (value: number) => void;
   setRightWidth: (value: number) => void;
@@ -164,6 +172,13 @@ export const useUiStore = create<UiState>((set, get) => {
     ...DEFAULTS,
     layoutEpoch: 0,
     simulateSelection: false,
+    // Transitorio como o `simulateSelection`, e pelo mesmo motivo fora do
+    // recorte persistido: abrir o editor amanha achando que ha menu aberto.
+    menuOpen: false,
+
+    setMenuOpen: (open) => {
+      set({ menuOpen: open });
+    },
 
     // Nao chama `save()`: fora do recorte persistido de proposito. E tambem nao
     // mexe no `layoutEpoch` — a moldura nao mudou de tamanho, so o que ha dentro

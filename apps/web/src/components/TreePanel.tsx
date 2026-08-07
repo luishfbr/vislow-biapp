@@ -8,6 +8,7 @@ import {
 } from '@vislow/component-registry';
 import { ArrowDown, ArrowUp, Circle, SlidersHorizontal, X } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
+import { NodeContextMenu } from '@/components/NodeContextMenu';
 import { PanelSection } from '@/components/PanelSection';
 import { Button } from '@/components/ui/button';
 import { issuesByNode, markedAncestors } from '@/lib/issues';
@@ -323,8 +324,8 @@ export function TreePanel() {
           const published = row.node.exposed?.length ?? 0;
 
           return (
+            <NodeContextMenu key={id} id={id}>
             <button
-              key={id}
               type="button"
               data-row-id={id}
               onPointerDown={(event) => {
@@ -380,6 +381,7 @@ export function TreePanel() {
                 />
               )}
             </button>
+            </NodeContextMenu>
           );
         })}
 

@@ -1428,6 +1428,35 @@ propósito** antes de virar teste.
 manter a renderização recursiva ao lado disso seria duas representações da mesma coisa. `flattenTree` é pura e
 se testa sozinha; de quebra, o painel ganhou o primeiro teste de DOM que ele nunca teve.
 
+### Menu de contexto — ✅ **CONCLUÍDO em 2026-08-07**
+
+Terceiro e último sprint do `grilling` de 2026-08-07. Não havia **um** `onContextMenu` em `apps/web`: o botão
+direito era ignorado em toda parte, e apagar exigia achar o X no cabeçalho da Composição.
+
+**O primitivo veio do CLI, e isso importa.** `components/ui/**` é código de terceiro regerável por `shadcn diff`;
+escrever o wrapper à mão perderia isso na próxima atualização. Eu tinha previsto uma divergência obrigatória — o
+`dropdown-menu` usa `w-(--anchor-width)`, que numa âncora de ponto dá 0px —, e o `context-menu` gerado já vinha
+com `min-w-36`. Nenhuma edição à mão.
+
+**A decisão que mais importa é abrir SELECIONANDO.** O menu age sobre a seleção, e um menu que aparece sobre um
+nó e apaga outro seria a pior falha possível numa ferramenta de composição. Pelo `hostOf` do primeiro sprint,
+isso também desce a camada de manipulação até o pai do nó.
+
+**Achado de auditoria: `title` em item desabilitado é atributo morto.** O primitivo aplica
+`data-disabled:pointer-events-none`, então o item nunca recebe hover e o navegador nunca desenha a dica. Saiu, e
+o teste passou a afirmar o que importa — clicar no item cinza não apaga nada — em vez da presença do atributo. O
+X do cabeçalho da Composição tem a mesma falha, herdada de antes; fica registrada.
+
+**O `CanvasOverlay` continuou sem conhecer store.** Ele é a única camada do editor que se testa com callbacks
+puros, e importar o menu lá dentro custaria isso. O embrulho desce por `menu`, no `PreviewEdit` — que é o
+contrato editor↔preview e já existia para o resto. Pôr no `SpecPreview` daria móvel de editor ao gêmeo do
+codegen, que é pior.
+
+**`menuOpen` no `useUiStore`**, transitório e não persistido, existe por um motivo estreito: o
+`useEditorShortcuts` escuta no **documento**, e sem a guarda o `Esc` fecharia o menu e limparia a seleção no
+mesmo toque, e o `Delete` apagaria duas vezes. A guarda é explícita no chamador, ao lado da de quem está
+digitando — a mesma regra de não enterrar condição em expressão composta.
+
 ## 8. Anexo A — achados numerados
 
 Correções aplicadas na v2.0 sobre o rascunho v1.0, com a razão de cada uma.

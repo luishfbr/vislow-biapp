@@ -1,7 +1,7 @@
 'use client';
 
 import { artboardOf } from '@vislow/component-registry';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { SelectionSimControl } from '@/components/SelectionSimControl';
 import { ZoomControl } from '@/components/ZoomControl';
 import type { Pane } from '@/lib/artboard';
@@ -17,8 +17,16 @@ import {
 } from '@/lib/viewport';
 import { useEditorStore } from '@/store/useEditorStore';
 import { useUiStore } from '@/store/useUiStore';
+import { NodeContextMenu } from './NodeContextMenu';
 import { SpecPreview } from './SpecPreview';
 import { StackHandles } from './StackHandles';
+
+/** Fora do componente: o objeto `edit` e memoizado, e uma closure nova por render o invalidaria. */
+const withMenu = (id: string, children: ReactNode): ReactNode => (
+  <NodeContextMenu key={id} id={id}>
+    {children}
+  </NodeContextMenu>
+);
 
 interface Panning {
   pointerId: number;
@@ -132,6 +140,7 @@ export function PreviewCanvas() {
       onGestureEnd: endGesture,
       enteredId: enteredId ?? spec.root.id,
       onEnter: enterContainer,
+      menu: withMenu,
     }),
     [
       selectedIds,
