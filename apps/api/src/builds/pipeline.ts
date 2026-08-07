@@ -16,29 +16,6 @@ import {
 import { MAX_JS_BYTES, MAX_PACKAGE_BYTES, describeBytes } from './budgets.js';
 import { BuildFailure, type BuildStep } from './types.js';
 
-/**
- * O pipeline de build. Uma spec entra, um `.pbiviz` verificado sai.
- *
- * Validar -> copiar scaffold -> codegen -> montar `node_modules` da store ->
- * vendorizar -> `pbiviz package` -> INSPECIONAR -> entregar.
- *
- * **Nenhum passo daqui usa a rede.** As dependencias sao instaladas uma vez, no
- * preparo (`stage:deps`), e a build so as monta por hardlink. Foi o que tirou o
- * `npm ci` de dentro do worker: la ele rodava com ambiente magro, sem proxy nem
- * CA corporativo, e falhava em maquina que instalava o repo sem problema.
- *
- * O passo de inspecao nao e opcional e nao e um teste: e um portao. Este projeto
- * ja documentou tres vezes que `pbiviz package` reporta sucesso produzindo
- * pacote quebrado. Um artefato que nao passa na inspecao nunca chega ao usuario
- * — vira `ARTIFACT_REJECTED`, com o numero que estourou.
- *
- * **RN-11 do lado do servidor:** nenhum codigo do usuario e executado nem
- * compilado como codigo. A spec e DADO; o `@vislow/codegen` emite JSX a partir
- * de uma whitelist (o registro de componentes), com todo valor saindo como
- * literal. As dependencias saem do lockfile do template, que o usuario nao
- * controla.
- */
-
 export interface BuildOutcome {
   artifact: Buffer;
   fileName: string;
@@ -47,34 +24,16 @@ export interface BuildOutcome {
 }
 
 export interface PipelineOptions {
-  /** Tempo duro do build inteiro. Estourou, o diretorio morre junto. */
   timeoutMs: number;
-  /**
-   * Chamado ao ENTRAR em cada etapa, nunca ao sair: o que o usuario espera ler e
-   * o que esta acontecendo agora, e a etapa longa e justamente a que nao teria
-   * aviso nenhum se o sinal fosse na conclusao.
-   *
-   * Opcional porque o pipeline roda sem plateia nos testes e no gate de aceite.
-   */
   onStep?: (step: BuildStep) => void;
 }
 
 export const DEFAULT_TIMEOUT_MS = 180_000;
 
-/** Id curto do build. E a impressao digital que aparece no canto do visual. */
 export function createBuildId(): string {
   return randomBytes(4).toString('hex');
 }
 
-/**
- * Nome do arquivo entregue.
- *
- * O usuario reconhece o visual pelo nome que deu, nao pelo GUID. Mas o nome
- * atravessa um cabecalho HTTP e um sistema de arquivos, entao tudo que e
- * separador de caminho ou controle sai fora. O `Content-Disposition` no
- * controller ainda faz o proprio escape — este saneamento e o cinto, aquele e o
- * suspensorio.
- */
 // eslint-disable-next-line no-control-regex -- os controles sao exatamente o que precisa sair
 const UNSAFE_IN_FILENAME = /[\u0000-\u001f\u007f/\\:*?"<>|]/g;
 
@@ -88,13 +47,6 @@ interface RunResult {
   stderr: string;
 }
 
-/**
- * Falha de um processo externo, com os logs presos ao erro.
- *
- * Classe propria em vez de anexar campos ao erro do `execFile`: o que interessa
- * — `killed` e as saidas — passa a ser tipado, e quem faz `catch` nao precisa
- * adivinhar o formato do que veio.
- */
 class ProcessFailure extends Error {
   constructor(
     message: string,
@@ -107,7 +59,6 @@ class ProcessFailure extends Error {
   }
 }
 
-/** Ultimas linhas de um log. O comeco de um log de webpack nunca diz o motivo. */
 function tail(text: string, lines = 30): string {
   return text.split('\n').slice(-lines).join('\n').trim();
 }
@@ -124,16 +75,12 @@ function run(
       {
         cwd: options.cwd,
         timeout: options.timeoutMs,
-        // Logs de webpack sao grandes; truncar aqui esconderia justamente o
-        // trecho que explica a falha.
         maxBuffer: 64 * 1024 * 1024,
         env: options.env,
         killSignal: 'SIGKILL',
       },
       (error, stdout, stderr) => {
         if (error) {
-          // `killed` distingue "estourou o tempo" de "saiu com codigo != 0" —
-          // sao erros diferentes para o usuario e merecem codigos diferentes.
           reject(new ProcessFailure(error.message, error.killed === true, stdout, stderr));
           return;
         }
@@ -154,45 +101,15 @@ function logsOf(error: unknown): string {
   return tail(`${error.stdout}\n${error.stderr}`);
 }
 
-/**
- * O compilador, chamado pelo MESMO node que roda a API — nunca por `npx`.
- *
- * No Windows o `npx` e um `npx.cmd`, e desde a correcao do CVE-2024-27980 o
- * `execFile` do Node recusa executar `.cmd` sem `shell: true`. O sintoma e um
- * `spawn npx ENOENT` que nao menciona nem o Windows nem o `.cmd` — e em macOS e
- * Linux nada disso acontece, entao a falha e invisivel para quem desenvolve
- * fora do Windows.
- *
- * Chamar o `bin/pbiviz.js` direto tambem e mais honesto: `npx` resolveria o
- * binario por PATH e por node_modules, e nos sabemos exatamente onde ele esta —
- * `linkDependencies` acabou de monta-lo ali.
- */
+/** Chamado pelo MESMO node que roda a API, nunca por `npx` — ver docs/backend.md. */
 function pbivizCli(workdir: string): string {
   return join(workdir, 'node_modules', 'powerbi-visuals-tools', 'bin', 'pbiviz.js');
 }
 
-/**
- * Variaveis sem as quais o Node nao roda no Windows.
- *
- * `SystemRoot` e a critica — sem ela o proprio runtime falha em chamadas
- * nativas, com erro que nao cita variavel nenhuma. As outras sao caminho de
- * sistema, nao segredo: um ambiente magro demais no Windows quebra o compilador
- * antes de ele comecar.
- */
+// `SystemRoot` e a critica: sem ela o proprio runtime do Node falha em chamadas nativas.
 const WINDOWS_ESSENTIALS = ['SystemRoot', 'ComSpec', 'PATHEXT', 'TEMP', 'TMP', 'USERPROFILE'];
 
-/**
- * Ambiente do processo de build.
- *
- * Deliberadamente magro. O que importa nao e economizar variaveis e sim NAO
- * repassar segredo do servidor para um processo que compila fonte gerada a
- * partir de entrada de usuario.
- *
- * NAO defina NODE_ENV=production aqui. O npm leria isso como `--omit=dev` e
- * trataria o `powerbi-visuals-tools` — uma devDependency — como ausente. O
- * sintoma nao aponta para nada disso: vira um 404 do registro tentando BAIXAR
- * um pacote chamado `pbiviz` (achado 42).
- */
+/** Deliberadamente magro: o que importa e NAO repassar segredo do servidor ao processo de build. */
 function buildEnv(): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
     PATH: process.env.PATH ?? '',
@@ -218,8 +135,6 @@ export async function runBuildPipeline(
     options.onStep?.(name);
   };
 
-  // 1. Validacao. Antes de tocar o disco: uma spec invalida nao merece um
-  //    diretorio temporario, e o erro precisa citar o CAMPO, nao o build.
   step('validating');
   const validation = validateSpec(spec);
   if (validation.kind === 'invalid') {
@@ -241,24 +156,16 @@ export async function runBuildPipeline(
   const remaining = (): number => Math.max(1, deadline - Date.now());
   const env = buildEnv();
 
-  // Diretorio proprio por build, destruido no `finally` — inclusive quando
-  // estoura o tempo. E o isolamento minimo: dois builds simultaneos nunca veem
-  // o `node_modules` um do outro.
   const workdir = await createBuildWorkdir();
 
   try {
-    // 2. Scaffold estatico.
     step('generating');
     await copyTemplate(workdir);
 
-    // 3. Codegen: os tres arquivos que distinguem um visual de outro.
-    // O scaffold ja traz `src/`, entao nao ha diretorio novo a criar.
     for (const file of generateProject(validation.spec, buildId)) {
       await writeFile(join(workdir, file.path), file.contents, 'utf8');
     }
 
-    // 4. Dependencias: hardlink da store, sem rede e sem npm. A arvore vem do
-    //    lockfile do template — nunca da spec do usuario.
     step('linking');
     try {
       await linkDependencies(workdir);
@@ -268,10 +175,8 @@ export async function runBuildPipeline(
       });
     }
 
-    // 5. Pacotes internos — DEPOIS do passo 4, que e quem cria `node_modules`.
     await vendorInternalPackages(workdir);
 
-    // 6. Compilacao de verdade.
     step('compiling');
     try {
       await run(process.execPath, [pbivizCli(workdir), 'package'], {
@@ -283,14 +188,11 @@ export async function runBuildPipeline(
       if (isTimeout(error)) {
         throw new BuildFailure('TIMEOUT', 'A compilacao estourou o tempo.');
       }
-      // O `pbiviz` imprime `error` de certificado e mesmo assim conclui com
-      // sucesso; quando ele falha de verdade, o motivo esta nas ultimas linhas.
       throw new BuildFailure('COMPILE_FAILED', 'A compilacao do visual falhou.', {
         detail: logsOf(error),
       });
     }
 
-    // 7. Portao. Nada sai daqui sem passar.
     step('inspecting');
     const artifact = await readArtifact(workdir);
     const outcome = await inspectArtifact(artifact, validation.spec);
@@ -312,9 +214,6 @@ async function readArtifact(workdir: string): Promise<Buffer> {
     );
   }
 
-  // Exatamente um: zero significa que o `pbiviz` mentiu sobre o sucesso, e mais
-  // de um significa que sobrou artefato de outra build no mesmo diretorio —
-  // impossivel por construcao hoje, mas entregar "algum" seria pior que falhar.
   if (candidates.length !== 1 || candidates[0] === undefined) {
     throw new BuildFailure(
       'ARTIFACT_REJECTED',
@@ -325,13 +224,6 @@ async function readArtifact(workdir: string): Promise<Buffer> {
   return readFile(join(dist, candidates[0]));
 }
 
-/**
- * Os mapeamentos do capabilities lido do zip, sem confiar no formato.
- *
- * O portao inspeciona de FORA (ADR-11): o que vier do pacote e `unknown` de
- * verdade, e um formato inesperado nao pode explodir o worker — ele so nao tem
- * condicao para conferir.
- */
 function asMappings(capabilities: unknown): { conditions?: Record<string, unknown>[] }[] {
   if (typeof capabilities !== 'object' || capabilities === null) return [];
   const mappings = (capabilities as { dataViewMappings?: unknown }).dataViewMappings;
@@ -342,14 +234,7 @@ function asMappings(capabilities: unknown): { conditions?: Record<string, unknow
   );
 }
 
-/**
- * Confere o artefato contra a spec que o pediu.
- *
- * Cada assertiva aqui corresponde a uma falha que este projeto ja pagou: GUID
- * que nao e identificador JS (o bundle nem carrega), identidade divergente entre
- * `package.json` e recurso (o Power BI recusa), orcamento estourado (o import e
- * recusado sem dizer por que).
- */
+/** O portao inspeciona de FORA (ADR-11). Cada assertiva corresponde a uma falha que este projeto ja pagou. */
 async function inspectArtifact(
   artifact: Buffer,
   spec: VisualSpec,
@@ -379,26 +264,15 @@ async function inspectArtifact(
   if (inspection.resourcePath !== inspection.declaredResourcePath) {
     reject('O recurso declarado no package.json nao e o recurso presente no zip.');
   }
-  // O GUID e nome de variavel JS no `visualPlugin.ts` gerado, nao um UUID.
   if (!new RegExp(`var ${packageIdentity.guid}\\b`).test(inspection.js)) {
     reject('O GUID nao aparece como variavel no bundle — o visual nao carregaria.');
   }
-  // ADR-02: sem o CSS pre-compilado o visual importa, renderiza e sai sem
-  // estilo nenhum. O `pbiviz` reporta sucesso do mesmo jeito.
   if (!inspection.js.includes('vsl-')) {
     reject('O bundle nao contem as classes do visual-kit — o CSS nao entrou.');
   }
-  // O capabilities do PACOTE, nao o que o codegen diz ter gerado. Sem esta
-  // assertiva um pacote importa, renderiza e mesmo assim recusa todo arrasto de
-  // campo — foi exatamente o que aconteceu, e nenhuma das guardas anteriores
-  // olhava para dentro do zip. O plugin do `pbiviz` so reescreve capabilities de
-  // visual de script (`dataViewMappings[0].scriptResult`), que nunca e o caso
-  // aqui, entao a igualdade estrita e a comparacao certa.
   if (!isDeepStrictEqual(inspection.capabilities, JSON.parse(JSON.stringify(expected)))) {
     reject('O capabilities.json dentro do pacote nao e o que o codegen gerou para esta spec.');
   }
-  // Uma condicao com `min` trava os pocos de campo: o host recusa todo estado
-  // intermediario do arrasto, em silencio, e o visual nunca recebe dado nenhum.
   for (const mapping of asMappings(inspection.capabilities)) {
     for (const condition of mapping.conditions ?? []) {
       for (const [role, range] of Object.entries(condition)) {

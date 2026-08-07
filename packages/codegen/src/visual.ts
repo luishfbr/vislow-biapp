@@ -9,30 +9,7 @@ import { exposedNodes, isExposedKey, type ExposedNode } from './exposure.js';
 import { indent, jsData, jsScalar, jsString, jsxValue } from './literal.js';
 import { usedRoles } from './roles.js';
 
-/**
- * Gera o `src/visual.tsx` do projeto pbiviz.
- *
- * ADR-10: o codegen emite IMPORTS NOMEADOS dos mesmos componentes do
- * `visual-kit` que o preview do editor renderiza. Nao emite JSX de Recharts cru
- * e nao existe interpretador generico da arvore em runtime. Duas consequencias
- * que valem o desenho:
- *
- *   1. WYSIWYG continua garantido por construcao depois do pivo — preview e
- *      visual final sao literalmente o mesmo componente (ADR-04).
- *   2. Import nomeado da tree-shaking: o bundle leva so os tipos de no que o
- *      usuario usou, que e o que sustenta o orcamento de 1 MB.
- *
- * RN-11: a arvore e DADO. Nada aqui interpreta ou compila algo que o usuario
- * escreveu — os componentes vem de uma whitelist (o registro) e os valores saem
- * como literais (ver `literal.ts`).
- */
-
-/**
- * Nos cujo descritor tem campo de papel precisam do quadro.
- *
- * A regra vem do REGISTRO, nao daqui: o preview do editor decide a mesma coisa,
- * e duas copias divergiriam sem nada quebrar em tempo de compilacao.
- */
+/** A regra vem do REGISTRO, nao daqui: o preview decide a mesma coisa com a mesma funcao. */
 function needsFrame(node: SpecNode): boolean {
   return consumesData(node.kind);
 }
@@ -43,16 +20,9 @@ function emitNode(node: SpecNode): string {
 
   if (needsFrame(node)) attributes.push('frame={frame}');
 
-  // A ORDEM vem do descritor, nao do objeto `props`: a ordem das chaves de um
-  // objeto vindo de JSON e do cliente, e o fonte gerado precisa ser
-  // deterministico para que dois builds da mesma spec batam byte a byte.
   for (const field of descriptor.fields) {
     const authored = node.props[field.key];
 
-    // Campo FECHADO sai literal, como sempre. E o que torna "ignorar o override"
-    // uma propriedade estrutural do pacote, e nao uma verificacao em runtime que
-    // alguem possa contornar: o valor do autor esta no fonte, e nao ha por onde
-    // ler o `objects` naquela posicao.
     if (!isExposedKey(node, field.key)) {
       attributes.push(`${field.key}=${jsxValue(authored)}`);
       continue;
@@ -70,9 +40,6 @@ function emitNode(node: SpecNode): string {
     return `${open}\n${attrs}\n/>`;
   }
 
-  // GEMEO de `renderNode` no editor: quem decide o embrulho e o pai, com a mesma
-  // funcao do registro. Divergir aqui faria o preview mostrar a composicao
-  // posicionada e o pacote entregue sair empilhado — sem erro nos dois lados.
   const free = positionsChildren(node);
   const body = children
     .map((child) => indent(free ? emitSlot(child) : emitNode(child), 1))
@@ -80,13 +47,7 @@ function emitNode(node: SpecNode): string {
   return `${open}\n${attrs}\n>\n${body}\n</${descriptor.component}>`;
 }
 
-/**
- * Embrulha um filho posicionado.
- *
- * A caixa e obrigatoria aqui — nao ha default. Uma spec sem ela nao chega ao
- * codegen: `validateSpec` roda no editor antes de enviar e de novo na API antes
- * de compilar, e essa e a spec que ja passou duas vezes.
- */
+/** A caixa e obrigatoria: `validateSpec` reprova antes, e um default aqui seria a segunda regra. */
 function emitSlot(node: SpecNode): string {
   const rect = node.rect;
   if (!rect) throw new Error(`no "${node.id}" e filho de um canvas e nao tem caixa`);
@@ -98,13 +59,10 @@ function emitSlot(node: SpecNode): string {
   return `<CanvasSlot\n${attrs}\n>\n${indent(emitNode(node), 1)}\n</CanvasSlot>`;
 }
 
-/** Componentes usados na arvore, em ordem alfabetica (import deterministico). */
 function usedComponents(spec: VisualSpec): string[] {
   const names = new Set<string>();
   const visit = (node: SpecNode): void => {
     names.add(NODE_DESCRIPTORS[node.kind].component);
-    // O embrulho entra como qualquer outro no — import nomeado —, e so quando ha
-    // filho posicionado: quem so empilha nao paga por ele no bundle.
     if (positionsChildren(node) && (node.children ?? []).length > 0) names.add('CanvasSlot');
     node.children?.forEach(visit);
   };
@@ -118,21 +76,6 @@ function treeUsesFrame(spec: VisualSpec): boolean {
   return visit(spec.root);
 }
 
-/**
- * A tabela `FORMATTING` do fonte gerado, na forma que o `formatting.ts` do
- * template declara (`FormattingSpec`).
- *
- * A conversao existe porque os dois lados guardam o valor do autor em lugares
- * diferentes, de proposito: aqui ele fica no CAMPO, que e como o JSX o consome;
- * la ele fica num mapa por chave, que e como o painel o consome — junto com os
- * governantes de `showWhen`, que nao sao campos publicados e mesmo assim
- * precisam de valor.
- *
- * Quem confere que as duas formas batem e o COMPILADOR do build: o
- * `visual.tsx` gerado anota a tabela com `FormattingSpec`, entao uma chave a
- * mais ou um tipo trocado reprova o `pbiviz package` — e o gate de aceite
- * compila um pacote de verdade a cada `pnpm check`.
- */
 function formattingTable(nodes: ExposedNode[]): unknown[] {
   return nodes.map((node) => ({
     id: node.id,
@@ -163,24 +106,13 @@ export function generateVisualSource(spec: VisualSpec, buildId: string): string 
   const roles = usedRoles(spec);
   const withFrame = treeUsesFrame(spec);
   const exposed = exposedNodes(spec);
-  /**
-   * Nada publicado, nada disto existe: sem import do `formatting`, sem tabela,
-   * sem `pick()` no JSX e sem `getFormattingModel`. E o que faz um projeto que
-   * ignora o Sprint B gerar o fonte de antes dele, caractere a caractere.
-   */
+  // Nada publicado, nada disto existe — o pacote sai igual ao de antes da spec 5.1.0, byte a byte.
   const withFormatting = exposed.length > 0;
 
-  // `EMPTY_FRAME` e `DataFrame` entram SEMPRE, mesmo numa arvore so de texto: o
-  // quadro deixou de ser apenas dado no Sprint 6 — e por ele que a interacao
-  // com o host viaja, e um visual sem papel nenhum ainda precisa de menu de
-  // contexto e alto contraste.
   const nodeImports = [...components, 'EMPTY_FRAME', 'type DataFrame'];
 
   const roleList = roles.map((role) => jsString(role.name)).join(', ');
 
-  // A `Tree` recebe so o que a arvore desta spec usa. Um parametro que nao serve
-  // a ninguem seria um `noUnusedParameters` do lado do build — e o `pbiviz`
-  // compila com o tsconfig dele, nao com o nosso.
   const treeNames: string[] = [];
   const treeTypes: string[] = [];
   const treeArgs: string[] = [];
@@ -211,14 +143,6 @@ export function generateVisualSource(spec: VisualSpec, buildId: string): string 
 
   const formattingTableSource = withFormatting
     ? `
-/**
- * O que o autor PUBLICOU no painel de formatacao, e so isso.
- *
- * Cada entrada vira um card no painel do Power BI, com o id do no como
- * \`objectName\` — o mesmo declarado no \`objects\` do capabilities.json. O valor
- * de cada campo aqui e o do AUTOR: e o default do controle e o que vale quando o
- * consumidor limpa a escolha dele.
- */
 const FORMATTING: FormattingSpec = ${jsData(formattingTable(exposed))};
 `
     : '';
@@ -238,13 +162,6 @@ const FORMATTING: FormattingSpec = ${jsData(formattingTable(exposed))};
 
   const formattingModel = withFormatting
     ? `
-  /**
-   * O painel de formatacao (RF-28).
-   *
-   * O host chama a cada mudanca de propriedade, entao o modelo e montado do
-   * estado VIGENTE — e por isso que um campo escondido por \`showWhen\` aparece
-   * assim que o interruptor que o governa e ligado.
-   */
   public getFormattingModel(): powerbi.visuals.FormattingModel {
     return buildFormattingModel(FORMATTING, this.overrides);
   }
@@ -267,29 +184,15 @@ import { ErrorBoundary, TruncationNotice, VisualRoot } from '@vislow/visual-kit'
 import { ${nodeImports.join(', ')} } from '@vislow/visual-kit/nodes';
 import { Interaction } from './interaction';
 ${formattingImport}
-// O campo \`style\` do pbiviz.json e ignorado pela toolchain: o CSS entra por
-// AQUI. Sem este import o build reporta sucesso e o visual sai sem estilo.
 import '@vislow/visual-kit/styles.css';
 
 type IVisual = powerbi.extensibility.visual.IVisual;
 type VisualConstructorOptions = powerbi.extensibility.visual.VisualConstructorOptions;
 type VisualUpdateOptions = powerbi.extensibility.visual.VisualUpdateOptions;
 
-/**
- * Impressao digital do pacote.
- *
- * NAO aparece no caminho de sucesso: o selo do canto foi removido a pedido, para
- * o visual nao carregar um hash sobre o relatorio de quem o usa. Sobra o card de
- * erro de renderizacao e o cabecalho deste arquivo, que viaja no bundle.
- *
- * O custo e de diagnostico: com o visual renderizando normalmente, nao ha como
- * ler da tela QUAL pacote esta ali. Ao investigar comportamento no Desktop,
- * confirme a procedencia do arquivo antes de concluir qualquer coisa — "importou
- * o pacote antigo" e "a correcao nao funcionou" ficaram indistinguiveis.
- */
+// Nao aparece no caminho de sucesso: so no card de erro. Ver docs/build-visual.md.
 const BUILD_ID = ${jsString(buildId)};
 
-/** Papeis que a arvore consome. Bate com os declarados no capabilities.json. */
 const ROLES = [${roleList}];
 ${formattingTableSource}
 function Tree(${treeSignature}) {
@@ -300,12 +203,6 @@ ${indent(emitNode(spec.root), 2)}
 
 export class Visual implements IVisual {
   private readonly root: Root;
-  /**
-   * Servicos do host (selecao, tooltip, alto contraste, menu de contexto).
-   * O codigo dela e ESTATICO, vem do template — o que muda por build e so a
-   * arvore. Ela re-renderiza sozinha quando a selecao muda, inclusive a que
-   * vem de outro visual do relatorio (RF-18).
-   */
   private readonly interaction: Interaction;
   private frame: DataFrame = EMPTY_FRAME;
 ${overridesField}
@@ -324,9 +221,6 @@ ${formattingModel}
   private render(): void {
     const frame = this.frame;
 ${overridesLocal}
-    // RN-04: o visual NUNCA renderiza em branco. Um try/catch em volta do
-    // render nao basta — no modo concorrente a fase de render e assincrona e a
-    // excecao acontece fora do bloco. Só o ErrorBoundary captura.
     this.root.render(
       <StrictMode>
         <VisualRoot>

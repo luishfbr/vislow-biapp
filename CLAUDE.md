@@ -65,7 +65,13 @@ sugestão da skill**; a tabela de precedência está em [docs/frontend.md](docs/
 
 ## Invariantes que valem em qualquer arquivo
 
-As específicas de área estão nos docs acima. Estas seis quebram código em qualquer lugar do repo:
+As específicas de área estão nos docs acima. Estas sete quebram código em qualquer lugar do repo:
+
+- **Comentário é exceção, não hábito — o padrão é NÃO comentar.** Nome, tipo e teste dizem *o quê*; código que
+  precisa de parágrafo está errado, conserte o código. **Uma linha, duas no limite:** `scripts/check-comments.mjs`
+  reprova região contígua acima de **4 linhas** (6 no cabeçalho do arquivo) e roda no `pnpm verify`. Racional
+  longo mora em `docs/`; no código fica só o ponteiro — `// achado 39 — ver docs/engineering.md`. Nunca reescreva
+  a assinatura em prosa. O `comment-baseline.json` registra a dívida que ainda não foi cortada e **só encolhe**.
 
 - **Classe do `visual-kit` é string literal completa, e leva o prefixo `vsl-`.** Interpolação produz um nome que
   não existe no `styles.css`, e navegador nenhum reclama de classe inexistente: o estilo some dentro do Power BI
@@ -155,7 +161,8 @@ catálogo, o produto perde cross-filter inteiro e em silêncio — o teste é o 
 com `host.locale` em pt-BR. O `formattingService` só conhece culturas se
 `powerbi-visuals-utils-formattingutils/lib/globalize/globalize.cultures` for importado, e essa tabela pesa
 1,17 MB — estouraria o `content.js`. Não é regressão do KPI: o caminho é o mesmo desde a spec 3.0.0, e ficou
-invisível porque o teste da 4.x media `120`, abaixo de mil. Está documentado por extenso no e2e.
+invisível porque o teste da 4.x media `120`, abaixo de mil. Está documentado por extenso em
+[docs/requirements.md](docs/requirements.md); o e2e leva o ponteiro.
 
 **A linguagem visual do kit é "papel, não tinta"** (`packages/config-schema/src/design.ts`). Nenhum valor dela
 é cromático: numa ferramenta de composição a cor é do autor do relatório, e o que é nosso é o neutro exato em

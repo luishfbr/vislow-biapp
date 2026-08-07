@@ -19,94 +19,30 @@ import { useEditorStore } from '@/store/useEditorStore';
 import { useUiStore } from '@/store/useUiStore';
 import { SpecPreview } from './SpecPreview';
 
-/**
- * Area de preview (RF-05).
- *
- * O canvas cuida do ENQUADRAMENTO — prancheta, moldura, fundo, camera. Quem
- * desenha a arvore e o `SpecPreview`, que e o gemeo do codegen. Separar os dois e
- * o que permite mexer na aparencia do editor sem risco de mexer no que o Power BI
- * vai mostrar.
- *
- * A PRANCHETA E DESENHADA EM PIXEL DE VERDADE e transformada por escala uniforme.
- * E a unica forma de o tamanho declarado significar algo: a geometria dos nos e
- * proporcional (`NodeRect`), mas a tipografia nao, entao desenhar so a proporcao
- * faria 1920x1080 e 640x360 produzirem o mesmo preview e composicoes diferentes.
- * A escala e `transform`, que NAO altera o tamanho de layout: um no que se mede
- * continua medindo a prancheta em px reais, e o que ele calcula aqui e o que
- * calcularia numa moldura daquele tamanho.
- *
- * A CAMERA (`lib/viewport.ts`) tem zoom e deslocamento desde 2026-08-04. Antes a
- * escala era so "cabe no painel", presa em 100% no teto — numa prancheta de 1920
- * nada podia ser inspecionado de perto, e julgar um detalhe exigia exportar.
- * Ela e estado do PAINEL, nao do projeto: nao entra na spec nem no
- * `localStorage`, pelo mesmo motivo que a escala nunca entrou.
- *
- * Num container que POSICIONA, o preview tem selecao e arrasto: a camada de
- * manipulacao e filha absoluta do container, fora do fluxo, e nao toca na cadeia
- * de flex de que um no que se mede depende (ADR-18). Num container que EMPILHA
- * continua sem — la nao ha geometria de onde derivar a camada, e a objecao da
- * ADR-14 segue de pe. A selecao pelo painel de arvore funciona nos dois casos.
- *
- * O arrasto sobrevive a camera sem saber dela: o `CanvasOverlay` converte
- * deslocamento de ponteiro em percentual dividindo pela caixa lida no
- * `pointerdown`, e `getBoundingClientRect` ja devolve a caixa TRANSFORMADA — as
- * duas medidas vivem no mesmo espaco, e a razao entre elas nao muda com o zoom.
- *
- * RN-02: nenhum dado do modelo do Power BI passa por aqui — o app nem tem acesso
- * a ele.
- */
-
-/** Um gesto de deslocamento em andamento. */
 interface Panning {
   pointerId: number;
   originPx: { x: number; y: number };
   from: Viewport;
 }
 
-/** Um retangulo sendo desenhado, em pixel DA PRANCHETA. */
 interface Drawing {
   pointerId: number;
   from: { x: number; y: number };
   to: { x: number; y: number };
 }
 
-/**
- * Uma banda de selecao em andamento, em pixel de tela RELATIVO AO PAINEL.
- *
- * Em pixel de tela, e nao em % do container nem em pixel da prancheta, porque e
- * a unica unidade em que os dois lados da conta ja existem: a banda vem do
- * ponteiro, e as caixas dos nos sao lidas do DOM JA TRANSFORMADAS pela camera.
- * Comparadas assim, o zoom e o deslocamento se cancelam sem ninguem converter
- * nada — e o marquee nao precisa saber que existe uma camera.
- */
 interface Marquee {
   pointerId: number;
   from: { x: number; y: number };
   to: { x: number; y: number };
-  /**
-   * As caixas dos nos, lidas UMA VEZ no `pointerdown`.
-   *
-   * Nada se move durante uma banda — ela seleciona, nao arrasta —, entao a
-   * leitura de layout acontece uma vez por gesto e cada `pointermove` vira
-   * aritmetica pura.
-   */
   boxes: readonly { id: string; box: ScreenRect }[];
-  /** Shift TRAVADO no `pointerdown`: a banda soma em vez de trocar. */
   base: readonly string[];
-  /** Ultima lista aplicada, para nao escrever no store a cada quadro. */
   applied: readonly string[];
 }
 
-/**
- * Quanto o ponteiro precisa andar para o gesto contar como DESENHO.
- *
- * Abaixo disso e um clique, e clique solta o componente no tamanho padrao. Sem
- * este piso, uma tremida de dois pixels criaria um componente de 2x2 — abaixo do
- * minimo da spec, e visualmente indistinguivel de "nao aconteceu nada".
- */
+/** Abaixo disso o gesto conta como CLIQUE, e o componente cai no tamanho padrao. */
 const DRAW_MIN_PX = 8;
 
-/** Fracao da prancheta que um componente solto por clique ocupa. */
 const DROP_W = 0.4;
 const DROP_H = 0.3;
 
@@ -131,26 +67,16 @@ export function PreviewCanvas() {
   const layoutEpoch = useUiStore((s) => s.layoutEpoch);
   const simulateSelection = useUiStore((s) => s.simulateSelection);
   const toggleSimulateSelection = useUiStore((s) => s.toggleSimulateSelection);
-  // Percorre a arvore, entao memoizado pela spec. Devolve booleano e nao objeto,
-  // entao nao ha o risco de re-render em laco dos seletores de zustand — mas
-  // recalcular a cada movimento de ponteiro no canvas seria desperdicio.
   const selectable = useMemo(() => hasSelectableMarks(spec), [spec]);
 
   const paneRef = useRef<HTMLDivElement>(null);
-  // `null` ate a primeira medicao. Distinto de zero de proposito: o painel de
-  // largura zero e um estado real (janela minima) e nao deve virar "ainda nao
-  // sei", que e o que segura o desenho da moldura.
   const [pane, setPane] = useState<Pane | null>(null);
   const [viewport, setViewport] = useState<Viewport | null>(null);
-  // Espaco segurado arma o deslocamento; o gesto so comeca no pointerdown.
   const [spaceHeld, setSpaceHeld] = useState(false);
   const panning = useRef<Panning | null>(null);
   const [dragging, setDragging] = useState(false);
-  // O retangulo em desenho. Espelhado num ref pelo mesmo motivo do gesto do
-  // canvas: os handlers de ponteiro rodam entre renders.
   const drawing = useRef<Drawing | null>(null);
   const [draft, setDraft] = useState<Drawing | null>(null);
-  // A banda de selecao, espelhada num ref pelo mesmo motivo do desenho.
   const marquee = useRef<Marquee | null>(null);
   const [band, setBand] = useState<ScreenRect | null>(null);
 
@@ -159,8 +85,6 @@ export function PreviewCanvas() {
 
   useEffect(() => {
     const element = paneRef.current;
-    // Sem `ResizeObserver` — jsdom, por exemplo — a prancheta fica sem medida e
-    // nao e desenhada. Preferivel a desenha-la numa escala inventada.
     if (!element || typeof ResizeObserver === 'undefined') return;
 
     const read = (): void => {
@@ -176,45 +100,20 @@ export function PreviewCanvas() {
     };
   }, []);
 
-  // Enquadra na PRIMEIRA medida — o `?? ` e o que garante isso. Reenquadrar a
-  // cada `resize` desfaria o zoom do usuario sempre que ele mexesse na janela, e
-  // a janela se mexe ao abrir o console, ao encaixar a aba, ao girar um tablet.
-  // Trocar o tamanho da prancheta tambem nao reenquadra: quem quer isso tem o
-  // Ctrl+1.
   useEffect(() => {
     if (!pane) return;
     setViewport((current) => current ?? fitToPane(artboard, pane));
   }, [pane, artboard]);
 
-  // ...MAS reenquadra de novo quando o SHELL muda de forma.
-  //
-  // Recolher uma coluna devolve 20% da largura de uma vez, e manter o
-  // enquadramento anterior deixaria a prancheta encostada num canto com um vazio
-  // do outro lado — o usuario pediu espaco e recebeu espaco vazio.
-  //
-  // O gatilho e o `layoutEpoch`, um CONTADOR, e nao a medida do painel: o painel
-  // muda de tamanho durante a animacao inteira, e reagir a medida reenquadraria
-  // a cada quadro. O contador sobe uma vez por gesto.
-  //
-  // A primeira execucao e ignorada (`seenEpoch`): ela coincide com a montagem,
-  // onde o enquadramento inicial acima ja fez o trabalho.
   const seenEpoch = useRef(layoutEpoch);
   useEffect(() => {
     if (layoutEpoch === seenEpoch.current) return;
     seenEpoch.current = layoutEpoch;
     if (!pane) return;
     setViewport(fitToPane(artboard, pane));
-    // `pane` FORA das dependencias de proposito: ele muda junto, um quadro
-    // depois, e inclui-lo dispararia este efeito uma segunda vez com a medida
-    // nova — reenquadrando duas vezes por gesto.
   }, [layoutEpoch, artboard]);
 
-  // Memoizado: um objeto novo a cada render faria o `SpecPreview` remontar a
-  // arvore inteira a cada movimento do ponteiro, que e exatamente quando isso
-  // mais custa.
-  // A BANDA NAO PASSA POR AQUI, de proposito: ela muda a cada `pointermove`, e
-  // um objeto `edit` novo por quadro remontaria a arvore inteira do preview
-  // justo durante o gesto. Ela e desenhada fora da prancheta, em espaco de tela.
+  // Memoizado: um objeto novo por render remontaria a arvore do `SpecPreview` a cada movimento do ponteiro.
   const edit = useMemo(
     () => ({
       selectedIds,
@@ -227,8 +126,6 @@ export function PreviewCanvas() {
       scale,
       onGestureStart: beginGesture,
       onGestureEnd: endGesture,
-      // `null` quer dizer a raiz. Resolvido AQUI, e nao no renderizador: ele
-      // percorre a arvore e nao deveria precisar saber qual no e a raiz.
       enteredId: enteredId ?? spec.root.id,
       onEnter: enterContainer,
     }),
@@ -249,8 +146,6 @@ export function PreviewCanvas() {
     ],
   );
 
-  // Espaco arma o deslocamento, como em qualquer editor de desenho. Ignorado
-  // com o foco num campo, onde espaco e um caractere.
   useEffect(() => {
     const typing = (target: EventTarget | null): boolean =>
       target instanceof HTMLElement &&
@@ -258,15 +153,12 @@ export function PreviewCanvas() {
 
     const down = (event: KeyboardEvent): void => {
       if (event.code !== 'Space' || typing(event.target)) return;
-      // Sem isto a barra rola o painel e ativa o botao que estiver com foco.
       event.preventDefault();
       setSpaceHeld(true);
     };
     const up = (event: KeyboardEvent): void => {
       if (event.code === 'Space') setSpaceHeld(false);
     };
-    // A tecla pode ser solta com a janela fora de foco — e ai o `keyup` nunca
-    // chega, e o editor fica preso em modo de deslocamento para sempre.
     const reset = (): void => {
       setSpaceHeld(false);
     };
@@ -281,14 +173,6 @@ export function PreviewCanvas() {
     };
   }, []);
 
-  /**
-   * Roda do mouse.
-   *
-   * Com Ctrl/Cmd amplia; sozinha desloca. E a convencao que o trackpad impoe: um
-   * gesto de pinca chega ao navegador como `wheel` com `ctrlKey`, e nao existe
-   * evento proprio para ele. Tratar tudo como zoom faria a rolagem de dois dedos
-   * ampliar sem parar.
-   */
   const onWheel = (event: React.WheelEvent): void => {
     if (!viewport || !pane) return;
     const box = paneRef.current?.getBoundingClientRect();
@@ -303,12 +187,6 @@ export function PreviewCanvas() {
     );
   };
 
-  /**
-   * Comeca a deslocar: espaco segurado, ou botao do meio.
-   *
-   * Devolve `true` quando assumiu o gesto — e assim que o `pointerdown` sabe se
-   * ainda deve limpar a selecao.
-   */
   const beginPan = (event: React.PointerEvent): boolean => {
     if (!viewport) return false;
     if (!spaceHeld && event.button !== 1) return false;
@@ -324,19 +202,6 @@ export function PreviewCanvas() {
     return true;
   };
 
-  /**
-   * Clique no vazio limpa a selecao.
-   *
-   * Vive AQUI, e nao no `CanvasOverlay`: a camada precisa continuar deixando o
-   * ponteiro passar (`pointerEvents: 'none'` na raiz dela), senao o canvas
-   * inteiro vira um vidro sobre o preview. Quem captura sao as caixas dos nos, e
-   * elas param a propagacao — entao tudo o que chega ate este handler
-   * atravessou o vazio.
-   *
-   * `pointerdown` e nao `click`: a selecao tem de sumir no instante em que o
-   * botao desce, junto com o inicio de qualquer gesto, e nao no `mouseup`.
-   */
-  /** Ponto de tela -> pixel da prancheta. Desfaz o deslocamento e o zoom. */
   const toArtboard = (event: React.PointerEvent): { x: number; y: number } | null => {
     const box = paneRef.current?.getBoundingClientRect();
     if (!box || !viewport) return null;
@@ -346,20 +211,11 @@ export function PreviewCanvas() {
     };
   };
 
-  /** Ponto de tela -> pixel do PAINEL. E a unidade da banda de selecao. */
   const toPane = (event: React.PointerEvent): { x: number; y: number } | null => {
     const box = paneRef.current?.getBoundingClientRect();
     return box ? { x: event.clientX - box.left, y: event.clientY - box.top } : null;
   };
 
-  /**
-   * As caixas dos nos selecionaveis, em pixel do painel.
-   *
-   * Sai do DOM, e nao da spec: quem marca cada caixa e o `data-node-id` que o
-   * `CanvasOverlay` escreve, e ele so desenha os filhos diretos do container
-   * ENTRADO. A invariante "so irmaos do nivel atual" sai de graca — nao ha
-   * regra nenhuma aqui a repetir e a divergir depois.
-   */
   const readNodeBoxes = (): { id: string; box: ScreenRect }[] => {
     const root = paneRef.current;
     const origin = root?.getBoundingClientRect();
@@ -387,9 +243,6 @@ export function PreviewCanvas() {
     if (beginPan(event)) return;
     if (event.button !== 0) return;
 
-    // Com um tipo armado, o gesto na prancheta DESENHA — ele nao seleciona nem
-    // limpa. Sem esta saida, comecar a desenhar apagaria a selecao no primeiro
-    // quadro e o painel da direita piscaria para o estado de projeto.
     if (paletteKind !== null) {
       const point = toArtboard(event);
       if (!point) return;
@@ -403,10 +256,6 @@ export function PreviewCanvas() {
     const point = toPane(event);
     if (!point) return;
 
-    // A selecao some AGORA, no instante em que o botao desce, e nao no
-    // `pointerup`: e o que sempre aconteceu no clique ao vazio, e adiar para o
-    // fim do gesto deixaria a selecao antiga acesa durante a banda inteira.
-    // Com Shift ela fica: a banda soma ao que ja estava.
     const base = event.shiftKey ? selectedIds : [];
     if (!event.shiftKey && selectedIds.length > 0) select(null);
 
@@ -440,13 +289,8 @@ export function PreviewCanvas() {
       setBand(next);
 
       const hits = marqueeHits(selecting.boxes, next);
-      // A banda SOMA com Shift e TROCA sem ele. O `Set` remove a repeticao de
-      // quem ja estava na base e volta a ser tocado.
       const wanted = [...new Set([...selecting.base, ...hits])];
 
-      // So escreve no store quando a lista muda de verdade: a banda dispara
-      // dezenas de eventos por segundo, e `setSelection` revalida a irmandade e
-      // re-renderiza a arvore inteira do preview.
       const same =
         wanted.length === selecting.applied.length &&
         wanted.every((id, index) => id === selecting.applied[index]);
@@ -467,13 +311,6 @@ export function PreviewCanvas() {
     );
   };
 
-  /**
-   * Fecha o desenho: cria o componente e desarma a paleta.
-   *
-   * Gesto curto vale como CLIQUE e solta no tamanho padrao, centrado no ponto.
-   * Exigir um retangulo de quem so quis "poe um KPI aqui" seria pedir precisao
-   * onde nao ha decisao nenhuma a tomar ainda.
-   */
   const endDraw = (event: React.PointerEvent): void => {
     const sketch = drawing.current;
     if (sketch?.pointerId !== event.pointerId) return;
@@ -502,7 +339,6 @@ export function PreviewCanvas() {
           h: height,
         };
 
-    // `clampRect` prende dentro do pai no store; aqui so se converte a unidade.
     addNodeAt(kind, {
       x: (box.x / artboard.width) * 100,
       y: (box.y / artboard.height) * 100,
@@ -514,9 +350,6 @@ export function PreviewCanvas() {
   const endPointer = (event: React.PointerEvent): void => {
     endDraw(event);
 
-    // A banda nao tem nada a aplicar no fim: cada `pointermove` ja escreveu a
-    // selecao, e um gesto curto demais para tocar em alguem termina com o que o
-    // `pointerdown` deixou — que e a selecao limpa, o clique no vazio de sempre.
     if (marquee.current?.pointerId === event.pointerId) {
       marquee.current = null;
       setBand(null);
@@ -527,8 +360,6 @@ export function PreviewCanvas() {
     setDragging(false);
   };
 
-  // Ctrl+0 volta a 100%, Ctrl+1 enquadra. Os mesmos dois de sempre num editor de
-  // desenho, e os unicos que valem a pena: o resto e a roda.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       if (!(event.ctrlKey || event.metaKey) || !pane) return;
@@ -551,10 +382,6 @@ export function PreviewCanvas() {
     <main className="relative flex h-full flex-1 flex-col overflow-hidden bg-background p-4">
       <div
         ref={paneRef}
-        // A BANCADA. Escurece um passo em relacao ao editor e ganha uma trama de
-        // pontos: sem ela o deslocamento nao tem referencia nenhuma — a
-        // prancheta desliza sobre um vazio liso e o gesto parece nao responder.
-        // A trama acompanha a camera, entao ela tambem DIZ a escala.
         className="relative min-h-0 flex-1 overflow-hidden rounded-lg bg-muted/60 ring-1 ring-border ring-inset"
         style={{
           backgroundImage: 'radial-gradient(currentColor 1px, transparent 0)',
@@ -568,11 +395,7 @@ export function PreviewCanvas() {
               : paletteKind !== null
                 ? 'crosshair'
                 : 'default',
-          // Sem isto o navegador rola a pagina no gesto de dois dedos, e o pan
-          // do canvas nunca chega a acontecer.
           touchAction: 'none',
-          // Deslocar ou desenhar sobre o preview selecionaria o texto dos
-          // componentes junto, e o gesto terminaria com meio visual em azul.
           userSelect: dragging || draft ? 'none' : undefined,
         }}
         onWheel={onWheel}
@@ -582,21 +405,12 @@ export function PreviewCanvas() {
         onPointerCancel={endPointer}
       >
         <div
-          // `bg-white` LITERAL, e nao `bg-card`. Esta caixa nao e interface do
-          // editor: e a pagina do relatorio do Power BI, e ela e branca. Um
-          // token que vira com o tema do editor escureceria a prancheta quando o
-          // usuario troca o TEMA DELE, mentindo sobre onde o visual vai parar —
-          // e as cores do proprio visual saem da spec, nao daqui.
+          // `bg-white` LITERAL: esta caixa e a pagina do relatorio do Power BI, nao interface do editor.
           className="absolute left-0 top-0 origin-top-left overflow-hidden bg-white shadow-lg ring-1 ring-black/10"
           style={{
             width: artboard.width,
             height: artboard.height,
-            // `translate` ANTES de `scale`: o deslocamento e em pixel de tela, e
-            // na ordem inversa ele seria multiplicado pela escala.
             transform: `translate(${String(viewport?.tx ?? 0)}px, ${String(viewport?.ty ?? 0)}px) scale(${String(scale)})`,
-            // Antes da medicao a prancheta apareceria em tamanho cheio no canto
-            // do painel. Um frame de prancheta fora de lugar e pior que um frame
-            // sem prancheta.
             visibility: viewport ? 'visible' : 'hidden',
           }}
         >

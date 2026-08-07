@@ -185,6 +185,22 @@
       "outputs": []
     },
 
+    // A guarda do comentario. Nao cabe no `lint:docs`: os `inputs` dele sao so
+    // `.md`, e o cache nao invalidaria ao mexer num `.ts`.
+    "//#lint:comments": {
+      "dependsOn": [],
+      "inputs": [
+        "scripts/check-comments.mjs",
+        "scripts/comment-baseline.json",
+        "apps/*/src/**/*.ts",
+        "apps/*/src/**/*.tsx",
+        "packages/*/src/**/*.ts",
+        "packages/*/src/**/*.tsx",
+        "packages/*/template/src/**/*.ts"
+      ],
+      "outputs": []
+    },
+
     // O unico `build` que a suite rapida precisa. `pipeline.test.ts` importa
     // `pipeline.ts`, que importa `@vislow/visual-template` — o unico `@vislow/*`
     // que o mapa de alias NAO reescreve para `src/`, porque ele exporta caminhos
