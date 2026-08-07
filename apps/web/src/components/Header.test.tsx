@@ -49,7 +49,7 @@ const drainValidation = (): Promise<void> => Promise.resolve();
 
 beforeEach(() => {
   const spec = createEmptySpec('Painel de vendas');
-  useEditorStore.setState({ spec, selectedId: spec.root.id, issues: [], hydrated: true });
+  useEditorStore.setState({ spec, selectedIds: [spec.root.id], issues: [], hydrated: true });
 
   container = document.createElement('div');
   document.body.append(container);

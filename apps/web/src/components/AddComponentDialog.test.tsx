@@ -45,7 +45,7 @@ beforeEach(() => {
   // Projeto limpo por teste: o store e um singleton, e uma arvore herdada do
   // teste anterior tornaria a assertiva sobre "o que foi adicionado" ambigua.
   const spec = createEmptySpec('Teste');
-  useEditorStore.setState({ spec, selectedId: spec.root.id, issues: [], hydrated: true });
+  useEditorStore.setState({ spec, selectedIds: [spec.root.id], issues: [], hydrated: true });
 
   container = document.createElement('div');
   document.body.append(container);

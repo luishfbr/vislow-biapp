@@ -407,18 +407,72 @@ export function setNodeRect(root: SpecNode, id: string, rect: NodeRect): SpecNod
 }
 
 /**
- * Onde a selecao deve cair depois de remover `id`.
+ * Move varios nos de uma vez, numa caminhada so.
+ *
+ * Existe por CUSTO, e nao por gosto. Um arrasto de N nos selecionados chamaria
+ * `setNodeRect` N vezes por evento de ponteiro, e cada chamada percorre a arvore
+ * inteira — o quadro passa a custar N caminhadas justo quando o ponteiro esta se
+ * movendo. Com o lote, custa uma, igual a de um no so.
+ *
+ * TUDO OU NADA: se algum id nao existir, devolve `null` sem aplicar o resto. Uma
+ * edicao parcial seria pior do que nenhuma, porque o chamador recebe uma arvore
+ * boa e nao tem como saber quais entradas ficaram pelo caminho.
+ */
+export function setNodeRects(
+  root: SpecNode,
+  entries: readonly { id: string; rect: NodeRect }[],
+): SpecNode | null {
+  if (entries.length === 0) return null;
+
+  const wanted = new Map(entries.map((entry) => [entry.id, entry.rect]));
+  let applied = 0;
+
+  // Mesma disciplina do `replace`: so os ancestrais de quem mudou sao recriados,
+  // e o ramo que nao tem ninguem do lote continua sendo o MESMO objeto.
+  const rewrite = (node: SpecNode): SpecNode => {
+    const rect = wanted.get(node.id);
+    let next = node;
+    if (rect !== undefined) {
+      applied += 1;
+      next = { ...node, rect: clampRect(rect) };
+    }
+
+    if (!node.children) return next;
+
+    const children = node.children.map(rewrite);
+    const changed = children.some((child, index) => child !== node.children?.[index]);
+    return changed ? { ...next, children } : next;
+  };
+
+  const rewritten = rewrite(root);
+  return applied === wanted.size ? rewritten : null;
+}
+
+/**
+ * Onde a selecao deve cair depois de remover `ids`.
  *
  * O irmao seguinte, senao o anterior, senao o pai. Deixar a selecao vazia faria
  * o painel de propriedades piscar para o estado vazio a cada exclusao.
+ *
+ * O vizinho tem de SOBREVIVER a remocao: apagando dois irmaos de tres, o
+ * seguinte ao primeiro e justamente o segundo, que tambem esta indo embora.
+ * Apontar para ele deixaria a selecao orfa; cair direto no pai pularia por cima
+ * do terceiro, que continua ali ao lado.
  */
-export function selectionAfterRemoval(root: SpecNode, id: string): string {
-  const parent = parentOf(root, id);
+export function selectionAfterRemoval(root: SpecNode, ids: readonly string[]): string {
+  const first = ids[0];
+  const parent = first === undefined ? null : parentOf(root, first);
   if (!parent) return root.id;
 
   const siblings = parent.children ?? [];
-  const index = siblings.findIndex((child) => child.id === id);
-  const next = siblings[index + 1] ?? siblings[index - 1];
+  const index = siblings.findIndex((child) => child.id === first);
+  const removed = new Set(ids);
+  const survives = (child: SpecNode): boolean => !removed.has(child.id);
+
+  const next =
+    siblings.slice(index + 1).find(survives) ??
+    siblings.slice(0, Math.max(index, 0)).reverse().find(survives);
+
   return next ? next.id : parent.id;
 }
 

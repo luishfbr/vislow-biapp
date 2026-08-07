@@ -99,17 +99,96 @@ function toleranceOf(box: BoxPx | undefined, axis: 'x' | 'y'): number {
  */
 export function edgesOf(
   children: readonly PlacedChild[],
-  skipId: string,
+  skip: ReadonlySet<string>,
   axis: 'x' | 'y',
 ): number[] {
   const edges = [0, 50, 100];
   for (const child of children) {
-    if (child.id === skipId) continue;
+    // TODOS os que se movem saem, e nao so o que esta sob o ponteiro: num arrasto
+    // de grupo, deixar os companheiros na lista os transforma em candidatos de
+    // encaixe do proprio grupo, e a caixa envolvente gruda na parte dela mesma.
+    if (skip.has(child.id)) continue;
     const start = axis === 'x' ? child.rect.x : child.rect.y;
     const size = axis === 'x' ? child.rect.w : child.rect.h;
     edges.push(start, start + size, start + size / 2);
   }
   return edges;
+}
+
+/**
+ * A caixa que envolve todas as caixas dadas.
+ *
+ * Devolve `null` para a lista vazia em vez de uma caixa em zero: "nao ha o que
+ * envolver" e "envolve nada no canto superior esquerdo" sao coisas diferentes, e
+ * a segunda desenharia uma moldura fantasma na origem.
+ */
+export function unionRect(rects: readonly NodeRect[]): NodeRect | null {
+  const first = rects[0];
+  if (!first) return null;
+
+  let left = first.x;
+  let top = first.y;
+  let right = first.x + first.w;
+  let bottom = first.y + first.h;
+
+  for (const rect of rects) {
+    left = Math.min(left, rect.x);
+    top = Math.min(top, rect.y);
+    right = Math.max(right, rect.x + rect.w);
+    bottom = Math.max(bottom, rect.y + rect.h);
+  }
+
+  return { x: round2(left), y: round2(top), w: round2(right - left), h: round2(bottom - top) };
+}
+
+
+/** Retangulo em pixel de tela. O marquee e o unico lugar do modulo que fala tela. */
+export interface ScreenRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * Quem a banda do marquee captura.
+ *
+ * Por INTERSECCAO, e nao por continencia: basta a banda cruzar qualquer parte do
+ * no. Exigir envolvimento total num canvas cujas caixas nascem com 40% x 30% da
+ * prancheta obrigaria a arrastar quase a prancheta inteira para pegar dois
+ * componentes.
+ *
+ * Em PIXEL DE TELA nos dois lados, de proposito: as caixas dos nos sao lidas do
+ * DOM ja transformadas pela camera, e a banda vem do ponteiro. Convertidas para
+ * a mesma unidade sem ninguem converter nada, o zoom e o deslocamento se
+ * cancelam sozinhos.
+ */
+export function marqueeHits(
+  boxes: readonly { id: string; box: ScreenRect }[],
+  band: ScreenRect,
+): string[] {
+  return boxes
+    .filter(
+      ({ box }) =>
+        box.left < band.right &&
+        box.right > band.left &&
+        box.top < band.bottom &&
+        box.bottom > band.top,
+    )
+    .map(({ id }) => id);
+}
+
+/** Normaliza dois pontos de tela numa banda, em qualquer direcao de arrasto. */
+export function bandOf(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): ScreenRect {
+  return {
+    left: Math.min(from.x, to.x),
+    top: Math.min(from.y, to.y),
+    right: Math.max(from.x, to.x),
+    bottom: Math.max(from.y, to.y),
+  };
 }
 
 /**
@@ -152,7 +231,7 @@ export function applyGesture({
   deltaX,
   deltaY,
   siblings,
-  selectedId,
+  skip,
   freeform,
   axisLock = false,
   proportional = false,
@@ -163,7 +242,8 @@ export function applyGesture({
   deltaX: number;
   deltaY: number;
   siblings: readonly PlacedChild[];
-  selectedId: string;
+  /** Quem NAO entra como candidato de encaixe: o proprio sujeito do gesto. */
+  skip: ReadonlySet<string>;
   /** Ctrl/Cmd pressionado: solta do encaixe. */
   freeform: boolean;
   /** Shift ao MOVER: tranca no eixo em que o gesto ja andou mais. */
@@ -174,8 +254,8 @@ export function applyGesture({
   boxPx?: BoxPx | undefined;
 }): { rect: NodeRect; guides: Guide[] } {
   const guides: Guide[] = [];
-  const xEdges = freeform ? [] : edgesOf(siblings, selectedId, 'x');
-  const yEdges = freeform ? [] : edgesOf(siblings, selectedId, 'y');
+  const xEdges = freeform ? [] : edgesOf(siblings, skip, 'x');
+  const yEdges = freeform ? [] : edgesOf(siblings, skip, 'y');
 
   const fit = (value: number, axis: 'x' | 'y'): number => {
     if (freeform) return value;
@@ -258,6 +338,60 @@ export function applyGesture({
   y = clamp(y, 0, 100 - h);
 
   return { rect: { x: round2(x), y: round2(y), w: round2(w), h: round2(h) }, guides };
+}
+
+/**
+ * Desloca VARIOS nos por um unico delta.
+ *
+ * O sujeito do encaixe e a CAIXA ENVOLVENTE, e nao cada no: com N sujeitos, cada
+ * um encontraria a sua propria aresta mais proxima e o grupo se deformaria — o
+ * que o usuario arrastou como um bloco chegaria espalhado. Pelo mesmo motivo o
+ * `clamp` prende a uniao, e nao cada caixa: preso um a um, o primeiro no a
+ * encostar na borda pararia enquanto os outros continuariam andando.
+ *
+ * Devolve o DELTA, e nao as caixas. Quem soma e o chamador, sempre sobre as
+ * caixas do inicio do gesto — acumular sobre a posicao anterior soma o erro de
+ * arredondamento a cada evento de ponteiro.
+ */
+export function applyGroupMove({
+  union,
+  deltaX,
+  deltaY,
+  siblings,
+  movingIds,
+  freeform,
+  axisLock = false,
+  boxPx,
+}: {
+  union: NodeRect;
+  deltaX: number;
+  deltaY: number;
+  siblings: readonly PlacedChild[];
+  movingIds: ReadonlySet<string>;
+  freeform: boolean;
+  axisLock?: boolean;
+  boxPx?: BoxPx | undefined;
+}): { delta: { dx: number; dy: number }; guides: Guide[] } {
+  const resolved = applyGesture({
+    from: union,
+    handle: 'move',
+    deltaX,
+    deltaY,
+    siblings,
+    skip: movingIds,
+    freeform,
+    axisLock,
+    boxPx,
+  });
+
+  // Arredondado como toda caixa deste modulo: os dois lados da subtracao ja tem
+  // duas casas, e a diferenca crua sai com o lixo binario de sempre
+  // (`10.3 - 10 = 0.30000000000000071`). Sem isto o lixo entra em CADA caixa do
+  // bloco, e um bloco de tres nos acumula tres versoes dele.
+  return {
+    delta: { dx: round2(resolved.rect.x - union.x), dy: round2(resolved.rect.y - union.y) },
+    guides: resolved.guides,
+  };
 }
 
 /**

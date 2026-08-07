@@ -55,23 +55,58 @@ function TreeRow({
   depth: number;
   faultyIds: ReadonlySet<string>;
 }) {
-  const selectedId = useEditorStore((s) => s.selectedId);
+  const spec = useEditorStore((s) => s.spec);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
   const select = useEditorStore((s) => s.select);
+  const toggleSelected = useEditorStore((s) => s.toggleSelected);
+  const setSelection = useEditorStore((s) => s.setSelection);
 
-  const selected = node.id === selectedId;
+  const selected = selectedIds.includes(node.id);
   const faulty = faultyIds.has(node.id);
   const published = node.exposed?.length ?? 0;
+
+  /**
+   * Shift estende POR INTERVALO, entre irmaos.
+   *
+   * A ancora e o PRIMEIRO da selecao em ordem de arvore, e nao o ultimo
+   * clicado: guardar o ultimo clicado seria estado novo so para isto, e com a
+   * lista ja em ordem de arvore os dois dao o mesmo intervalo nos dois sentidos.
+   * No de outro pai TROCA a selecao — a mesma regra do canvas.
+   */
+  const extendTo = (): void => {
+    const anchor = selectedIds[0];
+    const parent = anchor === undefined ? null : parentOf(spec.root, anchor);
+    const kids = parent?.children ?? [];
+    const from = kids.findIndex((child) => child.id === anchor);
+    const to = kids.findIndex((child) => child.id === node.id);
+
+    if (from < 0 || to < 0) {
+      select(node.id);
+      return;
+    }
+
+    const [lo, hi] = from <= to ? [from, to] : [to, from];
+    setSelection(kids.slice(lo, hi + 1).map((child) => child.id));
+  };
 
   return (
     <>
       <button
         type="button"
-        onClick={() => {
-          select(node.id);
+        onClick={(event) => {
+          if (event.shiftKey) extendTo();
+          else if (event.ctrlKey || event.metaKey) toggleSelected(node.id);
+          else select(node.id);
         }}
-        aria-current={selected}
+        // `aria-pressed` e nao `aria-current`: com multi-selecao varias linhas
+        // ficam marcadas ao mesmo tempo, e `aria-current` existe para apontar
+        // UMA. Cada linha conta o proprio estado, como as ferramentas da barra.
+        aria-pressed={selected}
         style={{ paddingLeft: `${String(depth * 0.75 + 0.5)}rem` }}
-        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-body transition-colors ${
+        // Anel explicito, como em todo alvo clicavel daqui. A linha da arvore
+        // ficava so com o anel padrao do navegador — que existe, mas nao e o
+        // mesmo desenho do resto do editor, e some contra o realce da selecao.
+        className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-body transition-colors outline-none focus-visible:ring-2 focus-visible:ring-ring ${
           selected
             ? 'bg-primary/10 font-medium text-primary'
             : 'text-foreground hover:bg-muted'
@@ -112,7 +147,7 @@ function TreeRow({
 export function TreePanel() {
   const spec = useEditorStore((s) => s.spec);
   const issues = useEditorStore((s) => s.issues);
-  const selectedId = useEditorStore((s) => s.selectedId);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
   const removeSelected = useEditorStore((s) => s.removeSelected);
   const moveSelected = useEditorStore((s) => s.moveSelected);
 
@@ -125,17 +160,25 @@ export function TreePanel() {
     return withAncestors;
   }, [spec, issues]);
 
-  const parent = selectedId === null ? null : parentOf(spec.root, selectedId);
+  const anchor = selectedIds[0];
+  const parent = anchor === undefined ? null : parentOf(spec.root, anchor);
   const siblings = parent?.children ?? [];
-  const index = siblings.findIndex((child) => child.id === selectedId);
+  const indexes = selectedIds
+    .map((id) => siblings.findIndex((child) => child.id === id))
+    .filter((index) => index >= 0);
 
   // O botao so fica ativo quando a operacao seria aceita — as mesmas condicoes
   // que `moveNode` e `removeNode` checam. Botao ativo que nao faz nada e a
   // versao de interface do no-op silencioso. Sem selecao cai no mesmo caso da
   // raiz: nao ha no para subir, descer ou apagar.
+  //
+  // Com VARIOS o criterio e a PONTA do bloco, porque `moveSelected` e tudo ou
+  // nada: com o de cima ja no topo, subir seria recusado para todos, e um botao
+  // ativo que nao move nada e pior que um desabilitado.
   const isRoot = parent === null;
-  const canMoveUp = !isRoot && index > 0;
-  const canMoveDown = !isRoot && index >= 0 && index < siblings.length - 1;
+  const canMoveUp = !isRoot && indexes.length > 0 && Math.min(...indexes) > 0;
+  const canMoveDown =
+    !isRoot && indexes.length > 0 && Math.max(...indexes) < siblings.length - 1;
 
   const empty = (spec.root.children?.length ?? 0) === 0;
 
@@ -176,7 +219,11 @@ export function TreePanel() {
             disabled={isRoot}
             onClick={removeSelected}
             title={isRoot ? 'A raiz nao pode ser removida' : 'Remover'}
-            aria-label="Remover"
+            aria-label={
+              selectedIds.length > 1
+                ? `Remover ${String(selectedIds.length)} componentes`
+                : 'Remover'
+            }
           >
             <X />
           </Button>

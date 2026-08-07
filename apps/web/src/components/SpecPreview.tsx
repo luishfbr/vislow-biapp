@@ -53,15 +53,20 @@ import { previewHost } from '@/lib/previewHost';
  * que era: desenho, e nada mais.
  */
 export interface PreviewEdit {
-  /** `null` quando nada esta selecionado — o clique no vazio limpa a selecao. */
-  selectedId: string | null;
+  /** Vazio quando nada esta selecionado — o clique no vazio limpa a selecao. */
+  selectedIds: readonly string[];
   onSelect: (id: string | null) => void;
+  /** Shift+clique: poe ou tira um no da selecao. */
+  onToggle: (id: string) => void;
   onChange: (id: string, rect: NodeRect) => void;
+  /** Arrasto de bloco: N caixas numa unica edicao. */
+  onChangeMany: (entries: readonly { id: string; rect: NodeRect }[]) => void;
   /**
-   * Duplica o no arrastado quando o gesto comeca com Alt, e devolve o id da
-   * copia — o gesto precisa dele para passar a arrastar ELA, e nao o original.
+   * Duplica os nos arrastados quando o gesto comeca com Alt, e devolve os ids
+   * das copias — o gesto precisa deles para passar a arrastar ELAS, e nao os
+   * originais.
    */
-  onDuplicate?: ((id: string) => string | null) | undefined;
+  onDuplicate?: ((ids: readonly string[]) => readonly string[]) | undefined;
   /**
    * Publica o tamanho de um container que posiciona, em pixel da prancheta.
    * E o que permite ao painel da direita falar pixel: a spec guarda percentual
@@ -183,9 +188,11 @@ function renderNode(node: SpecNode, frame: DataFrame, edit: PreviewEdit | undefi
         <CanvasOverlay
           key={`overlay-${node.id}`}
           items={placed}
-          selectedId={edit.selectedId}
+          selectedIds={edit.selectedIds}
           onSelect={edit.onSelect}
+          onToggle={edit.onToggle}
           onChange={edit.onChange}
+          onChangeMany={edit.onChangeMany}
           onDuplicate={edit.onDuplicate}
           onMeasure={measureOf(node.id, edit)}
           scale={edit.scale ?? 1}

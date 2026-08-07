@@ -47,6 +47,17 @@ describe('casamento de atalho', () => {
     expect(matchShortcut(chord({ key: 'D', ctrlKey: true }))).toBe('duplicate');
   });
 
+  it('selecionar tudo aceita Ctrl e Cmd', () => {
+    expect(matchShortcut(chord({ key: 'a', ctrlKey: true }))).toBe('selectAll');
+    expect(matchShortcut(chord({ key: 'A', metaKey: true }))).toBe('selectAll');
+  });
+
+  it('sem o modificador, o A e a ferramenta, e nao selecionar tudo', () => {
+    // Tecla nua e ferramenta neste editor. Roubar o `a` cru quebraria o atalho
+    // do tipo de no que tivesse essa letra.
+    expect(matchShortcut(chord({ key: 'a' }))).toBeNull();
+  });
+
   it('os colchetes mudam a ordem de empilhamento', () => {
     expect(matchShortcut(chord({ key: ']', ctrlKey: true }))).toBe('bringForward');
     expect(matchShortcut(chord({ key: '[', ctrlKey: true }))).toBe('sendBackward');
