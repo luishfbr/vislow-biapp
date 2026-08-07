@@ -206,6 +206,41 @@ nada podia ser inspecionado de perto e julgar um detalhe exigia exportar.
 - **Ctrl/⌘+roda amplia; roda sozinha desloca.** A pinça do trackpad chega ao navegador como `wheel` com
   `ctrlKey` e não tem evento próprio — tratar tudo como zoom faria a rolagem de dois dedos ampliar sem parar.
 
+### 2.5 Arrastar na Composição: a hierarquia se organiza aqui
+
+`reparentNode` existia desde o Sprint 5 e **nunca teve um chamador**: mudar de pai era impossível pela interface.
+O arrasto na árvore fechou isso (2026-08-07), no modelo do VSCode.
+
+- **Pointer events, não HTML5 drag-and-drop.** Aquele não tem toque, não tem rolagem automática e o jsdom não o
+  exercita. É o padrão do `CanvasOverlay`: a mira pura em `lib/treeDrop.ts`, o gesto no componente.
+- **Sobre a linha de um container, o terço do meio vira filho**; as pontas, e a linha inteira de uma **folha**,
+  viram a fresta mais próxima. Folha não aceita filho, e recusar em silêncio pareceria defeito.
+- **O fio da fresta começa no recuo que o rótulo VAI ter** (`indentOf(profundidade do pai + 1)`). O recuo é a
+  única coisa que responde *em qual pai isto cai?* — é a pergunta que todo drop em árvore erra. Ele é
+  **absoluto**: empurrar layout moveria as linhas sob a mira no meio do gesto.
+- **Anel para o alvo, fundo para o selecionado.** Durante o arrasto o nó em voo está selecionado (`bg-primary/10`),
+  e usar fundo nos dois tornaria os estados indistinguíveis. Anel diz *receptáculo* — é o mesmo significado que o
+  `hover:ring` do `CanvasOverlay` já tem.
+- **As caixas saem do DOM uma vez no `pointerdown`**, em coordenada de **conteúdo** (`top - base + scrollTop`),
+  para a rolagem automática não as invalidar. Mesmo motivo do `readNodeBoxes` do marquee.
+- **A rolagem automática tem laço próprio** (`requestAnimationFrame`). Parado na borda o ponteiro deixa de emitir
+  eventos, e a lista congelaria a um pixel do que se está tentando alcançar.
+- **Pressionar um nó que já está na seleção arrasta o bloco**; um de fora troca a seleção por ele. Regra do
+  Finder e do VSCode. A raiz não arrasta.
+- **`isNoOp` recusa soltar onde já está**, senão o gesto empilharia um passo de desfazer que não muda nada e
+  `Ctrl+Z` andaria sem efeito visível. Um arrasto é **uma** escrita, então não precisa de `beginGesture`.
+- **A caixa mantém o percentual** ao mudar de pai — `reparentNode` já fazia isso. `stack → canvas` ganha
+  `droppedRect` pelo `withPlacedChildren`; `canvas → stack` deixa o `rect` quieto, o que torna o ida-e-volta sem
+  perda.
+- **`reparentNodes` remove TUDO antes de inserir qualquer coisa**, e o `index` conta na lista **antes** das
+  remoções. Intercalar faz cada remoção deslocar o destino das inserções seguintes, e um bloco reordenado dentro
+  do próprio pai sai embaralhado — foi assim que a primeira versão errou. É **tudo ou nada**: metade do bloco no
+  pai novo e metade no antigo seria pior do que não mover.
+- **`Ctrl+→` / `Ctrl+←` indentam e desindentam** na linha focada. Não é enfeite: sem eles, trocar de pai
+  existiria **só** no ponteiro — as setas do cabeçalho reordenam entre irmãos e nunca mudam de pai. O foco
+  sobrevive ao movimento porque as linhas são irmãs com `key` estável e o React move o nó do DOM; há teste, e
+  ele foi verificado quebrando a `key` de propósito.
+
 ### 2.2 Estado
 
 Store Zustand única com `spec`, `issues` e `selectedId`. Toda escrita passa por `commit`, que revalida com o

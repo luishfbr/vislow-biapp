@@ -23,6 +23,7 @@ import {
   positionsChildren,
   removeNode,
   reparentNode,
+  reparentNodes,
   selectionAfterRemoval,
   setFieldExposed,
   setNodeName,
@@ -157,6 +158,51 @@ describe('reparent', () => {
 
   it('rejeita destino que nao aceita filhos', () => {
     expect(reparentNode(fixture(), 'rodape', 'titulo')).toBeNull();
+  });
+});
+
+describe('reparent de um bloco', () => {
+  it('leva todos, na ordem dada', () => {
+    const next = reparentNodes(fixture(), ['titulo', 'rodape'], 'linha');
+    expect(idsOf(next)).toEqual(['linha']);
+    expect(idsOf(findNode(next!, 'linha'))).toEqual(['nota', 'titulo', 'rodape']);
+  });
+
+  it('respeita o indice do destino', () => {
+    const next = reparentNodes(fixture(), ['titulo', 'rodape'], 'linha', 0);
+    expect(idsOf(findNode(next!, 'linha'))).toEqual(['titulo', 'rodape', 'nota']);
+  });
+
+  it('reordenar DENTRO do proprio pai nao embaralha', () => {
+    // O caso que quebra a versao ingenua: cada remocao desloca o destino das
+    // insercoes seguintes. Remover tudo antes de inserir e o que conserta, e o
+    // indice pedido conta na lista ANTES das remocoes — a que o usuario ve.
+    //
+    //   de  [titulo, linha, rodape]  movendo [titulo, linha] para o indice 3
+    //   ate [rodape, titulo, linha]
+    const next = reparentNodes(fixture(), ['titulo', 'linha'], 'root', 3);
+    expect(idsOf(next)).toEqual(['rodape', 'titulo', 'linha']);
+  });
+
+  it('mover para o fim do proprio pai preserva a ordem relativa', () => {
+    expect(idsOf(reparentNodes(fixture(), ['titulo', 'linha'], 'root'))).toEqual([
+      'rodape',
+      'titulo',
+      'linha',
+    ]);
+  });
+
+  it('TUDO OU NADA: um recusado nao move nenhum', () => {
+    // Metade do bloco no pai novo e metade no antigo seria pior que nao mover.
+    expect(reparentNodes(fixture(), ['titulo', 'linha'], 'nota')).toBeNull();
+    expect(reparentNodes(fixture(), ['titulo', 'inexistente'], 'linha')).toBeNull();
+    expect(reparentNodes(fixture(), ['titulo'], 'rodape')).toBeNull();
+    expect(reparentNodes(fixture(), [], 'linha')).toBeNull();
+  });
+
+  it('o filho que chega num canvas ganha caixa', () => {
+    const next = reparentNodes(fixture(), ['titulo'], 'linha');
+    expect(findNode(next!, 'titulo')?.rect).toBeDefined();
   });
 });
 
