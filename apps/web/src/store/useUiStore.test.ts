@@ -120,3 +120,16 @@ describe('layoutEpoch: so sobe quando a forma do shell muda', () => {
     expect(guardado).not.toHaveProperty('layoutEpoch');
   });
 });
+
+describe('menu de contexto aberto', () => {
+  it('e transitorio: nao entra no que se guarda', () => {
+    // Abrir o editor amanha achando que ha menu aberto travaria os atalhos, que
+    // e justamente o que a bandeira existe para fazer enquanto ele esta na tela.
+    useUiStore.getState().setMenuOpen(true);
+    useUiStore.getState().toggleLeft();
+
+    const guardado: unknown = JSON.parse(window.localStorage.getItem(KEY) ?? '{}');
+    expect(guardado).not.toHaveProperty('menuOpen');
+    expect(useUiStore.getState().menuOpen).toBe(true);
+  });
+});

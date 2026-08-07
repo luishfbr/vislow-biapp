@@ -241,6 +241,31 @@ O arrasto na árvore fechou isso (2026-08-07), no modelo do VSCode.
   sobrevive ao movimento porque as linhas são irmãs com `key` estável e o React move o nó do DOM; há teste, e
   ele foi verificado quebrando a `key` de propósito.
 
+### 2.6 Menu de contexto
+
+Botão direito sobre um nó, **na prancheta e na árvore** — o mesmo componente montado em dois lugares
+(`NodeContextMenu`). Um item por enquanto: **Excluir**.
+
+- **O primitivo vem do `shadcn add context-menu`**, sobre `@base-ui/react/context-menu`, e mora em
+  `components/ui/`. Não edite à mão — divergência intencional vai num wrapper fora de `ui/`, que é o que o
+  `NodeContextMenu` é. Confira que ele **não** herdou o `w-(--anchor-width)` do `dropdown-menu`: âncora de ponto
+  tem largura zero, e o menu sairia com 0px.
+- **Abrir SELECIONA antes**, quando o nó não estava selecionado. O menu age sobre a seleção, e um menu que
+  aparece sobre um nó e apaga outro seria a pior falha possível aqui. Pelo `hostOf`, isso também desce a camada
+  até o pai do nó.
+- **Na raiz o item fica desabilitado** — a mesma regra do X do cabeçalho da Composição, que já é
+  `disabled={isRoot}`. **Sem `title`**: o primitivo aplica `pointer-events-none` no item desabilitado, então a
+  dica nunca apareceria, e atributo morto é pior que atributo ausente.
+- **No vazio da prancheta o menu do aplicativo NÃO abre.** Um menu de um item inútil é pior que nenhum, e é ali
+  que "Colar" entra quando existir. Não há handler global de `contextmenu`: o menu do navegador aparece normal.
+- **`menuOpen` é do móvel** (`useUiStore`, transitório, não persistido) e existe para o `useEditorShortcuts`
+  **sair cedo**. Ele escuta no documento; sem a guarda, `Esc` fecharia o menu e limparia a seleção no mesmo
+  toque, e `Delete` apagaria duas vezes. A guarda é explícita no chamador, ao lado da de quem está digitando.
+- **O `CanvasOverlay` continua sem conhecer store nenhum.** O menu entra por `menu`, um embrulho opcional que
+  desce pelo `PreviewEdit` — o contrato editor↔preview. Pôr o import lá dentro acoplaria ao store a única camada
+  que hoje se testa com callbacks puros; pôr no `SpecPreview` daria móvel de editor ao gêmeo do codegen.
+- **O botão direito não inicia arrasto**, porque `begin` já ignora `event.button !== 0`.
+
 ### 2.2 Estado
 
 Store Zustand única com `spec`, `issues` e `selectedId`. Toda escrita passa por `commit`, que revalida com o

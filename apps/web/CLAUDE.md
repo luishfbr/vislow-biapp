@@ -54,6 +54,14 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **`Ctrl+→` / `Ctrl+←` indentam e desindentam na linha focada.** Sem eles, trocar de pai existiria só no
   ponteiro: as setas do cabeçalho reordenam entre irmãos e nunca mudam de pai. O foco sobrevive porque as linhas
   são irmãs com `key` estável — há teste, verificado quebrando a `key` de propósito.
+- **Botão direito abre o `NodeContextMenu`, na prancheta E na árvore.** Abrir **seleciona antes** — um menu que
+  aparece sobre um nó e apaga outro é a pior falha possível ali. Na raiz o item fica cinza, **sem `title`**: item
+  desabilitado é `pointer-events-none` e a dica nunca apareceria. No vazio da prancheta o menu do aplicativo não
+  abre, e é lá que "Colar" entra quando existir.
+- **`menuOpen` é do MÓVEL e existe para o `useEditorShortcuts` sair cedo.** Sem a guarda, `Esc` fecharia o menu e
+  limparia a seleção no mesmo toque, e `Delete` apagaria duas vezes. Transitório, não persistido.
+- **O `CanvasOverlay` não conhece store.** O menu entra por `menu`, um embrulho opcional que desce pelo
+  `PreviewEdit`. Importar lá dentro acoplaria ao store a única camada que se testa com callbacks puros.
 - **Ação que apaga o histórico confirma antes** (`ConfirmDialog`). `newProject` e `importSpec` zeram `past` e
   `future`: não há `Ctrl+Z` depois delas. Ação inofensiva **não** confirma — confirmação barata é o que ensina a
   clicar em "sim" sem ler, e é o que faz a confirmação cara deixar de proteger.

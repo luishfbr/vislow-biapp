@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { isTypingTarget, matchShortcut, matchToolShortcut } from '@/lib/shortcuts';
 import { useEditorStore } from '@/store/useEditorStore';
+import { useUiStore } from '@/store/useUiStore';
 
 /**
  * Liga os atalhos do editor ao documento.
@@ -18,6 +19,11 @@ import { useEditorStore } from '@/store/useEditorStore';
 export function useEditorShortcuts(): void {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
+      // Guarda explicita e visivel no chamador, como a de quem esta digitando: com
+      // um menu aberto, `Esc` tem de fechar SO o menu e `Delete` nao pode apagar
+      // duas vezes. Quem fecha o menu e o proprio primitivo.
+      if (useUiStore.getState().menuOpen) return;
+
       const action = matchShortcut(event);
 
       // A ferramenta so e consultada quando a tecla nao ja era outra coisa. Hoje
