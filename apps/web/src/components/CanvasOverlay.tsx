@@ -4,7 +4,9 @@ import { type NodeRect } from '@vislow/component-registry';
 import { useEffect, useRef, useState } from 'react';
 import {
   applyGesture,
+  applyGroupMove,
   byKeyboard,
+  unionRect,
   type BoxPx,
   type Guide,
   type HandleId,
@@ -69,13 +71,21 @@ interface Gesture {
   pointerId: number;
   handle: HandleId | 'move';
   /**
-   * Quem o gesto move. NAO e lido de `selectedId` a cada movimento: com Alt o
-   * gesto passa a mover uma COPIA criada no proprio `pointerdown`, e ler a
-   * selecao do render anterior moveria o original por um quadro.
+   * Quem o gesto move, com a caixa de CADA UM no inicio do gesto — o delta e
+   * sempre relativo a ela, nunca acumulado sobre a anterior.
+   *
+   * NAO e lido de `selectedIds` a cada movimento: com Alt o gesto passa a mover
+   * COPIAS criadas no proprio `pointerdown`, e ler a selecao do render anterior
+   * moveria os originais por um quadro.
    */
-  targetId: string;
-  /** Caixa no inicio do gesto — o delta e sempre relativo a ela, nao acumulado. */
-  from: NodeRect;
+  targets: readonly { id: string; from: NodeRect }[];
+  /**
+   * A caixa envolvente no inicio do gesto.
+   *
+   * E ELA o sujeito do encaixe quando ha mais de um alvo: com N sujeitos, cada
+   * um acharia a sua propria aresta mais proxima e o bloco chegaria deformado.
+   */
+  union: NodeRect;
   /** Tamanho do container em px, lido uma vez no pointerdown. */
   boxPx: { width: number; height: number };
   originPx: { x: number; y: number };
@@ -83,9 +93,11 @@ interface Gesture {
 
 export function CanvasOverlay({
   items,
-  selectedId,
+  selectedIds,
   onSelect,
+  onToggle,
   onChange,
+  onChangeMany,
   onDuplicate,
   onMeasure,
   scale = 1,
@@ -94,11 +106,15 @@ export function CanvasOverlay({
   onEnter,
 }: {
   items: readonly OverlayChild[];
-  selectedId: string | null;
+  selectedIds: readonly string[];
   onSelect: (id: string | null) => void;
+  /** Shift+clique: poe ou tira este no da selecao. */
+  onToggle: (id: string) => void;
   onChange: (id: string, rect: NodeRect) => void;
-  /** Devolve o id da copia, para que o gesto passe a arrastar ELA. */
-  onDuplicate?: ((id: string) => string | null) | undefined;
+  /** Arrasto de grupo: N caixas numa unica edicao, e numa unica caminhada. */
+  onChangeMany: (entries: readonly { id: string; rect: NodeRect }[]) => void;
+  /** Devolve os ids das copias, para que o gesto passe a arrastar ELAS. */
+  onDuplicate?: ((ids: readonly string[]) => readonly string[]) | undefined;
   /** Publica o tamanho do container em pixel DA PRANCHETA (sem o zoom). */
   onMeasure?: ((size: BoxPx) => void) | undefined;
   /** Zoom da camera, para tirar a ampliacao da medida publicada. */
@@ -126,7 +142,13 @@ export function CanvasOverlay({
   // usa a caixa que ele mesmo leu no `pointerdown`, em pixel de tela.
   const [measured, setMeasured] = useState<BoxPx | undefined>(undefined);
 
-  const selected = selectedId === null ? undefined : items.find((c) => c.id === selectedId);
+  // As caixas dos selecionados que estao NESTE container. Um no selecionado pela
+  // arvore pode morar noutro nivel, e ai nao ha o que desenhar nem o que mover.
+  const selectedHere = items.filter((child) => selectedIds.includes(child.id));
+  const only = selectedHere.length === 1 ? selectedHere[0] : undefined;
+  // A moldura do bloco. So existe com mais de um: com um so, quem marca a
+  // extensao sao as cantoneiras do proprio no.
+  const groupBox = selectedHere.length > 1 ? unionRect(selectedHere.map((c) => c.rect)) : null;
 
   /**
    * Tamanho do container em pixel.
@@ -189,20 +211,48 @@ export function CanvasOverlay({
     // clique numa caixa desselecionaria no mesmo instante em que seleciona.
     event.stopPropagation();
 
+    // Shift ALTERNA a participacao e nao abre gesto nenhum. Alternar para FORA e
+    // comecar a arrastar no mesmo aperto seria ambiguo — o ponteiro estaria
+    // levando um no que o mesmo gesto acabou de tirar da selecao.
+    if (event.shiftKey && handle === 'move') {
+      handled.current = true;
+      onToggle(child.id);
+      return;
+    }
+
     const box = measure();
     if (!box) return;
 
+    // Quem o gesto move: a selecao INTEIRA quando o no apertado ja faz parte
+    // dela, e so ele em qualquer outro caso. Apertar fora da selecao e comecar
+    // uma selecao nova, como em qualquer editor de desenho.
+    const inSelection = selectedIds.includes(child.id);
+    const moving =
+      handle === 'move' && inSelection && selectedHere.length > 1 ? selectedHere : [child];
+
     handled.current = true;
 
-    // ANTES da duplicacao: assim o Alt+arrastar inteiro — criar a copia e
-    // leva-la ate onde ela para — e UM passo de desfazer, e nao dois.
+    // ANTES da duplicacao: assim o Alt+arrastar inteiro — criar as copias e
+    // leva-las ate onde param — e UM passo de desfazer, e nao dois.
     onGestureStart?.();
 
-    // Alt duplica arrastando, como em qualquer editor de desenho: o original
-    // fica onde estava e o ponteiro leva a copia. Sem copia possivel (raiz, ou
-    // sem `onDuplicate`), o gesto continua sendo um mover comum.
-    const target = (event.altKey && handle === 'move' ? onDuplicate?.(child.id) : null) ?? child.id;
-    if (target !== selectedId) onSelect(target);
+    // Alt duplica arrastando, como em qualquer editor de desenho: os originais
+    // ficam onde estavam e o ponteiro leva as copias. Sem copia possivel (raiz,
+    // ou sem `onDuplicate`), o gesto continua sendo um mover comum. As copias
+    // voltam na ORDEM DA ARVORE, a mesma de `selectedIds`, e e o que permite
+    // parea-las com as caixas de origem pelo indice.
+    const ids = moving.map((item) => item.id);
+    const copies = event.altKey && handle === 'move' ? onDuplicate?.(ids) : undefined;
+    const duplicated = copies?.length === moving.length;
+
+    const targets = moving.map((item, index) => ({
+      id: duplicated ? (copies[index] ?? item.id) : item.id,
+      from: item.rect,
+    }));
+
+    // Duplicar ja deixou as copias selecionadas (o store as passa ao `commit`),
+    // entao so o caso comum precisa mexer na selecao.
+    if (!duplicated && !inSelection) onSelect(child.id);
 
     // A captura fica no proprio botao, e ele NAO desmonta ao ser selecionado:
     // selecionado e nao selecionado renderizam o MESMO elemento, e so a moldura
@@ -211,11 +261,14 @@ export function CanvasOverlay({
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
 
+    const union = unionRect(targets.map((target) => target.from));
+    if (!union) return;
+
     const next: Gesture = {
       pointerId: event.pointerId,
       handle,
-      targetId: target,
-      from: child.rect,
+      targets,
+      union,
       boxPx: { width: box.width, height: box.height },
       originPx: { x: event.clientX, y: event.clientY },
     };
@@ -233,22 +286,55 @@ export function CanvasOverlay({
     // Ctrl/Cmd solta do encaixe. Antes era Alt, que agora duplica — e duplicar
     // e o significado que Alt tem em todo editor de desenho, entao quem mudou
     // de lugar foi o escape do encaixe.
-    const resolved = applyGesture({
-      from: active.from,
-      handle: active.handle,
+    const freeform = event.ctrlKey || event.metaKey;
+    // TODOS os que se movem saem da lista de candidatos: deixados nela, o bloco
+    // encaixaria em pedacos de si mesmo.
+    const skip = new Set(active.targets.map((target) => target.id));
+
+    const single = active.targets.length === 1 ? active.targets[0] : undefined;
+    if (single) {
+      const resolved = applyGesture({
+        from: single.from,
+        handle: active.handle,
+        deltaX,
+        deltaY,
+        siblings: items,
+        skip,
+        freeform,
+        axisLock: event.shiftKey,
+        proportional: event.shiftKey,
+        // A MESMA caixa lida no `pointerdown`: e ela que converte a tolerancia de
+        // encaixe de pixel de tela para % do container.
+        boxPx: active.boxPx,
+      });
+      setGuides(resolved.guides);
+      onChange(single.id, resolved.rect);
+      return;
+    }
+
+    // Bloco: UM delta para todos, derivado da caixa envolvente. Sem isto o
+    // encaixe resolveria cada no por conta propria e o bloco chegaria espalhado.
+    const resolved = applyGroupMove({
+      union: active.union,
       deltaX,
       deltaY,
       siblings: items,
-      selectedId: active.targetId,
-      freeform: event.ctrlKey || event.metaKey,
+      movingIds: skip,
+      freeform,
       axisLock: event.shiftKey,
-      proportional: event.shiftKey,
-      // A MESMA caixa lida no `pointerdown`: e ela que converte a tolerancia de
-      // encaixe de pixel de tela para % do container.
       boxPx: active.boxPx,
     });
     setGuides(resolved.guides);
-    onChange(active.targetId, resolved.rect);
+    onChangeMany(
+      active.targets.map((target) => ({
+        id: target.id,
+        rect: {
+          ...target.from,
+          x: target.from.x + resolved.delta.dx,
+          y: target.from.y + resolved.delta.dy,
+        },
+      })),
+    );
   };
 
   const end = (event: React.PointerEvent): void => {
@@ -256,6 +342,13 @@ export function CanvasOverlay({
     live.current = null;
     setGesture(null);
     setGuides([]);
+    // O `click` sintetico que fecha ESTE gesto ainda vai chegar e limpar a
+    // trava. O que nao pode e a trava sobreviver a um gesto que nunca produz
+    // clique — captura perdida, `pointercancel` —, senao o proximo clique em
+    // qualquer no e engolido em silencio.
+    requestAnimationFrame(() => {
+      handled.current = false;
+    });
     // Fecha o passo de desfazer e paga de uma vez o que o arrasto adiou:
     // revalidar a spec e gravar.
     onGestureEnd?.();
@@ -282,7 +375,12 @@ export function CanvasOverlay({
       onPointerCancel={end}
     >
       {items.map((child) => {
-        const isSelected = child.id === selectedId;
+        const isSelected = selectedIds.includes(child.id);
+        // Alcas so com UM selecionado. Redimensionar em bloco escalaria a caixa
+        // sem escalar `fontSize` nem `padding`, que sao pixel absoluto: o texto
+        // ficaria do mesmo tamanho dentro de uma moldura menor, e o resultado na
+        // tela nao corresponderia ao que a alca prometeu.
+        const showHandles = isSelected && selectedHere.length === 1;
         const box = {
           left: `${String(child.rect.x)}%`,
           top: `${String(child.rect.y)}%`,
@@ -291,7 +389,14 @@ export function CanvasOverlay({
         };
 
         return (
-          <div key={child.id} className="absolute" style={{ ...box, pointerEvents: 'none' }}>
+          <div
+            key={child.id}
+            // Lido pelo marquee, que mora na bancada e mede estas caixas pelo
+            // DOM: e o que o dispensa de converter tela para % do container.
+            data-node-id={child.id}
+            className="absolute"
+            style={{ ...box, pointerEvents: 'none' }}
+          >
             {/* UM SO botao, selecionado ou nao. E um `button` porque tem acao e
                 precisa receber foco: sem ele, mover um componente exigiria
                 mouse. E ele nao pode ser trocado por outro elemento quando a
@@ -301,10 +406,16 @@ export function CanvasOverlay({
                 exigirem dois gestos separados. */}
             <button
               type="button"
+              // O rotulo do bloco NAO promete redimensionar: com varios
+              // selecionados nao ha alca, e Ctrl+seta tambem nao redimensiona.
+              // Anunciar um gesto que nao existe e pior do que nao anuncia-lo.
               aria-label={
-                isSelected
-                  ? `Mover ${child.label}. Setas movem, Shift ajusta fino, Ctrl redimensiona.`
-                  : `Selecionar ${child.label}`
+                !isSelected
+                  ? `Selecionar ${child.label}`
+                  : groupBox
+                    ? `Mover ${String(selectedHere.length)} componentes selecionados. ` +
+                      'Setas movem o bloco, Shift ajusta fino.'
+                    : `Mover ${child.label}. Setas movem, Shift ajusta fino, Ctrl redimensiona.`
               }
               onPointerDown={(event) => {
                 begin(event, 'move', child);
@@ -312,12 +423,16 @@ export function CanvasOverlay({
               // Caminho do TECLADO e da ativacao programatica. O `click` que o
               // navegador emite depois de um arrasto e descartado: quem estava
               // arrastando ja disse o que queria no `pointerdown`.
-              onClick={() => {
+              onClick={(event) => {
                 if (handled.current) {
                   handled.current = false;
                   return;
                 }
-                onSelect(child.id);
+                // Caminho do teclado: `Enter` e `Espaco` chegam como `click` sem
+                // ter passado por `pointerdown`, entao o Shift precisa ser lido
+                // aqui tambem — senao alternar a selecao so funcionaria no mouse.
+                if (event.shiftKey) onToggle(child.id);
+                else onSelect(child.id);
               }}
               // Duplo clique DESCE um nivel, e so em quem tem nivel. Sobre um
               // grafico ou um texto ele nao faz nada — e o certo: nao ha para
@@ -328,10 +443,39 @@ export function CanvasOverlay({
               }}
               onKeyDown={(event) => {
                 if (!isSelected) return;
+                const boxPx = measure();
+
+                // Com um bloco selecionado a seta move O BLOCO, pelo mesmo delta
+                // — derivado da caixa envolvente, para que o passo pare na borda
+                // do container de uma vez so em vez de um no de cada vez.
+                //
+                // O Ctrl NAO e consultado aqui, e essa e a mesma decisao das
+                // alcas escondidas: com um bloco nao ha redimensionamento. Se
+                // ele caisse no ramo de baixo, Ctrl+seta redimensionaria em
+                // silencio UM no do bloco e deixaria os outros parados.
+                if (groupBox) {
+                  const moved = byKeyboard(groupBox, event.key, {
+                    coarse: event.shiftKey,
+                    resizing: false,
+                    boxPx,
+                  });
+                  if (!moved) return;
+                  event.preventDefault();
+                  const dx = moved.x - groupBox.x;
+                  const dy = moved.y - groupBox.y;
+                  onChangeMany(
+                    selectedHere.map((item) => ({
+                      id: item.id,
+                      rect: { ...item.rect, x: item.rect.x + dx, y: item.rect.y + dy },
+                    })),
+                  );
+                  return;
+                }
+
                 const next = byKeyboard(child.rect, event.key, {
                   coarse: event.shiftKey,
                   resizing: event.ctrlKey || event.metaKey,
-                  boxPx: measure(),
+                  boxPx,
                 });
                 if (!next) return;
                 event.preventDefault();
@@ -349,7 +493,7 @@ export function CanvasOverlay({
 
             {isSelected && <Brackets />}
 
-            {isSelected && HANDLES.map((handle) => (
+            {showHandles && HANDLES.map((handle) => (
               <button
                 key={handle.id}
                 type="button"
@@ -384,7 +528,10 @@ export function CanvasOverlay({
               />
             ))}
 
-            {isSelected && dragging && (
+            {/* Um so numero por gesto: com um bloco arrastando, uma etiqueta por
+                no viraria uma pilha de numeros sobre a composicao, e nenhum
+                deles seria o que o usuario esta acompanhando. */}
+            {showHandles && dragging && (
               <Readout
                 rect={child.rect}
                 parent={measured}
@@ -395,6 +542,23 @@ export function CanvasOverlay({
         );
       })}
 
+      {/* A moldura do bloco: tracejada e SEM alca, porque nao ha o que arrastar
+          nela. Ela existe para dizer onde o bloco comeca e acaba — que com os
+          nos espalhados nao se le somando as cantoneiras de cada um. */}
+      {groupBox && (
+        <span
+          aria-hidden="true"
+          className="absolute rounded-[3px] border border-dashed border-primary/70"
+          style={{
+            left: `${String(groupBox.x)}%`,
+            top: `${String(groupBox.y)}%`,
+            width: `${String(groupBox.w)}%`,
+            height: `${String(groupBox.h)}%`,
+            pointerEvents: 'none',
+          }}
+        />
+      )}
+
       {guides.map((guide) => (
         <Guideline key={`${guide.axis}-${String(guide.at)}`} guide={guide} />
       ))}
@@ -404,9 +568,15 @@ export function CanvasOverlay({
           componente "funciona" pelo teclado e mesmo assim e inutilizavel sem
           enxergar. `polite` para nao interromper: a posicao e informacao de
           acompanhamento, nao alerta. */}
-      {selected && (
+      {(only ?? groupBox) && (
         <span aria-live="polite" className="sr-only">
-          {announce(selected.label, selected.rect, measured)}
+          {only
+            ? announce(only.label, only.rect, measured)
+            : // Com um bloco, a caixa de cada no nao ajuda: sao N numeros para
+              // reter de cabeca. O que o leitor precisa saber e quantos estao
+              // selecionados e onde o bloco esta.
+              `${String(selectedHere.length)} componentes selecionados` +
+              (groupBox ? `, ${announce('bloco', groupBox, measured)}` : '')}
         </span>
       )}
     </div>

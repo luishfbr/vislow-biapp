@@ -4,10 +4,14 @@ import {
   KEY_STEP_PX,
   SNAP_PX,
   applyGesture,
+  applyGroupMove,
+  bandOf,
   byKeyboard,
   edgesOf,
+  marqueeHits,
   percentPerPx,
   snapValue,
+  unionRect,
   type BoxPx,
   type PlacedChild,
 } from './canvasGeometry';
@@ -34,7 +38,7 @@ function move(deltaX: number, deltaY: number, over: Partial<Parameters<typeof ap
     deltaX,
     deltaY,
     siblings: SIBLINGS,
-    selectedId: 'alvo',
+    skip: new Set(['alvo']),
     freeform: false,
     boxPx: BOX,
     ...over,
@@ -108,8 +112,8 @@ describe('encaixe', () => {
 
   it('nao encaixa no proprio no', () => {
     // Sem o descarte, o alvo grudaria nas proprias arestas e nao sairia do lugar.
-    expect(edgesOf(SIBLINGS, 'alvo', 'x')).not.toContain(10);
-    expect(edgesOf(SIBLINGS, 'alvo', 'x')).toContain(60);
+    expect(edgesOf(SIBLINGS, new Set(['alvo']), 'x')).not.toContain(10);
+    expect(edgesOf(SIBLINGS, new Set(['alvo']), 'x')).toContain(60);
   });
 
   it('a conversao de pixel para % protege contra container zerado', () => {
@@ -171,7 +175,7 @@ describe('redimensionamento', () => {
       deltaX,
       deltaY,
       siblings: [],
-      selectedId: 'alvo',
+      skip: new Set(['alvo']),
       freeform: true,
       ...over,
     }).rect;
@@ -211,7 +215,7 @@ describe('redimensionamento', () => {
         deltaX: dx,
         deltaY: dy,
         siblings: [],
-        selectedId: 'alvo',
+        skip: new Set(['alvo']),
         freeform: true,
         proportional: true,
       }).rect;
@@ -292,3 +296,121 @@ describe('teclado', () => {
 function round(value: number): number {
   return Math.round(value * 100) / 100;
 }
+
+describe('caixa envolvente', () => {
+  it('cobre todas as caixas', () => {
+    expect(
+      unionRect([
+        { x: 10, y: 20, w: 20, h: 10 },
+        { x: 50, y: 5, w: 10, h: 40 },
+      ]),
+    ).toEqual({ x: 10, y: 5, w: 50, h: 40 });
+  });
+
+  it('uma caixa so e ela mesma', () => {
+    expect(unionRect([{ x: 3, y: 4, w: 5, h: 6 }])).toEqual({ x: 3, y: 4, w: 5, h: 6 });
+  });
+
+  it('lista vazia devolve null, e nao uma caixa em zero', () => {
+    // "Nao ha o que envolver" e "envolve nada na origem" sao coisas diferentes,
+    // e a segunda desenharia uma moldura fantasma no canto.
+    expect(unionRect([])).toBeNull();
+  });
+});
+
+describe('arrastar um bloco', () => {
+  /**
+   * Tres irmaos: dois que se movem juntos e um parado a direita, cuja aresta
+   * esquerda (60) e o candidato de encaixe do bloco.
+   */
+  const TRIO: PlacedChild[] = [
+    { id: 'a', rect: { x: 10, y: 10, w: 10, h: 10 } },
+    { id: 'b', rect: { x: 25, y: 30, w: 10, h: 10 } },
+    { id: 'parado', rect: { x: 60, y: 40, w: 20, h: 20 } },
+  ];
+  const BLOCO = unionRect([TRIO[0]!.rect, TRIO[1]!.rect])!; // x:10 y:10 w:25 h:30
+
+  const arrasta = (dx: number, dy: number, over = {}) =>
+    applyGroupMove({
+      union: BLOCO,
+      deltaX: dx,
+      deltaY: dy,
+      siblings: TRIO,
+      movingIds: new Set(['a', 'b']),
+      freeform: false,
+      boxPx: BOX,
+      ...over,
+    });
+
+  it('devolve UM delta, e nao caixas', () => {
+    // Quem soma e o chamador, sempre sobre as caixas do inicio do gesto:
+    // acumular sobre a posicao anterior soma o erro de arredondamento por evento.
+    expect(arrasta(5, 3).delta).toEqual({ dx: 5, dy: 3 });
+  });
+
+  it('quem encaixa e a caixa envolvente, e nao cada no', () => {
+    // A borda esquerda do bloco (10) precisa andar 50 para encostar em 60. O
+    // "a" sozinho tambem chegaria la, mas o "b" nao — e e essa diferenca que
+    // deformaria o bloco se cada um resolvesse o proprio encaixe.
+    const { delta, guides } = arrasta(49.7, 0);
+    expect(delta.dx).toBe(50);
+    expect(guides).toContainEqual({ axis: 'x', at: 60 });
+  });
+
+  it('nao encaixa em pedaco de si mesmo', () => {
+    // O gesto leva a borda esquerda do bloco (10) para 24,8 — a dois decimos da
+    // aresta esquerda do "b", que esta se movendo JUNTO. Com o "b" ainda na
+    // lista de candidatos o bloco gruda nele e trava sozinho; fora dela, o valor
+    // passa intacto. E o unico jeito de provar que o descarte vale para TODOS os
+    // que se movem, e nao so para o que esta sob o ponteiro.
+    expect(arrasta(14.8, 0, { movingIds: new Set(['a']) }).delta.dx).toBe(15);
+    expect(arrasta(14.8, 0).delta.dx).toBe(14.8);
+  });
+
+  it('o bloco INTEIRO para na borda, e nao um no de cada vez', () => {
+    // Preso caixa a caixa, o "a" pararia em 90 enquanto o "b" continuaria — e o
+    // bloco chegaria comprimido do outro lado do container.
+    expect(arrasta(500, 0).delta.dx).toBe(65); // 100 - 25 (largura do bloco) - 10
+    expect(arrasta(0, 500).delta.dy).toBe(60); // 100 - 30 - 10
+    expect(arrasta(-500, -500).delta).toEqual({ dx: -10, dy: -10 });
+  });
+
+  it('Ctrl solta do encaixe, Shift tranca o eixo', () => {
+    expect(arrasta(49.7, 0, { freeform: true }).delta.dx).toBe(49.7);
+    expect(arrasta(2, 8, { axisLock: true }).delta).toEqual({ dx: 0, dy: 8 });
+  });
+});
+
+describe('banda de selecao', () => {
+  const BOXES = [
+    { id: 'a', box: { left: 0, top: 0, right: 100, bottom: 100 } },
+    { id: 'b', box: { left: 200, top: 200, right: 300, bottom: 300 } },
+  ];
+
+  it('captura quem ela TOCA, e nao so quem ela envolve', () => {
+    // Por continencia, uma banda que cruza metade do cartao nao pegaria nada — e
+    // num canvas cujas caixas nascem com 40% da prancheta, quase nenhum gesto
+    // pegaria alguma coisa.
+    expect(marqueeHits(BOXES, { left: 50, top: 50, right: 250, bottom: 250 })).toEqual(['a', 'b']);
+    expect(marqueeHits(BOXES, { left: 90, top: 90, right: 95, bottom: 95 })).toEqual(['a']);
+  });
+
+  it('encostar na aresta nao conta como tocar', () => {
+    // A comparacao e estrita: uma banda que so tangencia a borda pegaria um no
+    // que o usuario nao cobriu em pixel nenhum.
+    expect(marqueeHits(BOXES, { left: 100, top: 0, right: 150, bottom: 50 })).toEqual([]);
+    expect(marqueeHits(BOXES, { left: 99, top: 0, right: 150, bottom: 50 })).toEqual(['a']);
+  });
+
+  it('banda vazia nao captura nada', () => {
+    expect(marqueeHits(BOXES, { left: 150, top: 150, right: 150, bottom: 150 })).toEqual([]);
+  });
+
+  it('a banda se normaliza em qualquer direcao de arrasto', () => {
+    // Arrastar da direita para a esquerda produz delta negativo, e uma banda com
+    // `right` menor que `left` nao cruza com nada.
+    const paraTras = bandOf({ x: 250, y: 250 }, { x: 50, y: 50 });
+    expect(paraTras).toEqual({ left: 50, top: 50, right: 250, bottom: 250 });
+    expect(marqueeHits(BOXES, paraTras)).toEqual(['a', 'b']);
+  });
+});

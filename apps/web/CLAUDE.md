@@ -55,9 +55,30 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
   **Fechado é o padrão**; campo estrutural (`placement`) não ganha alternador e a célula fica vazia. As
   invariantes (ordem do descritor, batismo do nó na primeira publicação) moram em `setFieldExposed`, no
   registro; o store só passa pelo `commit`, então isso desfaz como qualquer outra edição.
-- **`selectedId` é `string | null`.** `null` é estado de primeira classe — clicar no vazio da prancheta limpa a
-  seleção e o painel da direita passa a falar do projeto (é lá que a prancheta mora agora, não mais nas
-  propriedades da raiz). O editor abre nesse estado.
+- **A seleção é `selectedIds: readonly string[]`, e `selectedId` é um SELETOR derivado.** Lista vazia é estado
+  de primeira classe — clicar no vazio da prancheta limpa a seleção e o painel da direita passa a falar do
+  projeto (é lá que a prancheta mora agora, não mais nas propriedades da raiz). O editor abre nesse estado.
+  Limpar usa **sempre** a constante `NO_SELECTION`: um `[]` literal novo re-renderiza todo assinante pela regra
+  do `Object.is`. `selectSelectedId` devolve `null` com vários selecionados — escolher um deles como "o
+  principal" faria o painel de propriedades editar em silêncio um dos três.
+- **Com mais de um selecionado, todos são IRMÃOS** (`resolveSelection`, no store). Um nó sozinho pode ser
+  qualquer nó da árvore, porque a árvore de composição sempre selecionou em qualquer profundidade; vários, não:
+  `rect` é % **do pai imediato**, e arrastar nós de pais diferentes pelo mesmo delta os separaria na tela.
+  Shift-clicar um nó de outro pai **troca** a seleção — ignorar em silêncio pareceria defeito.
+- **O marquee vive na BANCADA, e em pixel de tela.** Arrastar no vazio com a ferramenta de seleção armada
+  (`paletteKind === null`) desenha a banda; a raiz do `CanvasOverlay` continua `pointerEvents: 'none'`, senão o
+  canvas vira um vidro sobre o preview e o pan com espaço segurado morre. As caixas dos nós saem do DOM pelo
+  `data-node-id` que o overlay escreve — **lidas uma vez no `pointerdown`**, porque nada se move durante uma
+  banda. Os dois lados já vêm transformados pela câmera, então zoom e deslocamento se cancelam sem conversão
+  nenhuma, e a invariante "só irmãos do nível entrado" sai de graça: só esses nós existem no DOM do overlay.
+  **A banda não passa pelo objeto `edit` memoizado** — mudá-lo por quadro remontaria a árvore inteira do preview.
+- **Arrastar vários é UM delta, e o sujeito do encaixe é a CAIXA ENVOLVENTE** (`applyGroupMove`). Com N
+  sujeitos, cada um acharia a própria aresta mais próxima e o bloco chegaria deformado; e o `clamp` prende a
+  união, senão o primeiro nó a encostar na borda pararia enquanto os outros continuariam. `edgesOf` descarta
+  **todos** os que se movem, não só o que está sob o ponteiro — deixá-los na lista faz o bloco encaixar em
+  pedaços de si mesmo. A escrita é `setNodeRects`, em lote: N chamadas a `setRect` seriam N caminhadas por quadro.
+- **Bloco não redimensiona.** Nem alça, nem `Ctrl+seta`, nem rótulo que prometa. `fontSize` e `padding` são
+  pixel absoluto: a caixa escalaria e a tipografia não, e o resultado na tela não corresponderia ao gesto.
 - **A camada de manipulação vale num nível de cada vez** (`enteredId`). Duplo clique entra num container
   aninhado, `Esc` sobe. Com todas as camadas ativas, a de dentro cobria a de fora e o container nunca era
   clicável.

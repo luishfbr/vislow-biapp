@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { SelectionSimControl } from '@/components/SelectionSimControl';
 import { ZoomControl } from '@/components/ZoomControl';
 import type { Pane } from '@/lib/artboard';
+import { bandOf, marqueeHits, type ScreenRect } from '@/lib/canvasGeometry';
 import { hasSelectableMarks } from '@/lib/previewHost';
 import {
   ZOOM_STEP,
@@ -70,6 +71,33 @@ interface Drawing {
 }
 
 /**
+ * Uma banda de selecao em andamento, em pixel de tela RELATIVO AO PAINEL.
+ *
+ * Em pixel de tela, e nao em % do container nem em pixel da prancheta, porque e
+ * a unica unidade em que os dois lados da conta ja existem: a banda vem do
+ * ponteiro, e as caixas dos nos sao lidas do DOM JA TRANSFORMADAS pela camera.
+ * Comparadas assim, o zoom e o deslocamento se cancelam sem ninguem converter
+ * nada — e o marquee nao precisa saber que existe uma camera.
+ */
+interface Marquee {
+  pointerId: number;
+  from: { x: number; y: number };
+  to: { x: number; y: number };
+  /**
+   * As caixas dos nos, lidas UMA VEZ no `pointerdown`.
+   *
+   * Nada se move durante uma banda — ela seleciona, nao arrasta —, entao a
+   * leitura de layout acontece uma vez por gesto e cada `pointermove` vira
+   * aritmetica pura.
+   */
+  boxes: readonly { id: string; box: ScreenRect }[];
+  /** Shift TRAVADO no `pointerdown`: a banda soma em vez de trocar. */
+  base: readonly string[];
+  /** Ultima lista aplicada, para nao escrever no store a cada quadro. */
+  applied: readonly string[];
+}
+
+/**
  * Quanto o ponteiro precisa andar para o gesto contar como DESENHO.
  *
  * Abaixo disso e um clique, e clique solta o componente no tamanho padrao. Sem
@@ -84,9 +112,12 @@ const DROP_H = 0.3;
 
 export function PreviewCanvas() {
   const spec = useEditorStore((s) => s.spec);
-  const selectedId = useEditorStore((s) => s.selectedId);
+  const selectedIds = useEditorStore((s) => s.selectedIds);
   const select = useEditorStore((s) => s.select);
+  const toggleSelected = useEditorStore((s) => s.toggleSelected);
+  const setSelection = useEditorStore((s) => s.setSelection);
   const setRect = useEditorStore((s) => s.setRect);
+  const setRects = useEditorStore((s) => s.setRects);
   const duplicateNode = useEditorStore((s) => s.duplicateNode);
   const reportContainerSize = useEditorStore((s) => s.reportContainerSize);
   const beginGesture = useEditorStore((s) => s.beginGesture);
@@ -119,6 +150,9 @@ export function PreviewCanvas() {
   // canvas: os handlers de ponteiro rodam entre renders.
   const drawing = useRef<Drawing | null>(null);
   const [draft, setDraft] = useState<Drawing | null>(null);
+  // A banda de selecao, espelhada num ref pelo mesmo motivo do desenho.
+  const marquee = useRef<Marquee | null>(null);
+  const [band, setBand] = useState<ScreenRect | null>(null);
 
   const artboard = artboardOf(spec);
   const scale = viewport?.scale ?? 1;
@@ -178,12 +212,17 @@ export function PreviewCanvas() {
   // Memoizado: um objeto novo a cada render faria o `SpecPreview` remontar a
   // arvore inteira a cada movimento do ponteiro, que e exatamente quando isso
   // mais custa.
+  // A BANDA NAO PASSA POR AQUI, de proposito: ela muda a cada `pointermove`, e
+  // um objeto `edit` novo por quadro remontaria a arvore inteira do preview
+  // justo durante o gesto. Ela e desenhada fora da prancheta, em espaco de tela.
   const edit = useMemo(
     () => ({
-      selectedId,
+      selectedIds,
       onSelect: select,
+      onToggle: toggleSelected,
       onChange: setRect,
-      onDuplicate: (id: string) => duplicateNode(id, { offset: false }),
+      onChangeMany: setRects,
+      onDuplicate: (ids: readonly string[]) => duplicateNode(ids, { offset: false }),
       onMeasure: reportContainerSize,
       scale,
       onGestureStart: beginGesture,
@@ -194,9 +233,11 @@ export function PreviewCanvas() {
       onEnter: enterContainer,
     }),
     [
-      selectedId,
+      selectedIds,
       select,
+      toggleSelected,
       setRect,
+      setRects,
       duplicateNode,
       reportContainerSize,
       scale,
@@ -305,6 +346,43 @@ export function PreviewCanvas() {
     };
   };
 
+  /** Ponto de tela -> pixel do PAINEL. E a unidade da banda de selecao. */
+  const toPane = (event: React.PointerEvent): { x: number; y: number } | null => {
+    const box = paneRef.current?.getBoundingClientRect();
+    return box ? { x: event.clientX - box.left, y: event.clientY - box.top } : null;
+  };
+
+  /**
+   * As caixas dos nos selecionaveis, em pixel do painel.
+   *
+   * Sai do DOM, e nao da spec: quem marca cada caixa e o `data-node-id` que o
+   * `CanvasOverlay` escreve, e ele so desenha os filhos diretos do container
+   * ENTRADO. A invariante "so irmaos do nivel atual" sai de graca — nao ha
+   * regra nenhuma aqui a repetir e a divergir depois.
+   */
+  const readNodeBoxes = (): { id: string; box: ScreenRect }[] => {
+    const root = paneRef.current;
+    const origin = root?.getBoundingClientRect();
+    if (!root || !origin) return [];
+
+    return [...root.querySelectorAll('[data-node-id]')].flatMap((element) => {
+      const id = element.getAttribute('data-node-id');
+      if (id === null) return [];
+      const box = element.getBoundingClientRect();
+      return [
+        {
+          id,
+          box: {
+            left: box.left - origin.left,
+            top: box.top - origin.top,
+            right: box.right - origin.left,
+            bottom: box.bottom - origin.top,
+          },
+        },
+      ];
+    });
+  };
+
   const onPointerDown = (event: React.PointerEvent): void => {
     if (beginPan(event)) return;
     if (event.button !== 0) return;
@@ -322,8 +400,26 @@ export function PreviewCanvas() {
       return;
     }
 
-    if (selectedId === null) return;
-    select(null);
+    const point = toPane(event);
+    if (!point) return;
+
+    // A selecao some AGORA, no instante em que o botao desce, e nao no
+    // `pointerup`: e o que sempre aconteceu no clique ao vazio, e adiar para o
+    // fim do gesto deixaria a selecao antiga acesa durante a banda inteira.
+    // Com Shift ela fica: a banda soma ao que ja estava.
+    const base = event.shiftKey ? selectedIds : [];
+    if (!event.shiftKey && selectedIds.length > 0) select(null);
+
+    event.currentTarget.setPointerCapture(event.pointerId);
+    marquee.current = {
+      pointerId: event.pointerId,
+      from: point,
+      to: point,
+      boxes: readNodeBoxes(),
+      base,
+      applied: base,
+    };
+    setBand(bandOf(point, point));
   };
 
   const onPointerMove = (event: React.PointerEvent): void => {
@@ -333,6 +429,30 @@ export function PreviewCanvas() {
       if (!point) return;
       drawing.current = { ...sketch, to: point };
       setDraft(drawing.current);
+      return;
+    }
+
+    const selecting = marquee.current;
+    if (selecting?.pointerId === event.pointerId) {
+      const point = toPane(event);
+      if (!point) return;
+      const next = bandOf(selecting.from, point);
+      setBand(next);
+
+      const hits = marqueeHits(selecting.boxes, next);
+      // A banda SOMA com Shift e TROCA sem ele. O `Set` remove a repeticao de
+      // quem ja estava na base e volta a ser tocado.
+      const wanted = [...new Set([...selecting.base, ...hits])];
+
+      // So escreve no store quando a lista muda de verdade: a banda dispara
+      // dezenas de eventos por segundo, e `setSelection` revalida a irmandade e
+      // re-renderiza a arvore inteira do preview.
+      const same =
+        wanted.length === selecting.applied.length &&
+        wanted.every((id, index) => id === selecting.applied[index]);
+
+      marquee.current = { ...selecting, to: point, applied: same ? selecting.applied : wanted };
+      if (!same) setSelection(wanted);
       return;
     }
 
@@ -393,6 +513,15 @@ export function PreviewCanvas() {
 
   const endPointer = (event: React.PointerEvent): void => {
     endDraw(event);
+
+    // A banda nao tem nada a aplicar no fim: cada `pointermove` ja escreveu a
+    // selecao, e um gesto curto demais para tocar em alguem termina com o que o
+    // `pointerdown` deixou — que e a selecao limpa, o clique no vazio de sempre.
+    if (marquee.current?.pointerId === event.pointerId) {
+      marquee.current = null;
+      setBand(null);
+    }
+
     if (panning.current?.pointerId !== event.pointerId) return;
     panning.current = null;
     setDragging(false);
@@ -486,6 +615,23 @@ export function PreviewCanvas() {
               top: Math.min(draft.from.y, draft.to.y) * viewport.scale + viewport.ty,
               width: Math.abs(draft.to.x - draft.from.x) * viewport.scale,
               height: Math.abs(draft.to.y - draft.from.y) * viewport.scale,
+            }}
+          />
+        )}
+
+        {/* A banda de selecao. TRACEJADA, para nao ser confundida com o
+            retangulo de desenho — os dois nascem do mesmo gesto no vazio e o
+            que os separa e a ferramenta armada, que nao esta na tela. Ja vem em
+            pixel do painel: nao ha conversao de camera nenhuma a fazer. */}
+        {band && (
+          <span
+            aria-hidden="true"
+            className="pointer-events-none absolute border border-dashed border-primary bg-primary/5"
+            style={{
+              left: band.left,
+              top: band.top,
+              width: band.right - band.left,
+              height: band.bottom - band.top,
             }}
           />
         )}

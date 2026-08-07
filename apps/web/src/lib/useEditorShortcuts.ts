@@ -54,7 +54,7 @@ export function useEditorShortcuts(): void {
           // SOBE um nivel — a mesma tecla desfaz os dois graus de "estou aqui
           // dentro", do mais raso para o mais fundo, e nao ha atalho novo para
           // aprender.
-          if (store.selectedId !== null) {
+          if (store.selectedIds.length > 0) {
             store.select(null);
             break;
           }
@@ -65,6 +65,9 @@ export function useEditorShortcuts(): void {
           break;
         case 'duplicate':
           store.duplicateNode();
+          break;
+        case 'selectAll':
+          store.selectSiblings();
           break;
         case 'bringForward':
           store.moveSelected(1);

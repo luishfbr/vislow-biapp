@@ -10,7 +10,7 @@ import {
   type SpecNode,
 } from '@vislow/component-registry';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { selectCanExport, useEditorStore } from './useEditorStore';
+import { selectCanExport, selectSelectedId, useEditorStore } from './useEditorStore';
 
 /**
  * Comportamento do editor de composicao.
@@ -45,8 +45,12 @@ function findByKind(node: SpecNode, kind: string): SpecNode | undefined {
  * anterior selecionou algo — e "a selecao ficou vazia" tem de reprovar o teste
  * com essa frase, nao virar `undefined` num `toMatchObject` que passa.
  */
+function selectedId(): string | null {
+  return selectSelectedId(store());
+}
+
 function selected(): SpecNode {
-  const id = store().selectedId;
+  const id = selectedId();
   if (id === null) throw new Error('esperava uma selecao, e nao ha nenhuma');
   const node = findNode(store().spec.root, id);
   if (!node) throw new Error(`selecao orfa: ${id}`);
@@ -67,7 +71,7 @@ describe('projeto novo', () => {
     // Nao e detalhe: com a raiz selecionada nao havia como distinguir "a raiz
     // esta selecionada" de "nada esta", e o clique no vazio nao tinha para onde
     // levar a selecao.
-    expect(store().selectedId).toBeNull();
+    expect(selectedId()).toBeNull();
   });
 
   it('nome curto demais bloqueia o export sem invalidar a arvore', () => {
@@ -91,7 +95,7 @@ describe('adicionar componentes', () => {
 
   it('entra logo DEPOIS do irmao selecionado, nao no fim', () => {
     store().addNode('text');
-    const primeiro = store().selectedId;
+    const primeiro = selectedId();
     store().addNode('text');
     store().select(primeiro);
     store().addNode('text');
@@ -185,15 +189,197 @@ describe('reordenar e remover', () => {
   });
 });
 
+describe('selecao multipla', () => {
+  /** Tres irmaos na raiz, devolvidos na ordem de desenho. */
+  function tres(): string[] {
+    store().addNode('text');
+    store().addNode('text');
+    store().addNode('text');
+    return (store().spec.root.children ?? []).map((child) => child.id);
+  }
+
+  it('a lista vazia e SEMPRE o mesmo array', () => {
+    // O zustand v5 compara por `Object.is`: um `[]` literal a cada limpeza faria
+    // todo assinante re-renderizar sem ter nada novo para desenhar, e um
+    // `useEffect` que dependesse dele entraria em laco.
+    tres();
+    const primeira = (store().select(null), store().selectedIds);
+    const segunda = (store().select(null), store().selectedIds);
+    expect(primeira).toBe(segunda);
+    expect(primeira).toEqual([]);
+  });
+
+  it('alternar poe e tira', () => {
+    const [a, b] = tres();
+    store().select(a!);
+    store().toggleSelected(b!);
+    expect(store().selectedIds).toEqual([a, b]);
+
+    store().toggleSelected(a!);
+    expect(store().selectedIds).toEqual([b]);
+    store().toggleSelected(b!);
+    expect(store().selectedIds).toEqual([]);
+  });
+
+  it('a lista sai em ORDEM DE ARVORE, e nao na ordem dos cliques', () => {
+    // E a ordem que o painel lista, que a arvore destaca e que `duplicateNode`
+    // usa para inserir. A ordem de clique produziria uma lista diferente da que
+    // esta na tela.
+    const [a, b, c] = tres();
+    store().setSelection([c!, a!, b!]);
+    expect(store().selectedIds).toEqual([a, b, c]);
+  });
+
+  it('no de OUTRO PAI substitui em vez de somar', () => {
+    // Somar quebraria a invariante: os dois `rect` sao percentuais de pais
+    // diferentes, e arrastar os dois pelo mesmo delta os separaria na tela.
+    store().addNode('container');
+    const caixa = selected().id;
+    store().addNode('text');
+    const dentro = selected().id;
+
+    store().select(caixa);
+    store().toggleSelected(dentro);
+    expect(store().selectedIds).toEqual([dentro]);
+  });
+
+  it('um no sozinho escapa da irmandade — a arvore seleciona em qualquer nivel', () => {
+    store().addNode('container');
+    store().addNode('text');
+    const fundo = selected().id;
+
+    store().select(fundo);
+    expect(store().selectedIds).toEqual([fundo]);
+  });
+
+  it('ids inexistentes sao filtrados', () => {
+    const [a] = tres();
+    store().setSelection([a!, 'nao-existe']);
+    expect(store().selectedIds).toEqual([a]);
+    store().setSelection(['nao-existe']);
+    expect(store().selectedIds).toEqual([]);
+  });
+
+  it('selecionar tudo pega os irmaos do NIVEL ENTRADO', () => {
+    // "Tudo" so tem um significado representavel: a arvore inteira juntaria nos
+    // de pais diferentes, que a invariante proibe.
+    const ids = tres();
+    store().addNode('container');
+    const caixa = selected().id;
+    // So um container que POSICIONA tem nivel para entrar — um recem-criado
+    // nasce empilhando.
+    store().setProp(caixa, 'placement', 'canvas');
+    store().addNode('text');
+
+    store().enterContainer(caixa);
+    store().selectSiblings();
+    expect(store().selectedIds).toHaveLength(1);
+
+    store().exitContainer();
+    store().selectSiblings();
+    expect(store().selectedIds).toEqual([...ids, caixa]);
+  });
+
+  it('o seletor de UM so responde com um selecionado', () => {
+    // Com varios, escolher um deles como "o principal" faria o painel de
+    // propriedades editar em silencio um dos tres.
+    const [a, b] = tres();
+    store().select(a!);
+    expect(selectedId()).toBe(a);
+    store().toggleSelected(b!);
+    expect(selectedId()).toBeNull();
+  });
+});
+
+describe('acoes sobre varios', () => {
+  function tres(): string[] {
+    store().addNode('text');
+    store().addNode('text');
+    store().addNode('text');
+    return (store().spec.root.children ?? []).map((child) => child.id);
+  }
+
+  it('apagar leva todos, e a selecao cai em quem SOBROU', () => {
+    // `selectionAfterRemoval` responde pelo caso de um no so; com varios, o
+    // irmao que ele aponta pode ter ido junto.
+    const [a, b, c] = tres();
+    store().setSelection([a!, b!]);
+    store().removeSelected();
+
+    expect(kindsOf(store().spec.root)).toEqual(['container', 'text']);
+    expect(store().selectedIds).toEqual([c]);
+  });
+
+  it('duplicar N e UM passo, e cada copia entra depois do seu original', () => {
+    const [a, b] = tres();
+    store().setSelection([a!, b!]);
+    const antes = store().past.length;
+
+    const copias = store().duplicateNode();
+
+    expect(copias).toHaveLength(2);
+    expect(store().past.length).toBe(antes + 1);
+    // a, copia-de-a, b, copia-de-b, c
+    const ordem = (store().spec.root.children ?? []).map((child) => child.id);
+    expect(ordem).toEqual([a, copias[0], b, copias[1], ordem[4]]);
+    expect(store().selectedIds).toEqual(copias);
+    expect(validateSpec(store().spec).kind).toBe('valid');
+  });
+
+  it('reordenar move o bloco junto, e recusa inteiro na ponta', () => {
+    const [a, b, c] = tres();
+    store().setSelection([b!, c!]);
+    store().moveSelected(-1);
+    expect((store().spec.root.children ?? []).map((child) => child.id)).toEqual([b, c, a]);
+
+    // Ja no topo: tudo ou nada. Mover so o que da deixaria o bloco desmontado.
+    store().moveSelected(-1);
+    expect((store().spec.root.children ?? []).map((child) => child.id)).toEqual([b, c, a]);
+  });
+
+  it('mover N caixas e UM passo de desfazer', () => {
+    const [a, b] = tres();
+    store().setSelection([a!, b!]);
+    const antes = store().past.length;
+
+    store().beginGesture();
+    for (let step = 1; step <= 20; step += 1) {
+      store().setRects([
+        { id: a!, rect: { x: step, y: 0, w: 20, h: 20 } },
+        { id: b!, rect: { x: step + 30, y: 0, w: 20, h: 20 } },
+      ]);
+    }
+    store().endGesture();
+
+    expect(store().past.length).toBe(antes + 1);
+    store().undo();
+    expect(findNode(store().spec.root, a!)?.rect?.x).not.toBe(20);
+  });
+
+  it('desfazer larga os ids que deixaram de existir', () => {
+    const [a, b] = tres();
+    store().setSelection([a!, b!]);
+    store().duplicateNode();
+    expect(store().selectedIds).toHaveLength(2);
+
+    store().undo();
+    // As copias sumiram da arvore; a selecao nao pode continuar apontando para
+    // elas, ou o painel passa a editar um fantasma.
+    for (const id of store().selectedIds) {
+      expect(findNode(store().spec.root, id)).not.toBeNull();
+    }
+  });
+});
+
 describe('duplicar', () => {
   it('a copia entra logo depois do original e passa a ser a selecao', () => {
     store().addNode('text');
     store().addNode('text');
 
-    const copia = store().duplicateNode();
+    const [copia] = store().duplicateNode();
 
     expect(kindsOf(store().spec.root)).toEqual(['container', 'text', 'text', 'text']);
-    expect(store().selectedId).toBe(copia);
+    expect(selectedId()).toBe(copia);
   });
 
   it('a copia tem id PROPRIO, em toda a descendencia', () => {
@@ -218,7 +404,7 @@ describe('duplicar', () => {
 
   it('a raiz nao duplica', () => {
     store().select(store().spec.root.id);
-    expect(store().duplicateNode()).toBeNull();
+    expect(store().duplicateNode()).toEqual([]);
     expect(kindsOf(store().spec.root)).toEqual(['container']);
   });
 });
@@ -306,12 +492,12 @@ describe('prancheta do editor', () => {
   it('nao toca na arvore nem na selecao', () => {
     store().addNode('text');
     const before = store().spec.root;
-    const selected = store().selectedId;
+    const selected = selectedId();
 
     store().setArtboard({ width: 800, height: 600 });
 
     expect(store().spec.root).toBe(before);
-    expect(store().selectedId).toBe(selected);
+    expect(selectedId()).toBe(selected);
   });
 });
 
@@ -348,7 +534,7 @@ describe('importar projeto', () => {
 
     store().newProject('Vazio');
     expect(store().importSpec(exportada)).toEqual({ ok: true });
-    expect(store().selectedId).toBeNull();
+    expect(selectedId()).toBeNull();
   });
 });
 
@@ -398,7 +584,7 @@ describe('desfazer e refazer', () => {
     // andaria um pixel de cada vez e desfazer um arrasto exigiria centenas de
     // toques — que e o mesmo que nao ter desfazer.
     store().addNode('text');
-    const id = store().selectedId ?? '';
+    const id = selectedId() ?? '';
     const original = findNode(store().spec.root, id)?.rect;
 
     store().beginGesture();
@@ -414,7 +600,7 @@ describe('desfazer e refazer', () => {
     // Era o custo que cada evento de ponteiro pagava: `validateSpec` da spec
     // inteira mais um `saveProjectDebounced`, centenas de vezes por arrasto.
     store().addNode('text');
-    const id = store().selectedId ?? '';
+    const id = selectedId() ?? '';
     const passos = store().past.length;
 
     store().beginGesture();
@@ -454,16 +640,16 @@ describe('desfazer e refazer', () => {
     // Sem isto o painel de propriedades continuaria editando um no que ja nao
     // esta na arvore — e a edicao iria para lugar nenhum, sem erro.
     store().addNode('text');
-    const criado = store().selectedId;
+    const criado = selectedId();
     expect(criado).not.toBeNull();
 
     store().undo();
-    expect(store().selectedId).toBeNull();
+    expect(selectedId()).toBeNull();
   });
 
   it('a spec depois de desfazer continua valida', () => {
     store().addNode('text');
-    store().setProp(store().selectedId ?? '', 'strokeWidth', 4);
+    store().setProp(selectedId() ?? '', 'strokeWidth', 4);
     store().undo();
     store().undo();
 
@@ -538,7 +724,7 @@ describe('entrar e sair de container aninhado', () => {
   /** Raiz canvas com um container filho, que por sua vez tem um KPI. */
   function aninhado(): { filho: string } {
     store().addNode('container');
-    const filho = store().selectedId ?? '';
+    const filho = selectedId() ?? '';
     store().setProp(filho, 'placement', 'canvas');
     store().addNode('text');
     return { filho };
@@ -551,14 +737,14 @@ describe('entrar e sair de container aninhado', () => {
     store().enterContainer(filho);
 
     expect(store().enteredId).toBe(filho);
-    expect(store().selectedId).toBeNull();
+    expect(selectedId()).toBeNull();
   });
 
   it('so da para entrar em quem POSICIONA', () => {
     // Num container que empilha nao ha camada para mostrar depois de entrar, e
     // o usuario ficaria num nivel sem nada clicavel, sem saber como sair.
     store().addNode('container');
-    const empilha = store().selectedId ?? '';
+    const empilha = selectedId() ?? '';
     expect(store().spec.root.children?.[0]?.props.placement).toBe('stack');
 
     store().enterContainer(empilha);
@@ -578,7 +764,7 @@ describe('entrar e sair de container aninhado', () => {
 
     expect(store().exitContainer()).toBe(true);
     expect(store().enteredId).toBeNull();
-    expect(store().selectedId).toBe(filho);
+    expect(selectedId()).toBe(filho);
   });
 
   it('na raiz, sair nao faz nada e AVISA que nao fez', () => {
@@ -617,7 +803,7 @@ describe('publicar campo no painel do Power BI', () => {
 
   it('publicar e uma edicao: entra no historico e continua valida', () => {
     store().addNode('text');
-    const id = store().selectedId ?? '';
+    const id = selectedId() ?? '';
 
     store().setFieldExposed(id, 'color', true);
     expect(findNode(store().spec.root, id)?.exposed).toEqual(['color']);
@@ -629,7 +815,7 @@ describe('publicar campo no painel do Power BI', () => {
 
   it('o apelido tambem desfaz', () => {
     store().addNode('text');
-    const id = store().selectedId ?? '';
+    const id = selectedId() ?? '';
 
     store().setFieldExposed(id, 'color', true);
     store().setNodeName(id, 'Cabecalho');

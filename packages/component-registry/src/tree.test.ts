@@ -24,6 +24,7 @@ import {
   setNodeName,
   setNodeProps,
   setNodeRect,
+  setNodeRects,
   subtreeIds,
   suggestNodeName,
   titleOf,
@@ -194,6 +195,36 @@ describe('geometria', () => {
     expect(setNodeRect(fixture(), 'inexistente', { x: 0, y: 0, w: 10, h: 10 })).toBeNull();
   });
 
+  it('o lote move varios numa caminhada so', () => {
+    const root = fixture();
+    const next = setNodeRects(root, [
+      { id: 'titulo', rect: { x: 5, y: 5, w: 30, h: 20 } },
+      { id: 'rodape', rect: { x: 50, y: 60, w: 40, h: 30 } },
+    ]);
+    expect(findNode(next!, 'titulo')?.rect).toEqual({ x: 5, y: 5, w: 30, h: 20 });
+    expect(findNode(next!, 'rodape')?.rect).toEqual({ x: 50, y: 60, w: 40, h: 30 });
+    // O ramo sem ninguem do lote sai INTACTO POR IDENTIDADE — e o que permite
+    // ao React pular a re-renderizacao dele durante o arrasto.
+    expect(findNode(next!, 'linha')).toBe(findNode(root, 'linha'));
+  });
+
+  it('o lote prende cada caixa, como o caminho de um no so', () => {
+    const next = setNodeRects(fixture(), [{ id: 'titulo', rect: { x: 90, y: 0, w: 40, h: 0 } }]);
+    expect(findNode(next!, 'titulo')?.rect).toEqual({ x: 60, y: 0, w: 40, h: 2 });
+  });
+
+  it('o lote e TUDO OU NADA', () => {
+    // Aplicar so os que existem devolveria uma arvore boa sem o chamador ter
+    // como saber que uma entrada ficou pelo caminho.
+    expect(
+      setNodeRects(fixture(), [
+        { id: 'titulo', rect: { x: 5, y: 5, w: 30, h: 20 } },
+        { id: 'inexistente', rect: { x: 0, y: 0, w: 10, h: 10 } },
+      ]),
+    ).toBeNull();
+    expect(setNodeRects(fixture(), [])).toBeNull();
+  });
+
   it('as demais operacoes de arvore carregam o rect junto', () => {
     // Reordenar ou mudar de pai nao pode limpar a geometria: o no reapareceria
     // no canto superior esquerdo, e nada indicaria por que.
@@ -208,9 +239,19 @@ describe('geometria', () => {
 
 describe('selecao apos remocao', () => {
   it('cai no irmao seguinte, senao no anterior, senao no pai', () => {
-    expect(selectionAfterRemoval(fixture(), 'titulo')).toBe('linha');
-    expect(selectionAfterRemoval(fixture(), 'rodape')).toBe('linha');
-    expect(selectionAfterRemoval(fixture(), 'nota')).toBe('linha');
+    expect(selectionAfterRemoval(fixture(), ['titulo'])).toBe('linha');
+    expect(selectionAfterRemoval(fixture(), ['rodape'])).toBe('linha');
+    expect(selectionAfterRemoval(fixture(), ['nota'])).toBe('linha');
+  });
+
+  it('o vizinho escolhido tem de SOBREVIVER a remocao', () => {
+    // Apagando titulo e linha, o seguinte ao titulo e justamente a linha, que
+    // tambem esta indo embora: apontar para ela deixaria a selecao orfa. E cair
+    // direto no pai pularia por cima do rodape, que continua ali.
+    expect(selectionAfterRemoval(fixture(), ['titulo', 'linha'])).toBe('rodape');
+    expect(selectionAfterRemoval(fixture(), ['linha', 'rodape'])).toBe('titulo');
+    // Nenhum sobrevivente: so entao o pai.
+    expect(selectionAfterRemoval(fixture(), ['titulo', 'linha', 'rodape'])).toBe('root');
   });
 });
 

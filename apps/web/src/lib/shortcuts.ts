@@ -14,6 +14,7 @@ export type ShortcutAction =
   | 'deselect'
   | 'delete'
   | 'duplicate'
+  | 'selectAll'
   | 'bringForward'
   | 'sendBackward'
   | 'undo'
@@ -91,6 +92,10 @@ export function matchShortcut(chord: KeyChord): ShortcutAction | null {
   // `toLowerCase` porque com Shift o navegador entrega 'D'. O atalho de
   // duplicar nao pede Shift, mas quem segura CapsLock nao deveria descobrir isso.
   if (chord.key.toLowerCase() === 'd' && !chord.shiftKey) return 'duplicate';
+  // Selecionar tudo quer dizer "todos os IRMAOS do nivel em que estou", e nao a
+  // arvore inteira: dois nos de pais diferentes nao podem estar selecionados
+  // juntos, entao "tudo" so tem um significado representavel.
+  if (chord.key.toLowerCase() === 'a' && !chord.shiftKey) return 'selectAll';
   // Ctrl+Shift+Z refaz, e Ctrl+Y tambem — o primeiro e a convencao do Mac e da
   // web, o segundo a do Windows, e quem troca de maquina nao deveria reaprender.
   if (chord.key.toLowerCase() === 'z') return chord.shiftKey ? 'redo' : 'undo';
