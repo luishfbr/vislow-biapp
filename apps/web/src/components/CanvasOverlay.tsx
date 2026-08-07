@@ -13,49 +13,13 @@ import {
 } from '@/lib/canvasGeometry';
 import { rectToPx } from '@/lib/units';
 
-/**
- * A camada de manipulacao de um container que posiciona livremente.
- *
- * POR QUE ELA PODE EXISTIR (ADR-18, que substitui a ADR-14 neste caso). A ADR-14
- * proibiu interacao no preview por MEDICAO: um elemento a mais na cadeia de flex
- * faz o `ResponsiveContainer` medir outra altura, e o preview deixa de valer como
- * referencia. Esta camada e filha ABSOLUTA de um container `relative` — esta fora
- * do fluxo, nao participa de cadeia de flex nenhuma e nao pode alterar a medida de
- * irmao algum. E, por estar dentro do proprio container, herda o sistema de
- * coordenadas dele: as caixas sao desenhadas com os MESMOS percentuais que estao
- * na spec, sem `ref`, sem `ResizeObserver`, sem medir nada para desenhar.
- *
- * Pixel so entra no gesto: converter o deslocamento do ponteiro em percentual
- * exige saber o tamanho do container, e isso e lido UMA vez, no `pointerdown` —
- * leitura de layout em evento, nunca em render.
- *
- * O QUE ELA CUSTA: dentro de um canvas, a camada fica por cima dos graficos, e o
- * tooltip do Recharts no preview deixa de aparecer ali. E troca deliberada — num
- * editor de composicao, selecionar e arrastar valem mais que o balao de exemplo.
- * O tooltip que importa e o do host, no visual compilado (RF-19), e esse nao e
- * afetado: nada disto vai para o pacote.
- *
- * DESENHO. As bordas do no selecionado sao marcadas por CANTONEIRAS, nao por um
- * retangulo inteiro: um contorno completo desenha uma borda falsa em volta do
- * componente, e e justamente a borda dele que o usuario esta julgando. As guias
- * de alinhamento nao tem cor propria — nucleo escuro com halo claro, que le sobre
- * qualquer fundo, porque a composicao do usuario pode ter qualquer hex.
- */
-
 export interface OverlayChild {
   id: string;
   rect: NodeRect;
-  /** Rotulo do tipo, para o nome acessivel das alcas. */
   label: string;
-  /** Container que posiciona: duplo clique desce um nivel para dentro dele. */
   enterable?: boolean;
 }
 
-/**
- * As oito alcas. O rotulo ja vem com a preposicao porque canto e masculino e
- * borda e feminino — montar a frase com um artigo fixo produz "pelo borda
- * direita" em metade delas, que e como este teste apareceu.
- */
 const HANDLES: { id: HandleId; label: string; x: number; y: number; cursor: string }[] = [
   { id: 'nw', label: 'pelo canto superior esquerdo', x: 0, y: 0, cursor: 'nwse-resize' },
   { id: 'n', label: 'pela borda superior', x: 0.5, y: 0, cursor: 'ns-resize' },
@@ -70,23 +34,9 @@ const HANDLES: { id: HandleId; label: string; x: number; y: number; cursor: stri
 interface Gesture {
   pointerId: number;
   handle: HandleId | 'move';
-  /**
-   * Quem o gesto move, com a caixa de CADA UM no inicio do gesto — o delta e
-   * sempre relativo a ela, nunca acumulado sobre a anterior.
-   *
-   * NAO e lido de `selectedIds` a cada movimento: com Alt o gesto passa a mover
-   * COPIAS criadas no proprio `pointerdown`, e ler a selecao do render anterior
-   * moveria os originais por um quadro.
-   */
+  /** A caixa de CADA UM no inicio do gesto: o delta e sempre relativo a ela, nunca acumulado. */
   targets: readonly { id: string; from: NodeRect }[];
-  /**
-   * A caixa envolvente no inicio do gesto.
-   *
-   * E ELA o sujeito do encaixe quando ha mais de um alvo: com N sujeitos, cada
-   * um acharia a sua propria aresta mais proxima e o bloco chegaria deformado.
-   */
   union: NodeRect;
-  /** Tamanho do container em px, lido uma vez no pointerdown. */
   boxPx: { width: number; height: number };
   originPx: { x: number; y: number };
 }
@@ -108,55 +58,28 @@ export function CanvasOverlay({
   items: readonly OverlayChild[];
   selectedIds: readonly string[];
   onSelect: (id: string | null) => void;
-  /** Shift+clique: poe ou tira este no da selecao. */
   onToggle: (id: string) => void;
   onChange: (id: string, rect: NodeRect) => void;
-  /** Arrasto de grupo: N caixas numa unica edicao, e numa unica caminhada. */
   onChangeMany: (entries: readonly { id: string; rect: NodeRect }[]) => void;
-  /** Devolve os ids das copias, para que o gesto passe a arrastar ELAS. */
   onDuplicate?: ((ids: readonly string[]) => readonly string[]) | undefined;
-  /** Publica o tamanho do container em pixel DA PRANCHETA (sem o zoom). */
   onMeasure?: ((size: BoxPx) => void) | undefined;
-  /** Zoom da camera, para tirar a ampliacao da medida publicada. */
   scale?: number;
-  /** Delimitam UM passo de desfazer. Ver `beginGesture` no store. */
   onGestureStart?: (() => void) | undefined;
   onGestureEnd?: (() => void) | undefined;
-  /** Duplo clique num container filho: desce um nivel. */
   onEnter?: ((id: string) => void) | undefined;
 }) {
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [guides, setGuides] = useState<Guide[]>([]);
-  // Espelho do gesto para os handlers de ponteiro: eles rodam entre renders, e
-  // ler do estado daria a caixa de um frame atras no meio do arrasto.
   const live = useRef<Gesture | null>(null);
-  // A raiz da camada cobre exatamente o container (`inset-0`), entao a caixa dela
-  // E a caixa do canvas em pixel. E a UNICA medicao do componente, e acontece no
-  // pointerdown — nunca em render.
   const rootRef = useRef<HTMLDivElement>(null);
-  // Marca que o gesto de ponteiro ja tratou esta interacao. O `click` que vem
-  // depois de um arrasto e ruido: sem esta guarda, soltar uma copia feita com
-  // Alt terminaria selecionando de volta o original.
   const handled = useRef(false);
-  // Tamanho do container em pixel da prancheta. So para EXIBIR numero — o gesto
-  // usa a caixa que ele mesmo leu no `pointerdown`, em pixel de tela.
   const [measured, setMeasured] = useState<BoxPx | undefined>(undefined);
 
-  // As caixas dos selecionados que estao NESTE container. Um no selecionado pela
-  // arvore pode morar noutro nivel, e ai nao ha o que desenhar nem o que mover.
   const selectedHere = items.filter((child) => selectedIds.includes(child.id));
   const only = selectedHere.length === 1 ? selectedHere[0] : undefined;
-  // A moldura do bloco. So existe com mais de um: com um so, quem marca a
-  // extensao sao as cantoneiras do proprio no.
   const groupBox = selectedHere.length > 1 ? unionRect(selectedHere.map((c) => c.rect)) : null;
 
-  /**
-   * Tamanho do container em pixel.
-   *
-   * Leitura de layout SEMPRE dentro de um evento, nunca em render — e a regra
-   * que mantem esta camada barata. O gesto le uma vez no `pointerdown`; o
-   * teclado le a cada tecla, que e raro o bastante para nao custar nada.
-   */
+  // Leitura de layout SEMPRE dentro de um evento, nunca em render: e o que mantem esta camada barata.
   const measure = (): BoxPx | undefined => {
     const box = rootRef.current?.getBoundingClientRect();
     return box && box.width > 0 && box.height > 0
@@ -164,18 +87,6 @@ export function CanvasOverlay({
       : undefined;
   };
 
-  /**
-   * Publica o tamanho do container para quem fala PIXEL — o painel da direita.
-   *
-   * O `ResizeObserver` observa o elemento QUE JA EXISTE: a raiz da camada e
-   * `absolute inset-0` sobre o container, esta fora do fluxo e nao entra em
-   * cadeia de flex nenhuma. Medir aqui nao acrescenta elemento nenhum, e a
-   * objecao da ADR-14 continua respeitada.
-   *
-   * A medida e dividida pelo ZOOM antes de sair: quem consome quer pixel da
-   * prancheta, que e o numero que o usuario digita. Publicar pixel de tela faria
-   * a largura escrita no painel mudar sozinha ao girar a roda.
-   */
   useEffect(() => {
     const element = rootRef.current;
     if (!element || typeof ResizeObserver === 'undefined') return;
@@ -203,17 +114,10 @@ export function CanvasOverlay({
     handle: HandleId | 'move',
     child: OverlayChild,
   ): void => {
-    // Botao secundario abre o menu do navegador; arrastar com ele nao existe.
     if (event.button !== 0) return;
 
-    // O canvas em volta limpa a selecao no `pointerdown`. Parar aqui e o que
-    // separa "cliquei no vazio" de "cliquei num componente" — sem isto, todo
-    // clique numa caixa desselecionaria no mesmo instante em que seleciona.
     event.stopPropagation();
 
-    // Shift ALTERNA a participacao e nao abre gesto nenhum. Alternar para FORA e
-    // comecar a arrastar no mesmo aperto seria ambiguo — o ponteiro estaria
-    // levando um no que o mesmo gesto acabou de tirar da selecao.
     if (event.shiftKey && handle === 'move') {
       handled.current = true;
       onToggle(child.id);
@@ -223,24 +127,14 @@ export function CanvasOverlay({
     const box = measure();
     if (!box) return;
 
-    // Quem o gesto move: a selecao INTEIRA quando o no apertado ja faz parte
-    // dela, e so ele em qualquer outro caso. Apertar fora da selecao e comecar
-    // uma selecao nova, como em qualquer editor de desenho.
     const inSelection = selectedIds.includes(child.id);
     const moving =
       handle === 'move' && inSelection && selectedHere.length > 1 ? selectedHere : [child];
 
     handled.current = true;
 
-    // ANTES da duplicacao: assim o Alt+arrastar inteiro — criar as copias e
-    // leva-las ate onde param — e UM passo de desfazer, e nao dois.
     onGestureStart?.();
 
-    // Alt duplica arrastando, como em qualquer editor de desenho: os originais
-    // ficam onde estavam e o ponteiro leva as copias. Sem copia possivel (raiz,
-    // ou sem `onDuplicate`), o gesto continua sendo um mover comum. As copias
-    // voltam na ORDEM DA ARVORE, a mesma de `selectedIds`, e e o que permite
-    // parea-las com as caixas de origem pelo indice.
     const ids = moving.map((item) => item.id);
     const copies = event.altKey && handle === 'move' ? onDuplicate?.(ids) : undefined;
     const duplicated = copies?.length === moving.length;
@@ -250,14 +144,8 @@ export function CanvasOverlay({
       from: item.rect,
     }));
 
-    // Duplicar ja deixou as copias selecionadas (o store as passa ao `commit`),
-    // entao so o caso comum precisa mexer na selecao.
     if (!duplicated && !inSelection) onSelect(child.id);
 
-    // A captura fica no proprio botao, e ele NAO desmonta ao ser selecionado:
-    // selecionado e nao selecionado renderizam o MESMO elemento, e so a moldura
-    // em volta muda. Foi por isto que os dois ramos foram unificados — trocar de
-    // elemento no `pointerdown` perderia a captura e mataria o arrasto no berco.
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
 
@@ -283,12 +171,7 @@ export function CanvasOverlay({
     const deltaX = ((event.clientX - active.originPx.x) / active.boxPx.width) * 100;
     const deltaY = ((event.clientY - active.originPx.y) / active.boxPx.height) * 100;
 
-    // Ctrl/Cmd solta do encaixe. Antes era Alt, que agora duplica — e duplicar
-    // e o significado que Alt tem em todo editor de desenho, entao quem mudou
-    // de lugar foi o escape do encaixe.
     const freeform = event.ctrlKey || event.metaKey;
-    // TODOS os que se movem saem da lista de candidatos: deixados nela, o bloco
-    // encaixaria em pedacos de si mesmo.
     const skip = new Set(active.targets.map((target) => target.id));
 
     const single = active.targets.length === 1 ? active.targets[0] : undefined;
@@ -303,8 +186,6 @@ export function CanvasOverlay({
         freeform,
         axisLock: event.shiftKey,
         proportional: event.shiftKey,
-        // A MESMA caixa lida no `pointerdown`: e ela que converte a tolerancia de
-        // encaixe de pixel de tela para % do container.
         boxPx: active.boxPx,
       });
       setGuides(resolved.guides);
@@ -312,8 +193,6 @@ export function CanvasOverlay({
       return;
     }
 
-    // Bloco: UM delta para todos, derivado da caixa envolvente. Sem isto o
-    // encaixe resolveria cada no por conta propria e o bloco chegaria espalhado.
     const resolved = applyGroupMove({
       union: active.union,
       deltaX,
@@ -342,15 +221,9 @@ export function CanvasOverlay({
     live.current = null;
     setGesture(null);
     setGuides([]);
-    // O `click` sintetico que fecha ESTE gesto ainda vai chegar e limpar a
-    // trava. O que nao pode e a trava sobreviver a um gesto que nunca produz
-    // clique — captura perdida, `pointercancel` —, senao o proximo clique em
-    // qualquer no e engolido em silencio.
     requestAnimationFrame(() => {
       handled.current = false;
     });
-    // Fecha o passo de desfazer e paga de uma vez o que o arrasto adiou:
-    // revalidar a spec e gravar.
     onGestureEnd?.();
   };
 
@@ -361,12 +234,7 @@ export function CanvasOverlay({
       ref={rootRef}
       className="absolute inset-0"
       style={{
-        // A camada nao captura ponteiro por si — quem captura sao as caixas.
-        // Assim a area vazia do canvas continua entregando o clique a quem
-        // estiver embaixo, em vez de virar um vidro sobre o preview inteiro.
         pointerEvents: 'none',
-        // Sem isto, arrastar sobre um texto do preview seleciona o texto junto e
-        // o gesto termina com meio visual em azul de selecao.
         userSelect: 'none',
         WebkitTapHighlightColor: 'transparent',
       }}
@@ -376,10 +244,6 @@ export function CanvasOverlay({
     >
       {items.map((child) => {
         const isSelected = selectedIds.includes(child.id);
-        // Alcas so com UM selecionado. Redimensionar em bloco escalaria a caixa
-        // sem escalar `fontSize` nem `padding`, que sao pixel absoluto: o texto
-        // ficaria do mesmo tamanho dentro de uma moldura menor, e o resultado na
-        // tela nao corresponderia ao que a alca prometeu.
         const showHandles = isSelected && selectedHere.length === 1;
         const box = {
           left: `${String(child.rect.x)}%`,
@@ -391,8 +255,6 @@ export function CanvasOverlay({
         return (
           <div
             key={child.id}
-            // Lido pelo marquee, que mora na bancada e mede estas caixas pelo
-            // DOM: e o que o dispensa de converter tela para % do container.
             data-node-id={child.id}
             className="absolute"
             style={{ ...box, pointerEvents: 'none' }}
@@ -406,9 +268,6 @@ export function CanvasOverlay({
                 exigirem dois gestos separados. */}
             <button
               type="button"
-              // O rotulo do bloco NAO promete redimensionar: com varios
-              // selecionados nao ha alca, e Ctrl+seta tambem nao redimensiona.
-              // Anunciar um gesto que nao existe e pior do que nao anuncia-lo.
               aria-label={
                 !isSelected
                   ? `Selecionar ${child.label}`
@@ -420,24 +279,14 @@ export function CanvasOverlay({
               onPointerDown={(event) => {
                 begin(event, 'move', child);
               }}
-              // Caminho do TECLADO e da ativacao programatica. O `click` que o
-              // navegador emite depois de um arrasto e descartado: quem estava
-              // arrastando ja disse o que queria no `pointerdown`.
               onClick={(event) => {
                 if (handled.current) {
                   handled.current = false;
                   return;
                 }
-                // Caminho do teclado: `Enter` e `Espaco` chegam como `click` sem
-                // ter passado por `pointerdown`, entao o Shift precisa ser lido
-                // aqui tambem — senao alternar a selecao so funcionaria no mouse.
                 if (event.shiftKey) onToggle(child.id);
                 else onSelect(child.id);
               }}
-              // Duplo clique DESCE um nivel, e so em quem tem nivel. Sobre um
-              // grafico ou um texto ele nao faz nada — e o certo: nao ha para
-              // onde descer, e reagir mesmo assim ensinaria um gesto que falha
-              // na maior parte dos alvos.
               onDoubleClick={() => {
                 if (child.enterable === true) onEnter?.(child.id);
               }}
@@ -445,14 +294,6 @@ export function CanvasOverlay({
                 if (!isSelected) return;
                 const boxPx = measure();
 
-                // Com um bloco selecionado a seta move O BLOCO, pelo mesmo delta
-                // — derivado da caixa envolvente, para que o passo pare na borda
-                // do container de uma vez so em vez de um no de cada vez.
-                //
-                // O Ctrl NAO e consultado aqui, e essa e a mesma decisao das
-                // alcas escondidas: com um bloco nao ha redimensionamento. Se
-                // ele caisse no ramo de baixo, Ctrl+seta redimensionaria em
-                // silencio UM no do bloco e deixaria os outros parados.
                 if (groupBox) {
                   const moved = byKeyboard(groupBox, event.key, {
                     coarse: event.shiftKey,
@@ -501,9 +342,6 @@ export function CanvasOverlay({
                 onPointerDown={(event) => {
                   begin(event, handle.id, child);
                 }}
-                // Alca com foco redimensiona SEMPRE: quem chegou ate ela pelo
-                // teclado ja disse o que quer, e exigir Ctrl aqui seria pedir
-                // duas vezes.
                 onKeyDown={(event) => {
                   const next = byKeyboard(child.rect, event.key, {
                     coarse: event.shiftKey,
@@ -514,9 +352,6 @@ export function CanvasOverlay({
                   event.preventDefault();
                   onChange(child.id, next);
                 }}
-                // `bg-white` literal: a alca fica sobre a prancheta. O sky pode
-                // ser token — ele e a mesma familia nos dois temas e le bem
-                // sobre branco —, mas o miolo da alca, nao.
                 className="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-xs border border-primary bg-white outline-none hover:border-primary hover:bg-primary focus-visible:ring-2 focus-visible:ring-ring"
                 style={{
                   left: `${String(handle.x * 100)}%`,
@@ -573,8 +408,6 @@ export function CanvasOverlay({
           {only
             ? announce(only.label, only.rect, measured)
             : // Com um bloco, a caixa de cada no nao ajuda: sao N numeros para
-              // reter de cabeca. O que o leitor precisa saber e quantos estao
-              // selecionados e onde o bloco esta.
               `${String(selectedHere.length)} componentes selecionados` +
               (groupBox ? `, ${announce('bloco', groupBox, measured)}` : '')}
         </span>
@@ -583,14 +416,6 @@ export function CanvasOverlay({
   );
 }
 
-/**
- * O que o leitor de tela anuncia a cada mudanca de caixa.
- *
- * Na MESMA unidade do `Readout` e do painel. Antes desta funcao a regiao viva
- * dizia percentual enquanto o resto do editor passou a dizer pixel — quem navega
- * por leitor de tela ouviria "20" onde o campo mostra "256", e nao teria como
- * saber que os dois falam da mesma coisa.
- */
 function announce(label: string, rect: NodeRect, parent: BoxPx | undefined): string {
   const px = rectToPx(rect, parent);
   return px
@@ -600,13 +425,7 @@ function announce(label: string, rect: NodeRect, parent: BoxPx | undefined): str
         `tamanho ${String(rect.w)} por ${String(rect.h)} por cento`;
 }
 
-/**
- * Cantoneiras de registro, em vez de contorno completo.
- *
- * Um retangulo fechado desenha uma borda que o componente nao tem, e a borda do
- * componente e exatamente o que o usuario esta avaliando no preview. As
- * cantoneiras marcam a extensao sem encostar nas arestas.
- */
+/** Cantoneiras, e nao contorno fechado: um retangulo desenharia uma borda que o componente nao tem. */
 function Brackets() {
   const corners = [
     'left-0 top-0 border-l-2 border-t-2 rounded-tl-[3px]',
@@ -627,21 +446,12 @@ function Brackets() {
   );
 }
 
-/**
- * Guia de alinhamento: nucleo escuro com halo claro.
- *
- * Sem cor propria de proposito. Uma guia colorida compete com a composicao — que
- * pode ter qualquer hex, inclusive o mesmo — e some justamente sobre o fundo que
- * o usuario escolheu. O par nucleo/halo le sobre qualquer coisa.
- */
+/** Nucleo escuro com halo claro, sem cor propria: uma guia colorida competiria com a composicao. */
 function Guideline({ guide }: { guide: Guide }) {
   const vertical = guide.axis === 'x';
   return (
     <span
       aria-hidden="true"
-      // Slate-900 literal: a guia e desenhada SOBRE a prancheta, que e branca
-      // nos dois temas. `bg-foreground` a deixaria branca no escuro — uma guia
-      // invisivel sobre o fundo que ela deveria cortar.
       className="absolute bg-slate-900"
       style={{
         ...(vertical
@@ -654,12 +464,6 @@ function Guideline({ guide }: { guide: Guide }) {
   );
 }
 
-/**
- * Leitura numerica presa ao no, so durante o gesto.
- *
- * Aparece junto da caixa e nao no painel porque quem arrasta esta olhando para a
- * caixa; um numero do outro lado da tela nao e lido no meio do movimento.
- */
 function Readout({
   rect,
   parent,
@@ -669,8 +473,6 @@ function Readout({
   parent: BoxPx | undefined;
   resizing: boolean;
 }) {
-  // Pixel quando o pai foi medido, percentual enquanto nao foi. Sem o `%` no
-  // fim, os dois numeros seriam indistinguiveis e o de reserva mentiria.
   const px = rectToPx(rect, parent);
   const text = px
     ? resizing
@@ -680,15 +482,11 @@ function Readout({
       ? `${String(rect.w)}% × ${String(rect.h)}%`
       : `${String(rect.x)}%, ${String(rect.y)}%`;
 
-  // Acima da caixa, exceto quando ela esta colada no topo: la a moldura do
-  // preview corta o balao, e o numero some justamente enquanto se arrasta.
   const inside = rect.y < 8;
 
   return (
     <span
       aria-hidden="true"
-      // Mesma razao da guia: a leitura fica sobre a prancheta branca, entao a
-      // etiqueta e escura com texto claro nos DOIS temas do editor.
       className={`absolute left-0 rounded bg-slate-900 px-1.5 py-0.5 text-micro font-medium tabular-nums text-white shadow-sm ${
         inside ? 'top-0.5' : '-top-5'
       }`}

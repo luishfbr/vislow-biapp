@@ -96,8 +96,12 @@ Não automatizáveis, e por isso escritas:
 - **Português sem acentos em identificadores e comentários de código.** Prosa em documentos usa acentuação
   normal. O motivo é evitar problemas de encoding no bundle que vai para dentro do Power BI.
 - **Nomes de arquivo em `kebab-case`**, exceto componentes React, em `PascalCase`.
-- **Comentário explica *por quê*, não *o quê*.** Comentário que registra uma armadilha descoberta na prática
-  vale ouro e deve citar a origem.
+- **Comentário é exceção, e tem teto.** O padrão é não comentar: nome, tipo e teste dizem *o quê*, e código que
+  precisa de parágrafo está errado. Quando couber, explica *por quê* — em **uma linha, duas no limite**.
+  Racional longo mora aqui em `docs/`; no código fica o ponteiro (`// achado 39 — ver docs/engineering.md`).
+  Isto é verificado: `scripts/check-comments.mjs` reprova região contígua acima de 4 linhas (6 no cabeçalho do
+  arquivo). A regra antiga era só *"por quê, não o quê"* — ela era obedecida, e ainda assim o repo chegou a 27%
+  de linhas de comentário, porque nada limitava o tamanho.
 - **Sem abreviação em nome público.** `config`, não `cfg`.
 - **Erro tem contexto acionável.** `spec invalida — root.children[0].props.measureRole: papel nao ligado`, não
   `Erro de validação`.

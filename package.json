@@ -12,8 +12,8 @@
     "// comandos": "Cada um faz uma coisa POR INTEIRO. A ordem (build antes de lint pelos .d.ts, build antes de stage:vendor, stage:vendor e stage:deps antes do gate) vive no turbo.json, e vale igual aqui e no CI.",
     "dev": "turbo run dev",
     "build": "turbo run build stage:vendor stage:deps",
-    "verify": "turbo run build typecheck lint lint:docs test",
-    "check": "turbo run build typecheck lint lint:docs test test:build",
+    "verify": "turbo run build typecheck lint lint:docs lint:comments test",
+    "check": "turbo run build typecheck lint lint:docs lint:comments test test:build",
 
     "typecheck": "turbo run typecheck",
     "test:build": "turbo run test:build",
@@ -22,9 +22,10 @@
     "dev:api": "turbo run dev --filter @vislow/api",
     "clean": "turbo run clean && node scripts/rmrf.mjs .turbo",
 
-    "// tarefas de raiz": "Implementacoes de `//#lint`, `//#lint:docs` e `//#test` — o turbo as chama por este nome exato, entao elas nao podem ser wrappers do proprio turbo. Use `pnpm verify`, que as roda na ordem certa.",
+    "// tarefas de raiz": "Implementacoes de `//#lint`, `//#lint:docs`, `//#lint:comments` e `//#test` — o turbo as chama por este nome exato, entao elas nao podem ser wrappers do proprio turbo. Use `pnpm verify`, que as roda na ordem certa.",
     "lint": "eslint .",
     "lint:docs": "node scripts/check-docs.mjs",
+    "lint:comments": "node scripts/check-comments.mjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

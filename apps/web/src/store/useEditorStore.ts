@@ -47,207 +47,59 @@ import {
 } from '@vislow/config-schema';
 import { loadProject, saveProjectDebounced } from '@/lib/persistence';
 
-/**
- * Estado do editor de composicao.
- *
- * Uma unica spec, uma unica selecao. Toda escrita passa por `commit`, que
- * revalida e persiste (RN-03) — nao existe caminho que altere a arvore sem
- * revalidar, e e isso que garante que o botao de export so fica ativo com uma
- * spec que a API aceitaria.
- */
-
+/** Estado do editor. Toda escrita passa por `commit`, que revalida e persiste (RN-03). */
 export interface EditorState {
   spec: VisualSpec;
   issues: ValidationIssue[];
-  /**
-   * Os nos selecionados, em ordem de arvore. Vazio quer dizer "nada
-   * selecionado".
-   *
-   * VAZIO E ESTADO DE PRIMEIRA CLASSE, nao ausencia de dado: clicar no vazio da
-   * prancheta limpa a selecao como em qualquer editor de desenho, e ai o painel
-   * da direita fala do PROJETO.
-   *
-   * UMA LISTA, e nao um id, desde a multi-selecao. Um `selectedId` a parte seria
-   * a segunda descricao de "o que esta selecionado" e a primeira a divergir —
-   * quem quer o caso de um no so le `selectSelectedId`, que DERIVA daqui.
-   *
-   * A INVARIANTE: com mais de um elemento, todos sao IRMAOS. Um no sozinho pode
-   * ser qualquer no da arvore (a arvore de composicao seleciona em qualquer
-   * profundidade), mas `rect` e percentual DO PAI IMEDIATO — dois nos de pais
-   * diferentes vivem em espacos de coordenadas diferentes, e arrastar os dois
-   * pelo mesmo delta os separaria. Quem cuida disso e `resolveSelection`.
-   *
-   * Limpar SEMPRE usa `NO_SELECTION`: o zustand v5 compara por `Object.is`, e um
-   * `[]` literal novo a cada limpeza re-renderiza todo assinante sem ter nada
-   * novo para desenhar.
-   */
+  /** Ordem de arvore, nao de clique. Com mais de um, todos sao IRMAOS — `rect` e % do pai. */
   selectedIds: readonly string[];
-  /** Falso ate a hidratacao do localStorage terminar (evita mismatch de SSR). */
   hydrated: boolean;
 
-  /**
-   * Tamanho de cada container que posiciona, em pixel DA PRANCHETA — ja
-   * dividido pelo zoom, entao independente da camera.
-   *
-   * NAO E DA SPEC, e por isso vive fora dela: e medida da tela, muda ao
-   * redimensionar a janela e nao descreve o projeto. Escrever isto pelo `commit`
-   * revalidaria a spec inteira e agendaria um save a cada pixel de resize.
-   *
-   * Existe porque o painel fala PIXEL e a spec guarda PERCENTUAL, e a conversao
-   * precisa do tamanho do pai. Nem sempre da para deduzi-lo da prancheta: um
-   * container `canvas` dentro de um `stack` tem o tamanho decidido pelo flex.
-   * Medir cobre os dois casos com um mecanismo so.
-   */
+  /** Medida de tela, em px da prancheta. Fora da spec de proposito: nao descreve o projeto. */
   containerSizes: Record<string, { width: number; height: number }>;
 
-  /**
-   * Quando o ultimo `.pbiviz` saiu desta sessao, em epoch — ou `null` se nenhum
-   * saiu ainda.
-   *
-   * FORA da spec, como o `containerSizes`: nao descreve o visual e nao pode
-   * empilhar um passo de desfazer nem disparar `validateSpec`.
-   *
-   * E DA SESSAO, nao persistido, de proposito. Um "exportado as 14:32" lido do
-   * `localStorage` no dia seguinte responde a pergunta errada — a pergunta e
-   * "este arquivo aqui na minha pasta veio da tela que estou vendo AGORA?" —, e
-   * responde com confianca. E exatamente o modo de errar do achado 40, que ja
-   * custou uma sessao inteira de diagnostico.
-   */
+  /** Da sessao, nao persistido — achado 40, ver docs/history.md. */
   lastExportedAt: number | null;
-  /** Chamado pela camada de manipulacao. Ignora medida que nao mudou. */
   reportContainerSize: (id: string, size: { width: number; height: number }) => void;
 
-  /**
-   * Historico. `past` cresce a cada edicao; `future` so tem conteudo depois de
-   * um desfazer, e e zerado por qualquer edicao nova — o mesmo contrato de
-   * qualquer editor.
-   *
-   * Guarda a SPEC INTEIRA por passo, e nao um diff. A spec de um projeto e
-   * pequena (a tabela de exemplo tem teto de 10x50) e as operacoes de arvore ja
-   * preservam por referencia os ramos que nao mudaram, entao dois passos
-   * consecutivos compartilham quase tudo. Um sistema de diff aqui seria uma
-   * segunda descricao de "o que uma edicao faz", paralela as operacoes de
-   * `tree.ts` e a primeira a divergir delas.
-   */
   past: VisualSpec[];
   future: VisualSpec[];
   undo: () => void;
   redo: () => void;
 
-  /**
-   * Abre e fecha um gesto contínuo — um arrasto no canvas, um scrubbing no
-   * painel.
-   *
-   * Sem isto, um unico arrasto empilharia DUZENTOS passos de desfazer, um por
-   * evento de ponteiro, e `Ctrl+Z` andaria um pixel de cada vez. Entre `begin` e
-   * `end` a escrita e TRANSITORIA: aplica na tela, mas nao empilha historico,
-   * nao revalida a spec inteira e nao agenda gravacao — que era o custo que
-   * cada `pointermove` pagava desde que o canvas existe.
-   */
+  /** Um arrasto e UM passo de desfazer. Entre begin/end a escrita e transitoria. */
   beginGesture: () => void;
   endGesture: () => void;
 
   hydrate: () => void;
 
-  /** Seleciona UM no, trocando o que houvesse. `null` limpa. Id inexistente e ignorado. */
   select: (id: string | null) => void;
-  /**
-   * Poe ou tira um no da selecao — o Shift+clique.
-   *
-   * Alternar para DENTRO exige irmandade: um no de outro pai SUBSTITUI a selecao
-   * em vez de se somar a ela. Recusar em silencio pareceria defeito, e somar
-   * quebraria a invariante de `selectedIds`.
-   */
   toggleSelected: (id: string) => void;
-  /** Troca a selecao inteira. Filtra ids inexistentes e impoe a irmandade. */
   setSelection: (ids: readonly string[]) => void;
-  /** Seleciona todos os irmaos do nivel entrado — o Ctrl/Cmd+A. */
   selectSiblings: () => void;
-  /** Adiciona um no relativo a selecao e passa a selecionar o novo. */
   addNode: (kind: NodeKind) => void;
-  /**
-   * Cria um no NUMA CAIXA ESCOLHIDA, direto na raiz.
-   *
-   * O caminho do arrastar-da-paleta e do desenhar-retangulo. Distinto de
-   * `addNode`, que decide o lugar pela selecao e da ao no uma caixa automatica
-   * em cascata: aqui quem decidiu o lugar foi o ponteiro, e ignorar isso para
-   * soltar o componente noutro canto seria desfazer o gesto que o usuario
-   * acabou de fazer.
-   */
   addNodeAt: (kind: NodeKind, rect: NodeRect) => void;
 
-  /**
-   * O tipo que a paleta esta oferecendo: sendo arrastado, ou armado para
-   * desenhar. `null` quando nao ha nenhum.
-   *
-   * Vive no store porque a paleta e a prancheta sao painteis IRMAOS — o gesto
-   * comeca num e termina no outro, e nao ha ancestral comum abaixo da pagina.
-   */
   paletteKind: NodeKind | null;
   armPalette: (kind: NodeKind | null) => void;
 
-  /**
-   * Em qual container o ponteiro esta trabalhando. `null` quer dizer a raiz.
-   *
-   * Ate 2026-08-04 um componente dentro de um container ANINHADO so podia ser
-   * selecionado pela arvore: a camada de manipulacao so aparecia para os filhos
-   * diretos de cada canvas, e todas as camadas ficavam ativas ao mesmo tempo —
-   * clicar num container pegava o filho dele, e nunca o container.
-   *
-   * Agora vale um nivel de cada vez, como em qualquer editor de desenho: um
-   * clique pega o container, duplo clique ENTRA nele, e Esc sobe. Assim o
-   * container tambem passa a ser selecionavel no canvas, e nao so na arvore.
-   */
   enteredId: string | null;
   enterContainer: (id: string | null) => void;
-  /** Sobe um nivel. Devolve `false` quando ja estava na raiz. */
   exitContainer: () => boolean;
   removeSelected: () => void;
-  /**
-   * Copia cada no como irmao logo depois dele, e seleciona as copias. Sem
-   * `ids`, duplica a selecao. Devolve os ids das copias — e o que permite ao
-   * Alt+arrastar continuar o gesto sobre ELAS em vez de sobre os originais.
-   *
-   * `offset` desloca as copias para que nao sumam atras dos originais; o
-   * Alt+arrastar desliga, porque ali quem afasta as duas e o proprio ponteiro.
-   */
   duplicateNode: (
     ids?: readonly string[] | null,
     options?: { offset?: boolean },
   ) => readonly string[];
-  /** Reordena entre irmaos. `delta` e -1 (sobe) ou +1 (desce). */
   moveSelected: (delta: number) => void;
   reparent: (id: string, parentId: string, index?: number) => void;
   setProp: (id: string, key: string, value: unknown) => void;
-  /** Move ou redimensiona dentro de um pai que posiciona. Prende na borda. */
   setRect: (id: string, rect: NodeRect) => void;
-  /**
-   * Move VARIOS de uma vez — o arrasto de grupo.
-   *
-   * Existe por custo: N chamadas a `setRect` por evento de ponteiro sao N
-   * caminhadas na arvore por quadro, e um `commit` cada. Ver `setNodeRects`.
-   */
   setRects: (entries: readonly { id: string; rect: NodeRect }[]) => void;
 
-  /**
-   * Apelido do no — o titulo do card no painel de formatacao do visual gerado.
-   * String vazia remove, e o titulo volta a ser o rotulo do descritor.
-   */
   setNodeName: (id: string, name: string) => void;
-  /**
-   * Publica (ou despublica) um campo no painel do visual gerado.
-   *
-   * Delega para `setFieldExposed`, que e puro e testado sem React: e la que
-   * moram a ordem do descritor e o batismo automatico do no na primeira
-   * publicacao. Aqui so passa pelo `commit`, como toda edicao de arvore.
-   */
   setFieldExposed: (id: string, key: string, exposed: boolean) => void;
 
-  /**
-   * A tabela de exemplo. Cada coluna e, ao mesmo tempo, um campo do visual —
-   * nao ha duas listas. Toda operacao delega para `table.ts`, que e puro e
-   * testado sem React; aqui so passa pelo `commit`.
-   */
   addColumn: (label: string, type: ColumnType) => void;
   setColumnLabel: (name: string, label: string) => void;
   setColumnType: (name: string, type: ColumnType) => void;
@@ -258,7 +110,6 @@ export interface EditorState {
   setCell: (row: number, column: number, value: CellValue) => void;
 
   rename: (name: string) => void;
-  /** Tamanho da prancheta do editor, em px. Prende na faixa valida. */
   setArtboard: (size: Artboard) => void;
   newProject: (name: string) => void;
   importSpec: (raw: unknown) => { ok: true } | { ok: false; issues: ValidationIssue[] };
@@ -272,31 +123,12 @@ function revalidate(spec: VisualSpec): ValidationIssue[] {
   return result.kind === 'invalid' ? result.issues : [];
 }
 
-/** Teto do historico. Cinquenta passos cobrem qualquer sessao de composicao. */
 const HISTORY_LIMIT = 50;
 
-/**
- * A selecao vazia, sempre o MESMO array.
- *
- * O zustand v5 compara por `Object.is`: um `[]` literal a cada limpeza e um
- * objeto novo, entao todo componente assinado em `selectedIds` re-renderizaria
- * a cada clique no vazio sem ter nada novo para desenhar — e um `useEffect` que
- * dependesse dele entraria em laco. Mesma razao pela qual `reportContainerSize`
- * confere a medida antes de gravar.
- */
+/** Sempre o MESMO array: o zustand v5 compara por `Object.is` e um `[]` novo re-renderiza. */
 const NO_SELECTION: readonly string[] = [];
 
-/**
- * Impoe as duas regras de `selectedIds`: existir na arvore, e ser irmao.
- *
- * Devolve na ORDEM DA ARVORE — a ordem de desenho —, e nao na ordem em que o
- * usuario clicou: e ela que o painel lista, que o `duplicateNode` usa para
- * inserir e que a arvore de composicao destaca, e a ordem de clique produziria
- * uma lista diferente da que esta na tela.
- *
- * Um no SOZINHO escapa da irmandade de proposito: a arvore de composicao
- * seleciona em qualquer profundidade, e sempre selecionou.
- */
+/** Impoe as regras de `selectedIds`. Um no sozinho escapa da irmandade: a arvore seleciona em qualquer nivel. */
 function resolveSelection(root: SpecNode, ids: readonly string[]): readonly string[] {
   const present = ids.filter((id) => findNode(root, id));
   const first = present[0];
@@ -304,8 +136,6 @@ function resolveSelection(root: SpecNode, ids: readonly string[]): readonly stri
   if (present.length === 1) return present;
 
   const parent = parentOf(root, first);
-  // A raiz nao tem irmaos: selecionar a raiz com mais alguem nao e
-  // representavel, e quem ganha e quem foi apontado primeiro.
   if (!parent) return [first];
 
   const wanted = new Set(present);
@@ -313,26 +143,9 @@ function resolveSelection(root: SpecNode, ids: readonly string[]): readonly stri
 }
 
 export const useEditorStore = create<EditorState>((set, get) => {
-  /**
-   * A spec de ANTES do gesto em andamento, ou `null` fora de um gesto.
-   *
-   * Em fecho lexico, e nao no estado: e escrituracao do historico, nao algo que
-   * a interface leia. No estado, todo componente assinado no store re-renderiza
-   * no `pointerdown` sem ter nada novo para desenhar.
-   */
   let gestureBase: VisualSpec | null = null;
 
-  /**
-   * Ponto unico de escrita: aplica, revalida, empilha e persiste.
-   *
-   * `selectedIds` distingue `undefined` de lista: o primeiro quer dizer "nao
-   * mexa na selecao", uma lista (inclusive `NO_SELECTION`) quer dizer "troque
-   * por esta". Colapsar os dois faria toda edicao de propriedade desselecionar o
-   * no que estava sendo editado.
-   *
-   * Dentro de um gesto a escrita e TRANSITORIA: so a spec muda. O historico, a
-   * revalidacao e a gravacao acontecem uma vez, no `endGesture`.
-   */
+  /** `selectedIds` undefined = nao mexe na selecao; lista = troca. Colapsar os dois desselecionaria ao editar. */
   const commit = (spec: VisualSpec, selectedIds?: readonly string[]): void => {
     const selection = selectedIds === undefined ? {} : { selectedIds };
 
@@ -345,23 +158,13 @@ export const useEditorStore = create<EditorState>((set, get) => {
     set({
       spec,
       issues: revalidate(spec),
-      // O teto corta pelo COMECO: o passo mais antigo e o que menos falta.
       past: [...past, previous].slice(-HISTORY_LIMIT),
-      // Editar depois de desfazer abandona o ramo refeito — o contrato de
-      // qualquer editor, e o unico que nao exige explicar uma arvore ao usuario.
       future: [],
       ...selection,
     });
     saveProjectDebounced(spec);
   };
 
-  /**
-   * Troca a spec sem empilhar historico — o caminho do desfazer e do refazer.
-   *
-   * A selecao e conferida contra a arvore de destino: desfazer a criacao de um
-   * no deixaria a selecao apontando para algo que ja nao existe, e o painel de
-   * propriedades passaria a editar um fantasma.
-   */
   const restore = (spec: VisualSpec, past: VisualSpec[], future: VisualSpec[]): void => {
     const { selectedIds } = get();
     set({
@@ -369,26 +172,16 @@ export const useEditorStore = create<EditorState>((set, get) => {
       issues: revalidate(spec),
       past,
       future,
-      // Filtra contra a arvore de DESTINO, e nao a de origem: desfazer a criacao
-      // de tres nos deixaria os tres na selecao, apontando para nada.
       selectedIds: resolveSelection(spec.root, selectedIds),
     });
     saveProjectDebounced(spec);
   };
 
-  /** Aplica uma edicao de arvore. Operacao rejeitada (null) e ignorada. */
   const editTree = (next: SpecNode | null, selectedIds?: readonly string[]): void => {
     if (!next) return;
     commit({ ...get().spec, root: next }, selectedIds);
   };
 
-  /**
-   * Aplica uma edicao de tabela. Mesma convencao do `editTree`: `null` e
-   * operacao ilegal (teto atingido, ultima coluna, celula fora da grade) e nao
-   * mexe em nada. Note que a spec resultante pode ser INVALIDA de proposito —
-   * apagar uma coluna ligada deixa o no pendente —, e por isso ela passa pelo
-   * `commit`, que revalida e acende o painel.
-   */
   const editTable = (next: VisualSpec | null): void => {
     if (!next) return;
     commit(next);
@@ -399,9 +192,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
   return {
     spec: initial,
     issues: revalidate(initial),
-    // Projeto abre sem selecao, e nao com a raiz: o painel da direita comeca
-    // falando do projeto — nome e prancheta —, que e a primeira decisao de quem
-    // esta comecando a compor.
     selectedIds: NO_SELECTION,
     hydrated: false,
     containerSizes: {},
@@ -412,9 +202,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
     enteredId: null,
 
     beginGesture: () => {
-      // Ja dentro de um gesto: nao troca a base. Um `pointerdown` que chega sem
-      // o `pointerup` do anterior — captura perdida, botao do meio — nao pode
-      // apagar o ponto de retorno do gesto que ainda esta em curso.
       gestureBase ??= get().spec;
     },
 
@@ -424,9 +211,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
       if (!base) return;
 
       const { spec, past } = get();
-      // Gesto que nao mudou nada — um clique que so selecionou — nao empilha:
-      // senao `Ctrl+Z` gastaria um passo sem desfazer coisa alguma, e o usuario
-      // apertaria de novo achando que o atalho falhou.
       if (base === spec) {
         set({ issues: revalidate(spec) });
         return;
@@ -456,9 +240,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     reportContainerSize: (id, size) => {
       const current = get().containerSizes[id];
-      // A guarda de igualdade nao e otimizacao: o `ResizeObserver` dispara
-      // varias vezes com a MESMA medida, e um objeto novo a cada vez faz o
-      // zustand v5 (que compara por `Object.is`) re-renderizar em laco.
+      // Nao e otimizacao: o `ResizeObserver` repete a medida e o `Object.is` re-renderizaria em laco.
       if (current?.width === size.width && current.height === size.height) return;
       set({ containerSizes: { ...get().containerSizes, [id]: size } });
     },
@@ -475,9 +257,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
         issues: revalidate(stored),
         selectedIds: NO_SELECTION,
         hydrated: true,
-        // O historico comeca vazio: nao ha "antes" de abrir o editor, e um
-        // `Ctrl+Z` que voltasse para a spec inicial em branco apagaria o
-        // projeto que o usuario acabou de reabrir.
         past: [],
         future: [],
         enteredId: null,
@@ -502,9 +281,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
         return;
       }
 
-      // No de OUTRO PAI substitui em vez de somar. Somar quebraria a invariante
-      // (os dois `rect` sao percentuais de pais diferentes); recusar em silencio
-      // seria indistinguivel de um clique que nao registrou.
       const anchor = selectedIds[0];
       const sameParent =
         anchor !== undefined && parentOf(spec.root, anchor)?.id === parentOf(spec.root, id)?.id;
@@ -525,24 +301,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
       set({ selectedIds: ids.length === 0 ? NO_SELECTION : ids });
     },
 
-    /**
-     * Onde o no novo entra: DENTRO da selecao quando ela aceita filhos, senao
-     * logo DEPOIS dela, como irmao. E a regra que dispensa o usuario de pensar
-     * onde clicar antes — o resultado e sempre o que ele veria num editor de
-     * documento.
-     */
     addNode: (kind) => {
       const { spec, selectedIds } = get();
-      // Sem selecao, o no novo entra na raiz. E a mesma regra de sempre — dentro
-      // do selecionado quando ele aceita filhos — aplicada ao caso em que o
-      // "selecionado" e a prancheta inteira. Com VARIOS, o primeiro em ordem de
-      // arvore decide: e o de cima na lista que o usuario esta vendo.
       const anchor = selectedIds[0];
       const selected = (anchor === undefined ? null : findNode(spec.root, anchor)) ?? spec.root;
-      // Papel ligado no palpite obvio: um KPI que nasce sem medida nasce no
-      // estado vazio, e uma tela vazia parece defeito. A escolha e reversivel no
-      // painel; sem coluna do tipo certo o campo fica pendente, que ai e a
-      // informacao correta.
       const node = createNode(kind, suggestRoleBindings(kind, spec.data.columns));
 
       if (acceptsChildren(selected)) {
@@ -560,9 +322,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const { spec } = get();
       const node = createNode(kind, suggestRoleBindings(kind, spec.data.columns));
 
-      // Raiz que EMPILHA nao tem onde honrar a caixa: quem decide o tamanho ali
-      // e a cadeia de flex. Cair no caminho comum e melhor que gravar um `rect`
-      // que nao desenha nada — o componente aparece, so que empilhado.
       if (!positionsChildren(spec.root)) {
         editTree(insertChild(spec.root, spec.root.id, node), [node.id]);
         return;
@@ -578,15 +337,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
 
     enterContainer: (id) => {
       const { spec } = get();
-      // So um container que POSICIONA tem nivel para entrar: num que empilha nao
-      // ha geometria de onde derivar a camada, e a objecao da ADR-14 continua.
       if (id !== null) {
         const node = findNode(spec.root, id);
         if (!node || !positionsChildren(node)) return;
       }
-      // A selecao vai junto: entrar num container e dizer "e aqui dentro que eu
-      // estou", e manter selecionado um irmao de fora deixaria as setas do
-      // teclado mexendo num no que ja nao esta sob o ponteiro.
       set({ enteredId: id, selectedIds: NO_SELECTION });
     },
 
@@ -595,8 +349,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
       if (enteredId === null || enteredId === spec.root.id) return false;
 
       const parent = parentOf(spec.root, enteredId);
-      // Sobe SELECIONANDO o container de onde saiu — e o no que o usuario
-      // acabou de terminar de editar, e o proximo gesto quase sempre e sobre ele.
       set({
         enteredId: parent && parent.id !== spec.root.id ? parent.id : null,
         selectedIds: [enteredId],
@@ -609,10 +361,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const anchor = selectedIds[0];
       if (anchor === undefined) return;
 
-      // TUDO OU NADA: `removeNode` recusa a raiz, e uma remocao parcial deixaria
-      // a arvore num estado que o usuario nao pediu e o `Ctrl+Z` desfaria por
-      // inteiro mesmo assim.
-      // Calculado ANTES da remocao: depois os nos ja nao tem irmaos a consultar.
       const survivor = selectionAfterRemoval(spec.root, selectedIds);
 
       let root: SpecNode | null = spec.root;
@@ -622,14 +370,6 @@ export const useEditorStore = create<EditorState>((set, get) => {
       editTree(root, [survivor]);
     },
 
-    /**
-     * Duplica com DESLOCAMENTO por padrao, nao sobreposto.
-     *
-     * Copia exatamente em cima do original parece um no so — o usuario arrasta o
-     * de cima varias vezes sem entender por que o de baixo nunca aparece. E o
-     * mesmo motivo pelo qual `droppedRect` cai em cascata. A excecao e o
-     * Alt+arrastar, onde o ponteiro ja esta afastando as duas.
-     */
     duplicateNode: (ids, options) => {
       const { spec, selectedIds } = get();
       const targets = ids ?? selectedIds;
@@ -638,12 +378,8 @@ export const useEditorStore = create<EditorState>((set, get) => {
       let root: SpecNode | null = spec.root;
       const copies: string[] = [];
 
-      // DE TRAS PARA A FRENTE na ordem dos irmaos: cada copia entra logo depois
-      // do original, e inserir do primeiro para o ultimo empurraria o indice dos
-      // que ainda faltam — a segunda copia pousaria uma casa adiante do lugar.
+      // De tras para a frente: inserir do primeiro empurraria o indice dos que ainda faltam.
       for (const target of [...targets].reverse()) {
-        // A raiz nao tem pai onde inserir a copia, e uma segunda raiz nao e
-        // representavel.
         if (!root || target === spec.root.id) return NO_SELECTION;
 
         const node = findNode(root, target);
@@ -669,10 +405,7 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const { spec, selectedIds } = get();
       if (selectedIds.length === 0) return;
 
-      // A ORDEM depende da direcao: subindo, o de cima primeiro; descendo, o de
-      // baixo. Na ordem errada, o primeiro a andar ocupa o lugar para onde o
-      // seguinte ia — e dois nos vizinhos trocariam de posicao entre si em vez
-      // de andarem juntos.
+      // Subindo, o de cima primeiro; descendo, o de baixo. Na ordem errada dois vizinhos trocam entre si.
       const order = delta < 0 ? selectedIds : [...selectedIds].reverse();
 
       let root: SpecNode | null = spec.root;
@@ -708,20 +441,10 @@ export const useEditorStore = create<EditorState>((set, get) => {
       editTable(addColumn(get().spec, label, type));
     },
 
-    /**
-     * So o rotulo muda. O `name` e estavel por desenho (ver `createColumn`): e
-     * ele que aparece no `capabilities.json` e amarra as referencias da arvore.
-     */
     setColumnLabel: (name, label) => {
       editTable(setColumnLabel(get().spec, name, label));
     },
 
-    /**
-     * Trocar tipo ou papel pode DESLIGAR nos — `table.ts` cuida disso no mesmo
-     * passo. O no volta a pendente, o export trava, e o painel mostra onde. E
-     * melhor que a alternativa: uma spec que reprova inteira por um erro que
-     * fala do no, e nao da coluna em que o usuario acabou de clicar.
-     */
     setColumnType: (name, type) => {
       editTable(setColumnType(get().spec, name, type));
     },
@@ -751,41 +474,19 @@ export const useEditorStore = create<EditorState>((set, get) => {
       commit({ ...spec, project: { ...spec.project, name } });
     },
 
-    /**
-     * A prancheta e do PROJETO, nao preferencia da maquina: quem exporta o
-     * `.vislow.json` e abre noutro lugar continua desenhando no mesmo alvo. Ela
-     * nao chega ao pacote — o `.pbiviz` segue preenchendo a moldura que o autor
-     * do relatorio desenhar.
-     */
     setArtboard: (size) => {
       const { spec } = get();
       commit({ ...spec, project: { ...spec.project, artboard: clampArtboard(size) } });
     },
 
     newProject: (name) => {
-      // Projeto novo => identidade nova (RN-01). O id nasce aqui, e nao no
-      // export, e e o que faz reexportar atualizar em vez de duplicar.
       const spec = createEmptySpec(name);
       commit(spec, NO_SELECTION);
-      // Projeto novo zera o historico: desfazer nao pode ressuscitar o anterior,
-      // que ja tem outra identidade (RN-01) e nao e mais o projeto aberto. E o
-      // nivel volta a raiz: o container em que se estava nao existe mais.
       set({ past: [], future: [], enteredId: null });
     },
 
-    /**
-     * Importa um `.vislow.json`.
-     *
-     * VERSAO INCOMPATIVEL E DITA POR EXTENSO, e nao empacotada como "arquivo
-     * invalido". Ate a spec 4.0.0 havia uma cadeia de migracao aqui e um arquivo
-     * antigo era convertido; na 5.0.0 ela foi apagada junto com os tipos de no
-     * removidos. Sem esta mensagem, quem tentasse abrir um arquivo de dois meses
-     * atras receberia uma lista de erros de schema sobre `kind` desconhecido — e
-     * nao teria como saber que o problema e a idade do arquivo.
-     */
+    /** Versao incompativel e dita por extenso: nao ha migracao 4->5, ver docs/history.md. */
     importSpec: (raw) => {
-      // O `in` ja estreita `raw` para um objeto com a chave: o compilador sabe
-      // disso, e uma assercao aqui seria ruido que o lint reprova.
       const version =
         typeof raw === 'object' && raw !== null && 'schemaVersion' in raw
           ? raw.schemaVersion
@@ -807,16 +508,12 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const result = validateSpec(raw);
       if (result.kind === 'invalid') return { ok: false, issues: result.issues };
       commit(result.spec, NO_SELECTION);
-      // Mesma razao do projeto novo: o que foi importado substitui tudo.
       set({ past: [], future: [], enteredId: null });
       return { ok: true };
     },
 
     markExported: () => {
-      // Fora do `commit`: e registro de sessao, nao edicao do projeto.
       set({ lastExportedAt: Date.now() });
-      // RF-10: reexportar o MESMO projeto reusa o GUID e so incrementa a versao,
-      // para que o import no Power BI atualize o visual em vez de duplica-lo.
       const { spec } = get();
       commit({
         ...spec,
@@ -829,39 +526,16 @@ export const useEditorStore = create<EditorState>((set, get) => {
   };
 });
 
-/** O export so e permitido com spec valida (RN-03). */
 export const selectCanExport = (s: EditorState): boolean =>
   s.issues.length === 0 && s.spec.project.name.trim().length >= 3;
 
-/**
- * No selecionado, ou `null` quando nao ha selecao (ou ela ficou orfa).
- *
- * NAO cai mais na raiz. Cair na raiz apagava justamente a distincao que o painel
- * precisa: "a raiz esta selecionada" e "nada esta selecionado" sao telas
- * diferentes, e o segundo e o que o clique no vazio produz.
- *
- * Devolve uma REFERENCIA vinda do estado, nunca um objeto novo — um seletor que
- * constroi valor a cada chamada faz o zustand v5 comparar por `Object.is`, achar
- * que mudou e re-renderizar em loop. Derivacoes que criam objeto vivem em
- * `lib/issues.ts` e sao memoizadas no componente.
- */
+/** Devolve REFERENCIA do estado, nunca objeto novo — senao o `Object.is` do zustand v5 re-renderiza em loop. */
 export const selectSelectedNode = (s: EditorState): SpecNode | null => {
   const id = selectSelectedId(s);
   return id === null ? null : findNode(s.spec.root, id);
 };
 
-/**
- * O no selecionado quando ha UM SO, e `null` em qualquer outro caso.
- *
- * `null` com varios selecionados nao e perda de informacao: quem edita um no —
- * o painel de propriedades, as alcas de redimensionar — nao tem o que fazer com
- * tres, e a alternativa (escolher um deles como "o principal") faria o painel
- * editar em silencio um dos tres enquanto os outros dois parecem selecionados.
- *
- * Devolve PRIMITIVO, entao e seguro no `Object.is` do zustand v5.
- */
 export const selectSelectedId = (s: EditorState): string | null =>
   s.selectedIds.length === 1 ? (s.selectedIds[0] ?? null) : null;
 
-/** Quantos nos estao selecionados. Primitivo, pelo mesmo motivo. */
 export const selectSelectionCount = (s: EditorState): number => s.selectedIds.length;
