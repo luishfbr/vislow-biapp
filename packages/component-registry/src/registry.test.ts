@@ -7,6 +7,7 @@ import {
   nextNodeId,
   suggestRoleBindings,
 } from './factory.js';
+import { labelForValue } from './labels.js';
 import { defaultPropsFor, NODE_DESCRIPTORS, NODE_KINDS, roleFieldsOf } from './registry.js';
 import { assertValidSpec, validateSpec, walk } from './schema.js';
 import {
@@ -148,6 +149,31 @@ describe('registro de componentes', () => {
         expect(term, `${kind}: "${term}" deve ser minusculo e sem espaco nas pontas`).toBe(
           term.trim().toLowerCase(),
         );
+      }
+    }
+  });
+
+  it('todo valor de select tem rotulo escrito para humano', () => {
+    /*
+     * `labelForValue` cai no PROPRIO VALOR quando nao ha entrada no mapa, e essa
+     * degradacao e silenciosa nos dois paineis: o do editor mostraria
+     * "goalPercent" e o do Power BI colocaria a mesma string no dropdown —
+     * dentro do relatorio de outra pessoa, que e onde nao se conserta.
+     *
+     * O mapa e PLANO por string de valor, entao ele tambem e o lugar onde dois
+     * campos diferentes colidem: um `select` que reusasse `percent` herdaria o
+     * rotulo "So o percentual" do `deltaMode` do KPI. E por isso que o Medidor
+     * usa `goalPercent` e `goalValue`, e nao `percent` e `target`.
+     */
+    for (const kind of NODE_KINDS) {
+      for (const field of NODE_DESCRIPTORS[kind].fields) {
+        if (field.kind !== 'select') continue;
+        for (const option of field.options) {
+          expect(
+            labelForValue(option),
+            `${kind}.${field.key}: o valor "${option}" nao tem rotulo em labels.ts`,
+          ).not.toBe(option);
+        }
       }
     }
   });

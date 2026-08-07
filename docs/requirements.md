@@ -167,8 +167,9 @@ está documentada no gate (`compiledVisual.e2e.test.ts`).
 
 **RF-18 `[P0]` — Cross-filter** — clicar numa marca filtra os demais visuais; `Ctrl`+clique acumula; clicar fora
 limpa; não selecionados esmaecem; o estado sobrevive a atualizações vindas de outros visuais.
-*Pendente.* Só coluna vinda de `categories` gera selection id, e o KPI é o único nó que lê dados — um card de
-número único não tem marca para clicar. Volta com o primeiro nó de agrupamento.
+**ENTREGUE** na spec 5.3.0, com a Lista de Ranking — o primeiro nó a declarar `roleKind: 'grouping'`, que é o
+único fato de que a cadeia inteira dependia. O gate executa o `content.js` minificado e afirma que acionar uma
+linha chama `selectionManager.select` com a identidade **daquela** categoria.
 
 **RF-19 `[P0]` — Tooltip nativo** do Power BI, com categoria e valor formatado. **ENTREGUE** na spec 5.2.0, no
 ponteiro e no foco; sem identidade, o balão mostra só o que o visual dá.
@@ -181,14 +182,28 @@ um gráfico vazio, não um erro.
 **RF-22 `[P0]` — Responsividade** — reage a resize sem recriar a árvore React; rótulos degradam graciosamente.
 
 **RF-23 `[P1]` — Navegação por teclado** — `Tab` entra, setas navegam, `Enter`/`Espaço` seleciona, foco visível.
-**PARCIAL na spec 5.2.0:** o KPI é alcançável por `Tab`, rotulado e com foco visível. Setas e acionamento
-esperam a RF-18 — sem identidade não há o que `Enter` selecione, e um `button` prometeria ação inexistente.
+**ENTREGUE na spec 5.3.0:** a linha da Lista é `role="button"` com `aria-pressed`, e `Enter`/`Espaço` percorrem
+a mesma via do clique. Nó sem papel de agrupamento — KPI e Medidor — continua alcançável, rotulado e com foco
+visível, e continua sendo `role="group"`: sem identidade não há o que `Enter` selecione, e um `button`
+prometeria ação inexistente.
 
 **RF-24 `[P1]` — Menu de contexto** nativo do Power BI no botão direito. **ENTREGUE**: o ouvinte está no
 elemento do visual, então vale para qualquer composição, inclusive uma só de texto.
 
 **RF-25 `[P0]` — Aviso de truncamento** quando o `dataReductionAlgorithm` cortar o conjunto (RN-10).
-*Pendente*, pela mesma razão da RF-18: `truncationOf` só olha coluna de categoria.
+**ENTREGUE** na spec 5.3.0, pela mesma razão da RF-18: com coluna de categoria no `capabilities.json`,
+`truncationOf` passou a ter o que ler. O gate entrega mais categorias que o corte do host e afirma o aviso.
+
+**RF-29 `[P0]` — Medidor de Meta** — uma medida contra um alvo, em barra linear, com o alvo vindo de outra
+medida **ou** de um número digitado pelo autor (`targetMode`). **ENTREGUE** na spec 5.4.0.
+*Dado* um realizado abaixo do alvo, *então* o fim do trilho **é** a meta e a barra mede a fração dela.
+*Dado* um realizado acima do alvo, *então* a escala se estende até o realizado e a meta vira um **entalhe** —
+um vão da cor do trilho dentro do preenchimento, que em alto contraste é `background` sobre `foreground` e por
+isso contrasta por construção. Barra cheia sem entalhe significaria "meta exata", e a diferença só apareceria
+dentro do Power BI de quem exportou.
+Só medidas: um número único não tem marca para clicar, então o nó é focalizável e não acionável, como o KPI.
+`polarity` separa direção de juízo pela mesma razão da RF-16 — num medidor de custo ou de prazo, ficar abaixo
+do alvo é que é favorável.
 
 **RF-28 `[P0]` — Painel de formatação no visual gerado**
 O autor **publica** os campos que quiser (`exposed` no nó); cada nó publicado vira um card no painel de

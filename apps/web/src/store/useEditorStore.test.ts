@@ -128,12 +128,15 @@ describe('adicionar componentes', () => {
   });
 
   it('a comparacao NAO rouba a coluna do valor', () => {
-    // Com uma medida so, o papel opcional fica em branco. Ligar as duas na mesma
-    // coluna faria o card nascer comparando um numero com ele mesmo — variacao
-    // zero, o unico resultado que nao ensina nada sobre o componente.
+    // Ligar as duas na mesma coluna faria o card nascer comparando um numero com
+    // ele mesmo — variacao zero, o unico resultado que nao ensina nada sobre o
+    // componente. `suggestRoleBindings` marca a coluna ja usada como tomada, e e
+    // por isso que a comparacao cai na SEGUNDA medida, que a spec 5.4.0 trouxe
+    // para a tabela de exemplo.
     store().addNode('kpi');
     const kpi = findByKind(store().spec.root, 'kpi');
-    expect(kpi?.props.compareRole).toBe('');
+    expect(kpi?.props.compareRole).toBe('meta');
+    expect(kpi?.props.compareRole).not.toBe(kpi?.props.valueRole);
   });
 
   it('sem coluna do tipo certo, o campo fica pendente e o export trava', () => {
@@ -271,6 +274,7 @@ describe('tabela de exemplo', () => {
 
   it('operacao ilegal nao mexe em nada — a ultima coluna nao sai', () => {
     store().removeColumn('receita');
+    store().removeColumn('meta');
     const antes = store().spec;
     store().removeColumn('regiao');
     expect(store().spec).toBe(antes);

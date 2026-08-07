@@ -1,7 +1,7 @@
 'use client';
 
 import { NODE_DESCRIPTORS, NODE_KINDS, type NodeKind } from '@vislow/component-registry';
-import { ChartBarBig, Frame, MousePointer2, TrendingUp, Type } from 'lucide-react';
+import { ChartBarBig, Frame, MousePointer2, Target, TrendingUp, Type } from 'lucide-react';
 import { useRef, type ComponentType, type KeyboardEvent } from 'react';
 import { Button } from '@/components/ui/button';
 import { SELECT_SHORTCUT } from '@/lib/shortcuts';
@@ -35,6 +35,10 @@ const ICONS: Record<NodeKind, ComponentType<{ className?: string }>> = {
   // umas com as outras. Uma lista numerada diria "varios itens" e omitiria a
   // unica parte que importa.
   ranking: ChartBarBig,
+  // O ALVO, e nao uma barra: barra ja e o icone da Lista, e as duas ficam lado a
+  // lado na mesma tira. O que distingue este no e ter um alvo declarado — a
+  // barra e so como ele mostra a distancia ate o alvo.
+  gauge: Target,
 };
 
 export function Toolbar() {

@@ -507,6 +507,37 @@ describe('spec compilada vira um .pbiviz que renderiza', () => {
   }, 60_000);
 
   /**
+   * O Medidor de Meta dentro do PACOTE COMPILADO (spec 5.4.0).
+   *
+   * O host entrega 1.084.320 de realizado contra 1.000.000 de meta — ou seja, o
+   * caso em que a meta ficou para tras. E o caso que interessa provar aqui:
+   *
+   *   - a escala se estende ate o VALOR, entao a barra enche por completo;
+   *   - a meta vira um ENTALHE dentro dela, em 1.000.000 / 1.084.320 = 92,2%.
+   *
+   * Uma barra cheia sem entalhe seria indistinguivel de "bateu a meta exata", e
+   * a diferenca so apareceria dentro do Power BI de quem exportou.
+   */
+  it('com DataView, o Medidor enche a barra e marca a meta com o entalhe', async () => {
+    const { html } = await renderCompiled(js, guid, true);
+
+    const barra = /vsl-goal-fill[^>]*style="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(barra, 'a barra do medidor nao chegou ao pacote').toContain('width: 100%');
+
+    const entalhe = /vsl-goal-notch[^>]*style="([^"]*)"/.exec(html)?.[1] ?? '';
+    expect(entalhe, 'a meta ficou para tras e nao virou entalhe').toMatch(/left: 92\.2/);
+    // A cor do entalhe e a do TRILHO, por `hcSurface`: e o que faz a marca
+    // sobreviver ao alto contraste, onde barra e fio receberiam o mesmo
+    // `foreground` do host e a marca sumiria dentro do preenchimento.
+    expect(entalhe).toContain('--vislow-hc-surface');
+
+    // A linha de apoio usa `Intl` com o locale do quadro, e essa metade sai em
+    // pt-BR — ao contrario do numero acima, que passa pelo formatador do host
+    // (ver o achado aberto da RF-17, logo acima).
+    expect(html).toContain('108,4% da meta');
+  }, 60_000);
+
+  /**
    * O `capabilities.json` DE DENTRO DO PACOTE e o que o Power BI le para montar
    * o painel de campos. Se ele nao declarar os papeis que a arvore consome, o
    * usuario nao tem onde arrastar a coluna — e o visual fica eternamente vazio.

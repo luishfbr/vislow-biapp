@@ -23,3 +23,4 @@ export * from './CanvasSlot.js';
 export * from './TextBox.js';
 export * from './KpiCard.js';
 export * from './RankingList.js';
+export * from './GoalGauge.js';
