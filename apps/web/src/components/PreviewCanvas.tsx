@@ -18,6 +18,7 @@ import {
 import { useEditorStore } from '@/store/useEditorStore';
 import { useUiStore } from '@/store/useUiStore';
 import { SpecPreview } from './SpecPreview';
+import { StackHandles } from './StackHandles';
 
 interface Panning {
   pointerId: number;
@@ -70,6 +71,9 @@ export function PreviewCanvas() {
   const selectable = useMemo(() => hasSelectableMarks(spec), [spec]);
 
   const paneRef = useRef<HTMLDivElement>(null);
+  // Estado, e nao `ref`: a alca fantasma precisa RE-RENDERIZAR quando o elemento
+  // da prancheta aparece, e uma `ref` muda sem avisar ninguem.
+  const [artboardEl, setArtboardEl] = useState<HTMLDivElement | null>(null);
   const [pane, setPane] = useState<Pane | null>(null);
   const [viewport, setViewport] = useState<Viewport | null>(null);
   const [spaceHeld, setSpaceHeld] = useState(false);
@@ -405,6 +409,7 @@ export function PreviewCanvas() {
         onPointerCancel={endPointer}
       >
         <div
+          ref={setArtboardEl}
           // `bg-white` LITERAL: esta caixa e a pagina do relatorio do Power BI, nao interface do editor.
           className="absolute left-0 top-0 origin-top-left overflow-hidden bg-white shadow-lg ring-1 ring-black/10"
           style={{
@@ -415,6 +420,10 @@ export function PreviewCanvas() {
           }}
         >
           <SpecPreview spec={spec} edit={edit} simulateSelection={simulateSelection} />
+
+          {/* Filho de container que EMPILHA. Fica na prancheta, e nao dentro do
+              container: a ADR-14 proibe wrapper clicavel na cadeia de flex. */}
+          <StackHandles artboard={artboardEl} scale={scale} />
         </div>
 
         {/* O retangulo em desenho. Fica FORA da prancheta transformada e usa

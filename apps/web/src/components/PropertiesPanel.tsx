@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  CONTAINER_CANVAS,
   NODE_DESCRIPTORS,
   NODE_NAME_MAX_LENGTH,
   artboardOf,
@@ -26,6 +27,7 @@ import {
   TextField,
   ToggleField,
 } from '@/components/controls/Field';
+import { Button } from '@/components/ui/button';
 import { issuesByNode, type NodeIssues } from '@/lib/issues';
 import { selectSelectedNode, useEditorStore } from '@/store/useEditorStore';
 
@@ -323,7 +325,8 @@ export function PropertiesPanel() {
   // posiciona. Num container que empilha, quem manda no tamanho e a cadeia de
   // flex, e oferecer x/y/w/h seria prometer um controle que nao existe.
   const parent = parentOf(spec.root, node.id);
-  const placed = parent && positionsChildren(parent) ? node.rect : undefined;
+  const stacked = parent !== null && !positionsChildren(parent);
+  const placed = parent && !stacked ? node.rect : undefined;
   const rectError = problems?.all.find((issue) => issue.path.endsWith('.rect'))?.message;
 
   // O tamanho do PAI em pixel — e ele que converte o percentual da spec no pixel
@@ -344,6 +347,28 @@ export function PropertiesPanel() {
               setRect(node.id, { ...placed, [axis]: v });
             }}
           />
+        </div>
+      )}
+
+      {/* O caminho de TECLADO da alca fantasma. Ela e decoracao de ponteiro: uma
+          alca focavel converteria o pai e desmontaria a si mesma, deixando o foco
+          em lugar nenhum. Aqui a mesma conversao tem rotulo, foco e um passo de
+          desfazer, e as caixas de x/y/w/h aparecem logo em seguida. */}
+      {stacked && (
+        <div className="mb-2 border-b border-border pb-2">
+          <p className="mb-1.5 text-label leading-relaxed text-muted-foreground">
+            O container empilha os filhos, entao o tamanho vem do fluxo.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              setProp(parent.id, 'placement', CONTAINER_CANVAS);
+            }}
+          >
+            Posicionar livremente
+          </Button>
         </div>
       )}
 

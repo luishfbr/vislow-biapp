@@ -68,6 +68,20 @@ export function parentOf(root: SpecNode, id: string): SpecNode | null {
   return chain.length >= 2 ? (chain[chain.length - 2] ?? null) : null;
 }
 
+/** O caminho ate o no como INDICES de filho — e assim que a alca fantasma o acha no DOM. `null` = fora da arvore. */
+export function indexPath(root: SpecNode, id: string): number[] | null {
+  const chain = ancestryOf(root, id);
+  if (chain.length === 0) return null;
+
+  const path: number[] = [];
+  for (const [step, node] of chain.slice(1).entries()) {
+    const index = (chain[step]?.children ?? []).findIndex((child) => child.id === node.id);
+    if (index < 0) return null;
+    path.push(index);
+  }
+  return path;
+}
+
 export function subtreeIds(node: SpecNode): Set<string> {
   const ids = new Set<string>([node.id]);
   for (const child of node.children ?? []) {

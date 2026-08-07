@@ -86,7 +86,8 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
         structural: true,
         kind: 'select',
         options: [CONTAINER_STACK, CONTAINER_CANVAS],
-        default: CONTAINER_STACK,
+        // Livre por default: empilhado, o filho nao tem caixa e nao redimensiona.
+        default: CONTAINER_CANVAS,
       },
       {
         key: 'direction',

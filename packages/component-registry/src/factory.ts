@@ -197,11 +197,8 @@ export const DEFAULT_TABLE: SampleTable = {
 export function createEmptySpec(name: string): VisualSpec {
   counter = 0;
 
-  // A raiz de um projeto NOVO posiciona livremente; o default do descritor
-  // continua sendo empilhar. A diferenca nao e mais compatibilidade com spec
-  // salva (nao ha migracao na 5.0.0) — e que sao dois usos: a RAIZ e uma
-  // prancheta, onde se desenha; um container solto DENTRO de outro quase sempre
-  // e uma pilha, e nascer canvas obrigaria a posicionar cada filho a mao.
+  // Por extenso, e nao herdado do default: projeto novo declara a prancheta, e
+  // mudar o default depois nao reescreve em silencio quem ja estava desenhando.
   const root = createNode('container');
   root.props.placement = CONTAINER_CANVAS;
 

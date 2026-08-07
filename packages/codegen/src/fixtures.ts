@@ -1,6 +1,7 @@
 import {
   ARTBOARD_MAX,
   CONTAINER_CANVAS,
+  CONTAINER_STACK,
   NODE_KINDS,
   SPEC_VERSION,
   createNode,
@@ -148,11 +149,10 @@ export function specWithColumnType(type: ColumnType): VisualSpec {
   const kpi = createNode('kpi');
   kpi.props.valueRole = 'valor';
 
-  const container = createNode('container');
-  container.children = [kpi];
+  const container = stacked();
 
   return {
-    ...specWith(container),
+    ...specWith(insertChild(container, container.id, kpi) ?? container),
     data: {
       columns: [{ name: 'valor', displayName: 'Valor', kind: 'measure', type }],
       // Uma linha vazia: o schema exige ao menos uma, e `null` e celula valida em
@@ -212,16 +212,23 @@ export function specWithExposure(name = 'Teste de Publicacao'): VisualSpec {
   };
 }
 
-/** Um container com um unico filho do tipo pedido. */
+/**
+ * Um container com um unico filho do tipo pedido.
+ *
+ * EMPILHA por extenso, contra o default do descritor: metade dos testes que a
+ * usam afirma a AUSENCIA do `CanvasSlot`, e num canvas essa ausencia deixaria de
+ * ser sinal. Quem exercita o posicionamento e a `specWithEveryKind`.
+ */
 export function specWithKind(kind: NodeKind): VisualSpec {
-  if (kind === 'container') {
-    const outer = createNode('container');
-    outer.children = [createNode('container')];
-    return specWith(outer);
-  }
+  const outer = stacked();
+  const inner = kind === 'container' ? stacked() : nodeOf(kind);
+  return specWith(insertChild(outer, outer.id, inner) ?? outer);
+}
+
+function stacked(): SpecNode {
   const container = createNode('container');
-  container.children = [nodeOf(kind)];
-  return specWith(container);
+  container.props.placement = CONTAINER_STACK;
+  return container;
 }
 
 export { defaultPropsFor };

@@ -384,6 +384,53 @@ Um clique pega o container, **duplo clique entra**, `Esc` sobe — e sair seleci
 que é o nó que o usuário acabou de terminar de editar. Só dá para entrar em quem **posiciona**: num container
 que empilha não há camada para mostrar depois de entrar, e o usuário ficaria num nível sem nada clicável.
 
+**Selecionar já desce até o nível do nó** (`hostOf`, no store, desde 2026-08-07). Toda escrita de `selectedIds`
+grava o `enteredId` junto: o pai do primeiro id se ele posiciona, `null` se o pai é a raiz, e **o valor atual**
+se o pai empilha — lá não há camada, e mudar de nível não levaria a lugar nenhum. O duplo clique continua
+existindo; o que saiu foi a **exigência** dele. Sem isso a árvore selecionava um neto que a prancheta não
+mostrava, e a única forma de chegar às alças era descer container por container.
+
+**Limpar a seleção não sobe de nível.** O `Esc` é uma cascata de três passos — desarmar paleta, limpar seleção,
+sair do container —, e fazer o segundo arrastar o terceiro colapsaria dois deles num só.
+
+### 3.6.3 A alça fantasma: o filho de um container que empilha
+
+Num `stack` o nó **não tem caixa**: quem decide o tamanho é a cadeia de flex, e a spec não guarda nada. Dar-lhe
+uma caixa é, literalmente, virar `canvas`. Então o `StackHandles` (montado na **prancheta**, em
+`PreviewCanvas`, e não dentro do container — a ADR-14 proíbe o wrapper na cadeia de flex, e `.vsl-stack` nem é
+`relative`) mede o elemento no DOM, desenha a alça, e o **primeiro arrasto converte o pai**. Os irmãos recebem
+a faixa que já ocupavam (`bandRects`), então a tela não pula, e `beginGesture`/`endGesture` fazem conversão e
+redimensionamento caberem em **um** passo de desfazer.
+
+- **Medir aqui não contradiz a ADR-18.** O que ela proíbe é medir para **desenhar durante o gesto**. A medida
+  daqui é pré-conversão e acontece fora do arrasto: assim que o gesto começa o nó tem `rect`, e a matemática
+  volta a ser a do `CanvasOverlay`, em `%` da spec.
+- **O elemento é achado pelos ÍNDICES da spec** (`indexPath` + `elementAt`), porque o preview não marca nó
+  nenhum: `data-node-id` sai do `CanvasOverlay`, e ele só cobre o nível entrado. Isso depende de **cada
+  componente do kit renderizar exatamente um elemento raiz**, e há teste em `SpecPreview.test.tsx` afirmando —
+  um tipo novo que devolvesse fragmento faria a contagem escorregar e a alça apareceria sobre o nó errado, em
+  silêncio.
+- **A camada fica montada durante o gesto** mesmo depois de o pai já posicionar: é a raiz dela que segura a
+  captura do ponteiro, e desmontá-la no meio levaria a captura embora. A partir da conversão quem desenha é o
+  `CanvasOverlay`, com a caixa de verdade.
+- **A marca inteira é decorativa** (`aria-hidden`). O caminho com rótulo e foco é o botão **"Posicionar
+  livremente"** no painel de propriedades: uma alça focável converteria o pai e desmontaria a si mesma,
+  deixando o foco em lugar nenhum.
+- **Ela se cala com ferramenta armada** (`paletteKind !== null`). Ali o gesto é desenhar, e a alça roubaria o
+  ponteiro antes de o retângulo começar.
+- **Desenho: tracejado e ACROMÁTICO** — a voz da régua, não a do documento. Nesta camada `primary` já quer dizer
+  "está na spec": tracejado com `primary` é o bloco de vários, e sólido acromático é a guia de encaixe. A caixa
+  fantasma foi **medida, não declarada**, então ela usa o slate do `Guideline` (com o mesmo halo branco, que é o
+  que a faz sobreviver a fundo do autor) e só vira `primary` no hover da alça — o instante em que passa a
+  existir. O selo `Arrastar torna livre` reusa a pílula do `Readout`: converter mexe nos **irmãos**, e isso
+  precisa estar dito antes do gesto, não depois.
+
+**Container novo nasce `canvas`** (desde 2026-08-07). O default do descritor mudou porque empilhado o filho não
+redimensiona, e "criei um container e o texto dentro dele travou" era o caminho comum. Não é mudança de schema:
+a enum de `placement` já continha `canvas`, e spec salva carrega o valor dela por extenso — o schema exige toda
+chave do descritor. Sem bump de `SPEC_VERSION`, sem migração. Fixture de teste que depende de empilhar declara
+`CONTAINER_STACK` por extenso, e não herda o default.
+
 ### 3.6.2 Desfazer é um gesto, não um evento de ponteiro
 
 `beginGesture`/`endGesture` delimitam um arrasto ou um *scrubbing*. Entre os dois a escrita é **transitória**:

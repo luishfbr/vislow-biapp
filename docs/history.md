@@ -1341,6 +1341,61 @@ escolha (pagar o bundle, trocar por `Intl`, ou aceitar) é de produto.
 Custo: pacote 93,7 KB → **95,2 KB**; `content.js` 288,1 KB → **292,4 KB**. Um componente inteiro por 4,3 KB —
 o kit escrito à mão, sem biblioteca de gráfico, é o que torna isso possível.
 
+### Alcance dentro do container — ✅ **CONCLUÍDO em 2026-08-07**
+
+Primeiro dos três sprints decididos no `grilling` de 2026-08-07 (os outros dois: arrasto de reparent na
+Composição, e menu de contexto). A queixa era uma só, com **duas** causas distintas — "pus o componente dentro
+de um container e não consigo mais mudar o tamanho dele".
+
+**Causa 1: container novo nascia empilhado.** O default do descritor era `stack`, e ali o filho não tem `rect`:
+o painel escondia x/y/w/h e o `CanvasOverlay` nem montava. O default passou a ser `canvas`. **Não é mudança de
+schema** — a enum já continha o valor, e spec salva carrega o dela por extenso, porque o schema exige toda chave
+do descritor. Sem bump de `SPEC_VERSION` e sem migração. O comentário do `createEmptySpec` que defendia o
+contrário ("um container solto DENTRO de outro quase sempre é uma pilha") saiu junto: ele passou a argumentar
+contra o código que estava embaixo dele.
+
+**Causa 2: alcançar um neto exigia cerimônia.** A camada só monta no container *entrado*, então um nó a dois
+níveis só ganhava alça depois de duplo clique — e a árvore selecionava um nó que a prancheta não mostrava.
+`hostOf` faz toda escrita de `selectedIds` gravar o `enteredId` junto. O duplo clique continua; o que saiu foi
+a exigência. **Limpar a seleção não sobe de nível**, senão os passos 2 e 3 da cascata do `Esc` colapsariam num só.
+
+**O caso raro ganhou alça mesmo assim, e ela é o pedaço caro.** Para desenhar uma alça é preciso ter uma caixa,
+e filho de `stack` não tem nenhuma na spec — só o navegador sabe onde ele está. O `StackHandles` mede o DOM,
+desenha, e o primeiro arrasto converte o pai; `bandRects` dá a cada irmão a faixa que ele já ocupava, então a
+tela não pula, e `beginGesture`/`endGesture` põem conversão e redimensionamento em **um** passo de desfazer.
+
+Quatro coisas que essa alça obrigou a resolver:
+
+- **Medir não contradiz a ADR-18.** O que ela proíbe é medir para desenhar *durante* o gesto. Aqui a medida é
+  pré-conversão: assim que o gesto começa o nó tem `rect`, e a matemática volta a ser a do `CanvasOverlay`.
+- **O elemento é achado pelos índices da spec** (`indexPath` + `elementAt`), porque o preview não marca nó
+  nenhum — `data-node-id` sai do `CanvasOverlay`, que só cobre o nível entrado. Isso depende de cada componente
+  do kit renderizar **exatamente um** elemento raiz, e o teste que afirma isso foi quebrado de propósito antes
+  de entrar: com um elemento a mais, ele acusa. Sem ele, um tipo novo que devolvesse fragmento faria a alça
+  aparecer sobre o nó errado, em silêncio.
+- **A camada não pode desmontar no meio do gesto** — é a raiz dela que segura a captura do ponteiro. Ela fica
+  montada enquanto o gesto vive, invisível, enquanto o `CanvasOverlay` já desenha a caixa de verdade.
+- **A marca inteira é decorativa** (`aria-hidden`), e o caminho com rótulo e foco é o botão *Posicionar
+  livremente*, novo no painel. Uma alça focável converteria o pai e desmontaria a si mesma, deixando o foco em
+  lugar nenhum — o que é pior do que não ser focável, porque a função continua inteira no teclado pelos dois
+  passos (botão converte, alças reais redimensionam).
+
+**A cor foi decidida por eliminação, não por gosto.** Nesta camada `primary` já quer dizer "está na spec":
+tracejado com `primary` é o bloco de vários e sólido acromático é a guia de encaixe. A caixa fantasma foi
+**medida, não declarada**, então ela usa o slate do `Guideline` — com o mesmo halo branco, que é o que a faz
+sobreviver a qualquer fundo do autor — e só vira `primary` no hover da alça, o instante em que passa a existir.
+
+**Defeito de passagem consertado:** `stack` e `canvas` não tinham entrada em `VALUE_LABELS`, então o dropdown
+"Disposicao" mostrava as strings cruas. Agora são *Empilhar* e *Livre* — e "livre" é a mesma palavra do selo da
+alça e do botão do painel.
+
+**Efeito colateral nos testes, e ele foi informativo.** Trinta e seis testes falharam ao mudar o default, e
+quase todos pela mesma razão: as fixtures montavam `container.children = [...]` **direto**, pulando o
+`insertChild` e portanto o `withPlacedChildren`. Enquanto o default era `stack` isso não tinha consequência; com
+`canvas`, produziam spec que o editor nunca produz. Foram para o `insertChild` onde o teste é sobre aninhamento,
+e para `CONTAINER_STACK` por extenso onde o teste afirma a **ausência** do `CanvasSlot` — ali herdar o default
+tiraria o sentido da asserção.
+
 ## 8. Anexo A — achados numerados
 
 Correções aplicadas na v2.0 sobre o rascunho v1.0, com a razão de cada uma.

@@ -741,7 +741,7 @@ describe('entrar e sair de container aninhado', () => {
     // o usuario ficaria num nivel sem nada clicavel, sem saber como sair.
     store().addNode('container');
     const empilha = selectedId() ?? '';
-    expect(store().spec.root.children?.[0]?.props.placement).toBe('stack');
+    store().setProp(empilha, 'placement', 'stack');
 
     store().enterContainer(empilha);
     expect(store().enteredId).toBeNull();
@@ -777,6 +777,74 @@ describe('entrar e sair de container aninhado', () => {
     store().newProject('Outro');
 
     expect(store().enteredId).toBeNull();
+  });
+});
+
+/**
+ * A selecao desce ate o nivel do no (`hostOf`).
+ *
+ * Sem isto a arvore selecionava um neto que a prancheta nao mostrava: a camada
+ * so monta no container entrado, e chegar la exigia duplo clique. O duplo clique
+ * continua existindo — o que sai e a exigencia.
+ */
+describe('selecionar entra no pai', () => {
+  /** Raiz canvas > filho canvas > neto. Devolve os dois ids. */
+  function neto(): { filho: string; neto: string } {
+    store().addNode('container');
+    const filho = selectedId() ?? '';
+    store().addNode('text');
+    return { filho, neto: selectedId() ?? '' };
+  }
+
+  it('selecionar um neto poe a camada no pai dele', () => {
+    const { filho, neto: id } = neto();
+    store().enterContainer(null);
+    expect(store().enteredId).toBeNull();
+
+    store().select(id);
+    expect(store().enteredId).toBe(filho);
+  });
+
+  it('filho da raiz volta a camada para a raiz', () => {
+    const { filho } = neto();
+    store().select(filho);
+    expect(store().enteredId).toBeNull();
+  });
+
+  it('pai que EMPILHA nao mexe no nivel — la nao ha camada', () => {
+    const { filho, neto: id } = neto();
+    store().setProp(filho, 'placement', 'stack');
+    store().enterContainer(null);
+
+    store().select(id);
+    expect(store().enteredId).toBeNull();
+  });
+
+  it('limpar a selecao NAO sobe de nivel — o Esc tem dois passos', () => {
+    const { filho, neto: id } = neto();
+    store().select(id);
+    expect(store().enteredId).toBe(filho);
+
+    store().select(null);
+    expect(store().enteredId).toBe(filho);
+    expect(store().exitContainer()).toBe(true);
+  });
+
+  it('a arvore selecionando por lista desce igual', () => {
+    const { filho, neto: id } = neto();
+    store().enterContainer(null);
+
+    store().setSelection([id]);
+    expect(store().enteredId).toBe(filho);
+  });
+
+  it('no que nasce dentro de um container aninhado ja nasce alcancavel', () => {
+    const { filho } = neto();
+    store().enterContainer(null);
+    store().select(filho);
+
+    store().addNode('text');
+    expect(store().enteredId).toBe(filho);
   });
 });
 
