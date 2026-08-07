@@ -52,7 +52,7 @@ describe('colunas', () => {
   it('coluna nova entra com celula vazia em toda linha', () => {
     const spec = esperaValida(addColumn(createEmptySpec('Projeto'), 'Margem', 'percent'));
 
-    expect(spec.data.columns).toHaveLength(3);
+    expect(spec.data.columns).toHaveLength(4);
     expect(columnOf(spec, 'margem')).toEqual({
       name: 'margem',
       displayName: 'Margem',
@@ -60,14 +60,14 @@ describe('colunas', () => {
       type: 'percent',
     });
     for (const row of spec.data.rows) {
-      expect(row).toHaveLength(3);
-      expect(row[2]).toBeNull();
+      expect(row).toHaveLength(4);
+      expect(row[3]).toBeNull();
     }
   });
 
   it('nome de coluna repetido ganha sufixo, e o rotulo fica como o usuario escreveu', () => {
     const spec = esperaValida(addColumn(createEmptySpec('Projeto'), 'Região', 'text'));
-    expect(spec.data.columns.map((c) => c.name)).toEqual(['regiao', 'receita', 'regiao2']);
+    expect(spec.data.columns.map((c) => c.name)).toEqual(['regiao', 'receita', 'meta', 'regiao2']);
     expect(columnOf(spec, 'regiao2')?.displayName).toBe('Região');
   });
 
@@ -83,8 +83,8 @@ describe('colunas', () => {
     const antes = assertValidSpec(createEmptySpec('Tabela'));
     const spec = esperaValida(removeColumn(antes, 'receita'));
 
-    expect(spec.data.columns.map((c) => c.name)).toEqual(['regiao']);
-    for (const row of spec.data.rows) expect(row).toHaveLength(1);
+    expect(spec.data.columns.map((c) => c.name)).toEqual(['regiao', 'meta']);
+    for (const row of spec.data.rows) expect(row).toHaveLength(2);
   });
 
   it('nenhum no consome coluna na 5.0.0 — a contagem de uso e sempre zero', () => {
@@ -99,7 +99,8 @@ describe('colunas', () => {
   });
 
   it('a ultima coluna nao sai', () => {
-    const spec = esperaValida(removeColumn(createEmptySpec('Projeto'), 'receita'));
+    let spec = esperaValida(removeColumn(createEmptySpec('Projeto'), 'receita'));
+    spec = esperaValida(removeColumn(spec, 'meta'));
     expect(removeColumn(spec, 'regiao')).toBeNull();
   });
 
@@ -162,7 +163,7 @@ describe('linhas e celulas', () => {
   it('linha nova nasce toda vazia, com uma celula por coluna', () => {
     const spec = esperaValida(addRow(createEmptySpec('Projeto')));
     expect(spec.data.rows).toHaveLength(6);
-    expect(spec.data.rows[5]).toEqual([null, null]);
+    expect(spec.data.rows[5]).toEqual([null, null, null]);
   });
 
   it('recusa passar do teto de linhas', () => {

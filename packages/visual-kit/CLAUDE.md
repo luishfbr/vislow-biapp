@@ -34,7 +34,8 @@ visual, e é isso que explica cada restrição. Detalhe em [docs/frontend.md](..
   manter o Recharts fora; ele saiu na 5.0.0 e a separação ficou pela razão que sobrou.
 - **`nodes/frame.ts` e `nodes/sampleFrame.ts` voltaram a ter consumidor na spec 5.2.0.** `sumOf` é a agregação
   do `KpiCard`; **`seriesOf` ganhou o primeiro chamador na 5.3.0**, a `RankingList` — estava escrito e sem
-  sujeito desde o Sprint 6.
+  sujeito desde o Sprint 6. **`sumOf` ganhou o segundo chamador na 5.4.0**, o `GoalGauge`, que o usa duas
+  vezes: uma para o realizado, outra para a meta.
 - **O `KpiCard` é focalizável mas não acionável** (`tabIndex`, `role="group"`, `.vsl-kpi:focus-visible`). É
   `group` e não `button` de propósito: sem papel de agrupamento não há identidade para selecionar, e um
   `button` prometeria uma ação que não existe. **A linha da `RankingList` é `role="button"`** porque ali a ação
@@ -46,6 +47,12 @@ visual, e é isso que explica cada restrição. Detalhe em [docs/frontend.md](..
   `accent` com texto em `ink` por cima faria o texto sumir dentro da barra. Ligado o modo, o campo colapsa
   para o fundo e sobra um sublinhado proporcional — dado codificado, texto legível. Barra **sem** texto por
   cima (`beside`) preenche com `hcAccent` normalmente.
+- **Marca que cai DENTRO de uma barra é um VÃO, nunca um fio por cima.** É o entalhe da meta no `GoalGauge`.
+  Em alto contraste o host dá uma cor de frente: fio em `hcLine` sobre preenchimento em `hcAccent` seria
+  `foreground` sobre `foreground`, e a marca sumiria justo no caso que ela existe para provar (o valor passou
+  da meta). O vão usa a cor do **trilho** — `hcSurface`, o fundo do host —, e fundo sobre frente contrasta por
+  construção, impresso e em daltonismo. Mesma família do par invertido da `RankingList`, logo acima: quando
+  duas coisas se sobrepõem, uma das duas tem de colapsar para o FUNDO.
 - **Cor de estado que depende de `:hover` vai num ELEMENTO, não numa regra.** `:hover` não alcança `style`
   inline e o `styles.css` não pode conter cor. A saída é inverter: a cor do autor vai inline num elemento
   sobreposto (`aria-hidden`, `pointer-events: none`) e a regra só alterna a **opacidade** dele.

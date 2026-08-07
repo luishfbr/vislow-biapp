@@ -7,7 +7,7 @@ import type { TokenKind } from '@vislow/config-schema';
  * do `pbiviz` compila sem `strictNullChecks`, e sem ela o TypeScript nao
  * estreita uniao por discriminante booleano.
  */
-export type NodeKind = 'container' | 'text' | 'kpi' | 'ranking';
+export type NodeKind = 'container' | 'text' | 'kpi' | 'ranking' | 'gauge';
 
 /** Papel de dado no Power BI. `grouping` vira eixo/categoria; `measure`, valor. */
 export type RoleKind = 'grouping' | 'measure';

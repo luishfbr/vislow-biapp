@@ -1341,6 +1341,70 @@ escolha (pagar o bundle, trocar por `Intl`, ou aceitar) é de produto.
 Custo: pacote 93,7 KB → **95,2 KB**; `content.js` 288,1 KB → **292,4 KB**. Um componente inteiro por 4,3 KB —
 o kit escrito à mão, sem biblioteca de gráfico, é o que torna isso possível.
 
+### Lista de Ranking — a cadeia morta ganha sujeito — ✅ **CONCLUÍDO em 2026-08-06** (spec 5.3.0)
+
+O quarto componente, e o **primeiro do catálogo a declarar `roleKind: 'grouping'`**. Esse único fato destravou
+uma cadeia inteira que estava construída, compilando, passando nos testes e **sem um único chamador** desde o
+Sprint 6: `seriesOf`, `buildIdentities`, `select`, `isSelected`, `truncationOf`, o ramo `Grouping` do
+`capabilities.ts`, o bloco `categorical.categories`, o `dataReductionAlgorithm` e a variável
+`--vislow-hc-selected`. **Nada em `capabilities.ts`, `dataFrame.ts` ou `interaction.ts` precisou mudar** — só
+faltava o sujeito. Com ele, **RF-18 (cross-filter) e RF-25 (truncamento) voltaram a funcionar e a ter teste**
+que executa o `content.js` minificado e afirma o que o visual **pede ao host** — a lição do achado 53.
+
+Por que uma lista e não um gráfico de barras: estrear seleção num gráfico somaria dois riscos numa sprint só —
+matemática de eixo, tick e colisão de rótulo de um lado; identidade, esmaecimento e teclado do outro. A lista é
+100% `div`, então o alto contraste continua funcionando por `var()`, que não funciona em atributo de
+apresentação de SVG; e cada linha já é um alvo com rótulo de **texto**, então `role="button"` e `aria-label`
+saem corretos sem inventar nada.
+
+Três decisões que não são estéticas: a **barra fica atrás do texto** (não gasta largura numa coluna separada,
+então o rótulo fica com a linha inteira — que é onde lista de ranking falha, no nome comprido); em alto
+contraste o preenchimento usa `hcSurface` e a regra de baixo usa `hcAccent`, o que **parece trocado e é
+deliberado** (o host dá uma cor de frente, e barra em `accent` com texto em `ink` por cima faria o texto sumir
+dentro da própria barra — ligado o modo, sobra um sublinhado proporcional); e o **realce de ponteiro é um
+elemento com cor inline**, com a regra CSS alternando só a opacidade, porque `:hover` não alcança `style`
+inline e o `styles.css` não pode conter cor.
+
+O editor ganhou o interruptor **"Simular seleção"** (`useUiStore`, móvel, não persistido): o esmaecimento é um
+estado visual grande que o autor precisa desenhar, e era invisível no editor porque `sampleFrame` não define
+`frame.host`. É interruptor e **não** clique na linha — pressionar um nó já seleciona e arrasta no mesmo gesto.
+
+`number` deixou de ser a variante dormente de `FieldSpec` (`maxRows`, `dimOpacity`): o catálogo passou a
+exercitar **as oito** ponta a ponta. Custo: pacote 95,2 KB → **96,8 KB**; `content.js` 292,4 KB → **297,5 KB**.
+
+### Medidor de Meta — a meta como entalhe — ✅ **CONCLUÍDO em 2026-08-07** (spec 5.4.0)
+
+RF-29, o quinto componente. Só medidas, como o KPI: um número único não tem marca para clicar.
+
+**A escala é automática — `max(|valor|, |meta|)`.** Abaixo da meta, o fim do trilho **é** a meta e não há marca
+a desenhar, porque a própria moldura já é a marca. Acima, a escala se estende até o valor e a meta recua para
+dentro do preenchimento. As duas alternativas foram medidas e recusadas: trilho travado na meta desenha 118% e
+250% exatamente iguais, perdendo informação justo no caso bom; escala digitada pelo autor são dois campos a
+mais que ele tem de acertar, e escala errada produz barra mentirosa sem erro nenhum.
+
+**A meta dentro da barra é um VÃO, não um fio por cima.** É a decisão que a escala automática obriga: com o
+valor acima da meta, a marca cai dentro do preenchimento, e em alto contraste um fio em `hcLine` sobre uma
+barra em `hcAccent` seria `foreground` sobre `foreground` — a marca sumiria exatamente no caso que ela existe
+para provar. O vão usa a cor do **trilho**, que colapsa para `hcSurface`: fundo sobre frente contrasta por
+construção, e continua contrastando impresso e em daltonismo.
+
+**O juízo é codificado por densidade de tinta**, e não por matiz: `INK` cheio quando bate a meta, `INK_MUTED`
+quando falta — as duas nascem acromáticas pela mesma razão do KPI, e `polarity` continua separando direção de
+juízo (num medidor de custo ou de prazo, ficar abaixo do alvo é o favorável).
+
+A tabela de exemplo do projeto novo ganhou uma **segunda medida** (`meta`). `suggestRoleBindings` liga cada
+campo de papel à primeira coluna livre do tipo certo, e com uma medida só o Medidor nasceria em estado vazio —
+tela vazia parece defeito, que é o problema que a sugestão existe para evitar. De quebra, o `compareRole` do
+KPI ganhou sugestão pela primeira vez.
+
+Dois achados de documentação e um de produto saíram junto: `history.md` não tinha a entrada da Lista e o
+`requirements.md` ainda marcava RF-18, RF-23 e RF-25 como pendentes ou parciais (os três corrigidos acima); e a
+guarda nova *"todo valor de select tem rótulo escrito para humano"* pegou que **`stack` e `canvas` nunca
+tiveram rótulo** — o dropdown "Disposição" do editor mostrava os valores crus desde a ADR-18. `placement` é
+estrutural e nunca chega ao painel do Power BI, então o defeito ficava só do lado de cá.
+
+Custo: pacote 96,8 KB → **97,9 KB**; `content.js` 297,5 KB → **301,4 KB**. Nenhuma dependência nova.
+
 ## 8. Anexo A — achados numerados
 
 Correções aplicadas na v2.0 sobre o rascunho v1.0, com a razão de cada uma.

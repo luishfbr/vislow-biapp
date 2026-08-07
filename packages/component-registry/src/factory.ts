@@ -178,13 +178,29 @@ export const DEFAULT_TABLE: SampleTable = {
   columns: [
     { name: 'regiao', displayName: 'Região', kind: 'grouping', type: 'text' },
     { name: 'receita', displayName: 'Receita', kind: 'measure', type: 'currency' },
+    /*
+     * A SEGUNDA MEDIDA, acrescentada na spec 5.4.0.
+     *
+     * `suggestRoleBindings` liga cada campo de papel a primeira coluna LIVRE do
+     * tipo certo. Com uma medida so, o segundo campo de medida de qualquer no
+     * nascia sem candidato: o Medidor nasceria em estado vazio pedindo a meta, e
+     * tela vazia parece defeito — que e exatamente o problema que a sugestao
+     * existe para evitar. De quebra, o `compareRole` do KPI ganha sugestao pela
+     * primeira vez desde que passou a existir.
+     *
+     * As magnitudes nao acompanham a receita de propósito: a meta do Sudeste
+     * fica ABAIXO do realizado e a do Sul acima, entao o medidor de exemplo
+     * mostra os dois estados — o entalhe e a barra curta — sem ninguem editar
+     * nada.
+     */
+    { name: 'meta', displayName: 'Meta', kind: 'measure', type: 'currency' },
   ],
   rows: [
-    ['Sul', 184320],
-    ['Sudeste', 921450],
-    ['Centro-Oeste e Norte', 47800],
-    ['Nordeste', 312990],
-    ['Exterior', 0],
+    ['Sul', 184320, 240000],
+    ['Sudeste', 921450, 800000],
+    ['Centro-Oeste e Norte', 47800, 60000],
+    ['Nordeste', 312990, 300000],
+    ['Exterior', 0, 50000],
   ],
 };
 

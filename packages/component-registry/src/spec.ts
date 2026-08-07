@@ -4,6 +4,15 @@ import type { NodeKind, RoleKind } from './types.js';
 /**
  * Versao do formato da arvore.
  *
+ * MINOR NA 5.4.0: o tipo de no `gauge` (Medidor de Meta) e ADITIVO, pela mesma
+ * razao da 5.3.0 — nenhum campo saiu, nenhum mudou de tipo, e toda spec 5.3.0
+ * salva continua valida e continua gerando exatamente o mesmo pacote. O medidor
+ * declara so MEDIDA, entao uma arvore sem ele nao muda nem o `capabilities.json`
+ * nem a chave do `localStorage`.
+ *
+ * A coluna `meta` que o `DEFAULT_TABLE` ganhou junto nao e migracao: vale para
+ * projeto NOVO, e projeto ja salvo continua com a tabela que tinha.
+ *
  * MINOR NA 5.3.0: o tipo de no `ranking` e ADITIVO. Nenhum campo saiu, nenhum
  * mudou de tipo, e toda spec 5.2.0 salva continua valida e continua gerando
  * exatamente o mesmo pacote — uma arvore sem nenhum `ranking` nao declara papel
@@ -28,7 +37,7 @@ import type { NodeKind, RoleKind } from './types.js';
  * mudou de CHAVE: o projeto antigo continua no navegador e nunca mais e lido.
  * Nada e descartado em silencio porque nada e sequer tentado.
  */
-export const SPEC_VERSION = '5.3.0';
+export const SPEC_VERSION = '5.4.0';
 
 /**
  * Uma coluna da tabela de exemplo — que e, ao mesmo tempo, um CAMPO do visual.

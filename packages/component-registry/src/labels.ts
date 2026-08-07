@@ -37,6 +37,14 @@ const VALUE_LABELS: Record<string, string> = {
   middle: 'Meio',
   bottom: 'Base',
   // Valores dos `select` do registro, que nao passam pelo catalogo de tokens.
+  //
+  // As duas disposicoes do container. Estavam FALTANDO ate a spec 5.4.0, e o
+  // painel do editor mostrava "stack" e "canvas" crus no dropdown — `placement`
+  // e estrutural e nunca chega ao painel do Power BI, entao o defeito ficava
+  // so do lado de ca. Encontrado pela guarda `todo valor de select tem rotulo`,
+  // que nasceu junto com o Medidor.
+  stack: 'Empilhar',
+  canvas: 'Posicionar livremente',
   row: 'Linha',
   column: 'Coluna',
   wrap: 'Quebrar linha',
@@ -71,6 +79,15 @@ const VALUE_LABELS: Record<string, string> = {
   // rotulo errado no dropdown dentro do relatorio de outra pessoa.
   inline: 'Na mesma linha',
   stacked: 'Abaixo do rotulo',
+  // De onde vem a meta do Medidor.
+  field: 'Um campo do modelo',
+  fixed: 'Um numero fixo',
+  // O que a linha de apoio do Medidor escreve. Os valores nao reusam `percent`
+  // nem `target`: este mapa e plano, e `percent` ja e "So o percentual" no KPI.
+  goalPercent: 'Percentual da meta',
+  remaining: 'Quanto falta',
+  goalValue: 'A meta',
+  percentAndGoal: 'Percentual e meta',
 };
 
 export interface ValueOption {

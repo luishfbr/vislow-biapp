@@ -98,11 +98,12 @@ relatório, mostra tooltip nativo, respeita alto contraste, é navegável por te
 
 Concluídos: fundação e primeiro editor (depois substituídos pelo pivô da ADR-08), registro de componentes, API
 de build, editor de composição, paridade de interatividade, faxina do caminho antigo, migração para Turborepo,
-o **canvas de posicionamento livre** (ADR-18), o **kit autoral** (spec 5.0.0), o **KPI Card** (spec 5.2.0) e a
-**Lista de Ranking** (spec 5.3.0), que devolveu o filtro cruzado.
-Pacote **96,8 KB**, `content.js` **297,5 KB** — a Lista custou 5,1 KB, sem dependência nova.
+o **canvas de posicionamento livre** (ADR-18), o **kit autoral** (spec 5.0.0), o **KPI Card** (spec 5.2.0), a
+**Lista de Ranking** (spec 5.3.0), que devolveu o filtro cruzado, e o **Medidor de Meta** (spec 5.4.0).
+Pacote **97,9 KB**, `content.js` **301,4 KB** — o Medidor custou 1,1 KB no pacote, sem dependência nova.
 
-**O catálogo tem QUATRO componentes desde 2026-08-06** (spec 5.3.0): `container`, `text`, `kpi` e `ranking`.
+**O catálogo tem CINCO componentes desde 2026-08-07** (spec 5.4.0): `container`, `text`, `kpi`, `ranking` e
+`gauge`.
 A **Lista de Ranking** é o primeiro nó a declarar `roleKind: 'grouping'`, e esse único fato **destravou a
 cadeia inteira que estava construída e morta**: `usedRoles` passa a emitir um papel `Grouping`, o
 `capabilities.json` ganha `categorical.categories` e o `dataReductionAlgorithm`, o host passa a entregar
@@ -135,17 +136,36 @@ Entre
 com eles (daí a queda de 62% no `content.js`, que o KPI não desfez: ele custou 4,3 KB). Remoção de schema
 exige major (RN-12), e **não há migração 4→5**: `migrate.ts` foi apagado e a chave do `localStorage` pulou
 para `vislow:project:v5`, então o projeto antigo continua no navegador e nunca mais é lido. Nada é descartado
-em silêncio porque nada é tentado. A 5.2.0 e a 5.3.0 são aditivas e **não** mexem nessa chave.
+em silêncio porque nada é tentado. A 5.2.0, a 5.3.0 e a 5.4.0 são aditivas e **não** mexem nessa chave.
 
-**Dois nós consomem dados.** O KPI declara **dois papéis de medida** — `valueRole` (obrigatório) e
+**Três nós consomem dados.** O KPI declara **dois papéis de medida** — `valueRole` (obrigatório) e
 `compareRole` (opcional). A Lista de Ranking declara **um de agrupamento e um de medida**, os dois
-obrigatórios. Uma árvore só de `container` e `text` continua gerando o pacote de antes, com `dataRoles: []`.
+obrigatórios. O Medidor declara **dois de medida**, o segundo opcional porque a meta pode ser um número
+digitado (`targetMode`). Uma árvore só de `container` e `text` continua gerando o pacote de antes, com
+`dataRoles: []`.
+
+**O Medidor de Meta (spec 5.4.0) tem três decisões que não são estéticas:**
+
+- **A escala é automática — `max(|valor|, |meta|)`.** Abaixo da meta, o fim do trilho **é** a meta. Acima, a
+  escala se estende até o valor e a meta recua para dentro do preenchimento. Trilho travado na meta desenharia
+  118% e 250% iguais; escala digitada seriam dois campos que o autor tem de acertar, e escala errada produz
+  barra mentirosa sem erro nenhum.
+- **A meta dentro da barra é um VÃO na cor do trilho**, e não um fio por cima. Em alto contraste o host dá uma
+  cor de frente: fio em `hcLine` sobre barra em `hcAccent` some justo no caso que a marca existe para provar. O
+  vão colapsa para `hcSurface` — fundo sobre frente contrasta por construção.
+- **O juízo é densidade de tinta, não matiz**: `INK` cheio quando bate a meta, `INK_MUTED` quando falta, as
+  duas acromáticas como no KPI. `polarity` continua separando direção de juízo — em custo ou prazo, ficar
+  abaixo do alvo é o favorável.
+
+A **tabela de exemplo do projeto novo ganhou uma segunda medida** (`meta`): `suggestRoleBindings` liga a
+primeira coluna livre do tipo certo, e com uma medida só o Medidor nasceria em estado vazio — tela vazia parece
+defeito. De quebra, o `compareRole` do KPI ganhou sugestão pela primeira vez. Vale só para projeto **novo**.
 
 **A quarentena acabou.** `dataRoles`, `requiredTypes`, a proibição de `min`, o estado vazio (RF-20), o tooltip
 nativo (RF-19), o menu de contexto (RF-24) e o teclado (RF-23) voltaram com o KPI; **filtro cruzado (RF-18) e
 truncamento (RF-25) voltaram com a Lista**, e os dois têm teste que executa o `content.js` minificado e afirma
 o que o visual **pede ao host**. Sobra um item declarado sem sujeito, e por construção: a **ponta SVG do alto
-contraste**, porque `var()` não é substituído em atributo de apresentação de SVG e os dois nós de dados de
+contraste**, porque `var()` não é substituído em atributo de apresentação de SVG e os três nós de dados de
 hoje são HTML puro. Ela volta com o primeiro nó que emitir SVG.
 
 `registry.test.ts` tem um alarme para isso não regredir: se o último campo `roleKind: 'grouping'` sair do
@@ -240,9 +260,8 @@ Duas consequências que valem saber antes de mexer:
 e a decisão sobre o separador de locale da RF-17 (o achado aberto acima).
 
 **Próximo do lote de componentes** (decidido no `grilling` de 2026-08-06, ver
-[docs/history.md](docs/history.md)): **Medidor de Meta** (spec 5.4.0 — só medida, com `targetMode` para meta
-vinda de campo ou número fixo) e **Nota/Callout** (spec 5.5.0 — sem dado). Depois deles, gráfico de barras com
-eixo, agora sobre a fiação de seleção já provada. Widget com estado local (abas, acordeão) só entra com **ADR
+[docs/history.md](docs/history.md)): **Nota/Callout** (spec 5.5.0 — sem dado). Depois dele, gráfico de barras
+com eixo, agora sobre a fiação de seleção já provada. Widget com estado local (abas, acordeão) só entra com **ADR
 próprio**: o kit não usa hooks, estado de visual não entra em bookmark e um popover não transborda o tile.
 
 O detalhe de cada sprint está em [docs/history.md](docs/history.md); não é preciso lê-lo para trabalhar.

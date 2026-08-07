@@ -109,6 +109,45 @@ export const VALUE_INLINE = 'inline';
 export const VALUE_STACKED = 'stacked';
 
 /**
+ * De onde vem a meta do Medidor.
+ *
+ * Duas fontes e nao uma porque as duas existem no mundo: ha modelo com medida de
+ * meta declarada, e ha meta que e um numero combinado em reuniao e que ninguem
+ * vai modelar. Sem o modo fixo, quem esta no segundo caso nao usa o componente.
+ */
+export const TARGET_FIELD = 'field';
+export const TARGET_FIXED = 'fixed';
+
+/**
+ * O que a linha de apoio escreve.
+ *
+ * Um `select`, e nao tres interruptores — a licao do `deltaMode` do KPI:
+ * combinacao impossivel nao existe se so uma opcao e escolhivel, e tres numeros
+ * na mesma linha apagam a hierarquia que a barra logo abaixo acabou de criar.
+ *
+ * NAO reusa `percent` nem `target`. `VALUE_LABELS` e um mapa PLANO por string de
+ * valor, e `percent` ja significa "So o percentual" no `deltaMode` do KPI —
+ * reusar a palavra poria o rotulo errado no dropdown do Power BI, dentro do
+ * relatorio de outra pessoa, que e onde nao se conserta. Mesma armadilha que
+ * `VALUE_INLINE`/`VALUE_STACKED` evitaram na Lista.
+ */
+export const PROGRESS_GOAL_PERCENT = 'goalPercent';
+export const PROGRESS_REMAINING = 'remaining';
+export const PROGRESS_GOAL_VALUE = 'goalValue';
+export const PROGRESS_PERCENT_AND_GOAL = 'percentAndGoal';
+
+/**
+ * Faixa da meta digitada, em valor de MEDIDA — nao em pixel.
+ *
+ * Um trilhao para cada lado. Nao e teto de tela: e o maior numero que uma meta
+ * de negocio assume sem virar erro de digitacao, e apertar mais recusaria
+ * faturamento anual em BRL de empresa grande — recusa que aconteceria dentro do
+ * relatorio de outra pessoa. O lado NEGATIVO existe porque meta de saldo, de
+ * margem ou de resultado pode ser negativa.
+ */
+const TARGET_VALUE_LIMIT = 1e12;
+
+/**
  * Teto das medidas de moldura, em pixel.
  *
  * Nao e o tamanho da prancheta: espacamento de 200px ja e mais do que qualquer
@@ -772,6 +811,252 @@ export const NODE_DESCRIPTORS: Record<NodeKind, NodeDescriptor> = {
           label: 'Cor ao passar o mouse',
           kind: 'color',
           default: PAPER_SUNK,
+        },
+      ]),
+
+      ...grouped('Superficie', SURFACE_FIELDS),
+    ],
+  },
+
+  /**
+   * O Medidor de Meta (RF-29). Uma medida contra um alvo, em barra linear.
+   *
+   * ===================== A ESCALA E AUTOMATICA, E POR ISSO ====================
+   * O trilho mede `max(|valor|, |meta|)`. Abaixo da meta, o FIM DO TRILHO e a
+   * meta e nao ha marca nenhuma a desenhar — a moldura ja e a marca. Acima, a
+   * escala se estende ate o valor e a meta recua para dentro do preenchimento.
+   *
+   * A alternativa — trilho travado na meta, saturando em 100% — desenha 118% e
+   * 250% exatamente iguais, e perde a informacao justo no caso bom. A outra —
+   * escala digitada pelo autor — sao dois campos que ele tem de acertar, e
+   * escala errada produz barra mentirosa sem erro nenhum.
+   * ===========================================================================
+   *
+   * ============================== O ENTALHE ==================================
+   * A meta dentro do preenchimento e um VAO, e nao um fio por cima.
+   *
+   * Em alto contraste o host da uma cor de frente e uma de fundo. Fio em
+   * `hcLine` sobre barra em `hcAccent` seria `foreground` sobre `foreground`: a
+   * marca sumiria exatamente no caso que ela existe para provar. O vao usa a cor
+   * do TRILHO, que colapsa para `hcSurface` — fundo sobre frente contrasta por
+   * construcao, e continua contrastando impresso e em daltonismo.
+   * ===========================================================================
+   *
+   * SO MEDIDAS, como o KPI: um medidor e um numero unico, nao ha marca para
+   * clicar. Vinte e nove campos, na gramatica ja estabelecida — cada linha que
+   * compete visualmente tem tamanho, peso e cor proprios.
+   */
+  gauge: {
+    kind: 'gauge',
+    label: 'Medidor de Meta',
+    hint: 'Uma medida contra um alvo, em barra. A meta pode vir de um campo ou ser um numero fixo.',
+    keywords: [
+      'meta',
+      'medidor',
+      'alvo',
+      'progresso',
+      'atingimento',
+      'objetivo',
+      'barra',
+      'termometro',
+      'gauge',
+    ],
+    shortcut: 'M',
+    acceptsChildren: false,
+    component: 'GoalGauge',
+    fields: [
+      ...grouped('Dados', [
+        {
+          key: 'valueRole',
+          label: 'Valor',
+          hint: 'A medida realizada. Sem ela o visual pede o campo em vez de desenhar.',
+          kind: 'role',
+          roleKind: 'measure',
+        },
+        {
+          key: 'targetMode',
+          label: 'Meta vem de',
+          hint: 'Uma medida do modelo, ou um numero digitado aqui.',
+          kind: 'select',
+          options: [TARGET_FIELD, TARGET_FIXED],
+          default: TARGET_FIELD,
+        },
+        {
+          /*
+           * OPCIONAL por construcao: no modo fixo ele fica em branco, e um campo
+           * obrigatorio ali deixaria o no pendente por causa de uma ligacao que
+           * o autor decidiu nao usar.
+           *
+           * "Modo campo com papel em branco" nao vira regra de schema: o mesmo
+           * estado acontece em RUNTIME, quando quem usa o relatorio nao arrasta
+           * coluna nenhuma para o papel. Quem responde por ele e o estado vazio
+           * do proprio visual (RF-20), que cobre autor e consumidor de uma vez.
+           */
+          key: 'targetRole',
+          label: 'Meta',
+          hint: 'A medida que define o alvo.',
+          kind: 'role',
+          roleKind: 'measure',
+          optional: true,
+          showWhen: { key: 'targetMode', equals: TARGET_FIELD },
+        },
+        {
+          // `number` e nao `length`: e um valor de MEDIDA, e o painel nao deve
+          // escrever "px" ao lado dele. Decimal permitido de proposito — meta de
+          // margem, de nota ou de indice raramente e inteira.
+          key: 'targetValue',
+          label: 'Meta',
+          hint: 'O alvo, no mesmo formato da medida.',
+          kind: 'number',
+          default: 100,
+          min: -TARGET_VALUE_LIMIT,
+          max: TARGET_VALUE_LIMIT,
+          showWhen: { key: 'targetMode', equals: TARGET_FIXED },
+        },
+        {
+          // MESMA gramatica do KPI, e de proposito: quem aprendeu polaridade num
+          // componente nao a reaprende no outro. Em custo, churn ou prazo, ficar
+          // ABAIXO da meta e que e favoravel.
+          key: 'polarity',
+          label: 'Sentido',
+          hint: 'Em custo ou prazo, ficar abaixo da meta e bom. So a cor muda.',
+          kind: 'select',
+          options: [POLARITY_HIGHER, POLARITY_LOWER, POLARITY_NEUTRAL],
+          default: POLARITY_HIGHER,
+        },
+      ]),
+
+      ...grouped('Valor', [
+        {
+          // `display` e nao `figure`: aqui o numero divide a linha com a linha de
+          // apoio e divide a caixa com a barra. Os 44px do KPI, que e um numero
+          // sozinho, empurrariam a barra para fora de qualquer moldura baixa.
+          key: 'valueFontSize',
+          label: 'Tamanho',
+          kind: 'length',
+          default: TYPE_SCALE.display,
+          min: FONT_SIZE_MIN,
+          max: FONT_SIZE_MAX,
+        },
+        { key: 'valueWeight', label: 'Peso', kind: 'token', token: 'fontWeight', default: 'semibold' },
+        { key: 'valueColor', label: 'Cor', kind: 'color', default: INK },
+      ]),
+
+      ...grouped('Rotulo', [
+        {
+          key: 'label',
+          label: 'Texto',
+          hint: 'Vazio usa o nome do campo que o consumidor arrastou.',
+          kind: 'text',
+          default: '',
+          maxLength: 60,
+        },
+        {
+          key: 'labelFontSize',
+          label: 'Tamanho',
+          kind: 'length',
+          default: TYPE_SCALE.label,
+          min: FONT_SIZE_MIN,
+          max: FONT_SIZE_MAX,
+        },
+        { key: 'labelWeight', label: 'Peso', kind: 'token', token: 'fontWeight', default: 'normal' },
+        { key: 'labelColor', label: 'Cor', kind: 'color', default: INK_MUTED },
+      ]),
+
+      ...grouped('Apoio', [
+        {
+          key: 'progressMode',
+          label: 'Mostrar',
+          hint: 'O percentual da meta, o quanto falta, a meta em si, ou percentual e meta.',
+          kind: 'select',
+          options: [
+            PROGRESS_GOAL_PERCENT,
+            PROGRESS_REMAINING,
+            PROGRESS_GOAL_VALUE,
+            PROGRESS_PERCENT_AND_GOAL,
+          ],
+          default: PROGRESS_GOAL_PERCENT,
+        },
+        {
+          key: 'progressFontSize',
+          label: 'Tamanho',
+          kind: 'length',
+          default: TYPE_SCALE.label,
+          min: FONT_SIZE_MIN,
+          max: FONT_SIZE_MAX,
+        },
+        {
+          key: 'progressWeight',
+          label: 'Peso',
+          kind: 'token',
+          token: 'fontWeight',
+          default: 'medium',
+        },
+        { key: 'progressColor', label: 'Cor', kind: 'color', default: INK_MUTED },
+      ]),
+
+      ...grouped('Barra', [
+        {
+          key: 'barHeight',
+          label: 'Altura da barra',
+          kind: 'length',
+          default: SPACE.sm,
+          min: 1,
+          max: LENGTH_MAX,
+        },
+        { key: 'barRadius', label: 'Raio da barra', kind: 'length', default: RADIUS.sm, min: 0, max: LENGTH_MAX },
+        {
+          key: 'trackColor',
+          label: 'Cor do trilho',
+          hint: 'O que fica atras da barra — e a cor do entalhe que marca a meta.',
+          kind: 'color',
+          default: PAPER_SUNK,
+        },
+        {
+          /*
+           * TINTA CHEIA quando bate a meta, tinta APAGADA quando falta.
+           *
+           * As duas nascem acromaticas pela mesma razao do KPI: `design.ts` nao
+           * tem um valor cromatico, e um default verde obrigaria a ter dois. O
+           * juizo aqui e codificado por DENSIDADE de tinta, que sobrevive a
+           * daltonismo e a impressao — e a geometria (a barra passou do entalhe
+           * ou nao) continua dizendo o mesmo sem cor nenhuma.
+           */
+          key: 'reachedColor',
+          label: 'Cor quando favoravel',
+          kind: 'color',
+          default: INK,
+        },
+        { key: 'shortColor', label: 'Cor quando desfavoravel', kind: 'color', default: INK_MUTED },
+        {
+          // Zero esconde o entalhe. Faixa curta: um vao de 12px numa barra de
+          // 200px de largura ja e um buraco, nao uma marca.
+          key: 'notchWidth',
+          label: 'Espessura do entalhe',
+          hint: 'O vao que marca a meta quando o valor passa dela. Zero esconde.',
+          kind: 'length',
+          default: STROKE.thick,
+          min: 0,
+          max: 12,
+        },
+      ]),
+
+      ...grouped('Layout', [
+        {
+          key: 'gap',
+          label: 'Espaco entre linhas',
+          kind: 'length',
+          default: SPACE.sm,
+          min: 0,
+          max: LENGTH_MAX,
+        },
+        {
+          key: 'valign',
+          label: 'Alinhamento vertical',
+          hint: 'Onde o bloco fica quando a caixa e mais alta que ele.',
+          kind: 'token',
+          token: 'valign',
+          default: 'middle',
         },
       ]),
 

@@ -497,3 +497,109 @@
     Arial, sans-serif;
   font-size: 11px;
 }
+
+/* =========================== MEDIDOR DE META ============================== */
+
+/*
+ * `box-sizing: border-box` repetido em cada classe deste bloco, pela mesma razao
+ * do bloco da Lista: um seletor universal aqui vazaria para o relatorio inteiro
+ * do host.
+ */
+.vsl-goal {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+  /* Corta, nunca escorre — a mesma politica do `.vsl-slot`. */
+  overflow: hidden;
+}
+
+/*
+ * RF-23 — foco visivel. `currentColor` e deliberado: o anel herda a cor de texto
+ * ja resolvida, entao acompanha o alto contraste do host sem uma cor propria,
+ * que este arquivo nao pode ter. `:focus-visible` e nao `:focus`, senao todo
+ * clique dentro do relatorio desenharia um anel.
+ */
+.vsl-goal:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+/*
+ * O numero e a linha de apoio dividem uma linha so, alinhados pela BASE.
+ *
+ * Base, e nao centro: os dois tem tamanhos muito diferentes por padrao (32 e 13),
+ * e centralizados eles flutuariam um em relacao ao outro. Assentados na mesma
+ * base, leem como uma frase — que e o que sao.
+ */
+.vsl-goal-head {
+  box-sizing: border-box;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  min-width: 0;
+  gap: 8px;
+}
+
+/* O numero cede espaco por ultimo; a linha de apoio nunca quebra. As tres linhas
+   cortam com reticencia em vez de refluir: um medidor que vira paragrafo perde a
+   barra por baixo da moldura, e o valor inteiro continua no balao do tooltip. */
+.vsl-goal-label,
+.vsl-goal-value,
+.vsl-goal-support {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.vsl-goal-value {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+/*
+ * A linha de apoio ENCOLHE, ao contrario do numero da Lista, que e `0 0 auto`.
+ *
+ * La o texto e um valor curto; aqui pode ser "108,4% de 1.000.000,00" numa
+ * moldura estreita. Sem poder encolher, ela empurraria o numero para fora da
+ * caixa — e o transbordo, dentro do Power BI, some sob o vizinho sem erro.
+ */
+.vsl-goal-support {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/*
+ * O trilho. Bloco de contencao do preenchimento e do entalhe, os dois absolutos.
+ *
+ * `flex-shrink: 0` porque a barra e o dado: numa moldura baixa quem cede altura
+ * e o texto, que corta com reticencia, e nao a barra, que encolheria ate sumir
+ * sem avisar.
+ */
+.vsl-goal-track {
+  box-sizing: border-box;
+  position: relative;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.vsl-goal-fill {
+  box-sizing: border-box;
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+}
+
+/*
+ * O ENTALHE: a meta como um vao no preenchimento.
+ *
+ * So a geometria aqui — a cor vem inline, e e a do TRILHO. Ver o comentario
+ * extenso em `GoalGauge.tsx`: e o que faz a marca sobreviver ao alto contraste,
+ * onde fio e barra receberiam os dois o `foreground` do host.
+ */
+.vsl-goal-notch {
+  box-sizing: border-box;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
