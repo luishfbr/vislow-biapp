@@ -1396,6 +1396,38 @@ quase todos pela mesma razão: as fixtures montavam `container.children = [...]`
 e para `CONTAINER_STACK` por extenso onde o teste afirma a **ausência** do `CanvasSlot` — ali herdar o default
 tiraria o sentido da asserção.
 
+### Arrastar na Composição — ✅ **CONCLUÍDO em 2026-08-07**
+
+Segundo dos três sprints do `grilling` de 2026-08-07. `reparentNode` estava pronto desde o Sprint 5, com guarda
+de ciclo e tudo, e **nunca teve um chamador**: mudar um nó de pai era simplesmente impossível pela interface.
+
+**A mira é o pedaço que decide se o gesto é bom.** Terço do meio de um container vira filho; as pontas, e a
+linha inteira de uma folha, viram a fresta mais próxima — `acceptsChildren` é falso na folha, e recusar em
+silêncio pareceria defeito. E o **fio da fresta começa no recuo que o rótulo vai ter depois de solto**, não no
+recuo da linha sob o ponteiro: o recuo é a única coisa que responde *em qual pai isto cai?*, que é a pergunta
+que todo drop em árvore erra.
+
+**A cor saiu por eliminação.** `bg-primary/10` já quer dizer "selecionado", e o nó em voo **está** selecionado —
+realçar o alvo com fundo tornaria os dois estados indistinguíveis. Anel diz *receptáculo*, e é o mesmo
+significado que o `hover:ring` do `CanvasOverlay` já carrega.
+
+**O bug que a primeira versão teve, e vale registrar.** `reparentMany` iterava `reparentNode` de trás para a
+frente, como `duplicateNode` faz. Funciona para pais diferentes e **embaralha** ao reordenar dentro do próprio
+pai: as remoções ficam intercaladas com as inserções, e cada remoção desloca o destino das seguintes. A correção
+foi virar operação de árvore (`reparentNodes`, em `tree.ts`, testável sem React) que **remove tudo antes de
+inserir qualquer coisa**, com o `index` contando na lista de antes — a que o usuário vê. Descoberto por teste
+escrito antes da implementação estar pronta, não em uso.
+
+**Uma decisão que o plano não previa: `Ctrl+→` / `Ctrl+←`.** Sem elas, trocar de pai existiria **só** no
+ponteiro — as setas do cabeçalho reordenam entre irmãos e nunca mudam de pai. Um caminho que só existe no mouse
+não é melhoria de acessibilidade, é o único caminho. O foco sobrevive ao movimento porque as linhas são irmãs
+com `key` estável e o React move o nó do DOM em vez de recriá-lo; isso foi **verificado quebrando a `key` de
+propósito** antes de virar teste.
+
+**O `TreePanel` passou a achatar a árvore.** A mira, o indicador e a geometria precisam da árvore como lista, e
+manter a renderização recursiva ao lado disso seria duas representações da mesma coisa. `flattenTree` é pura e
+se testa sozinha; de quebra, o painel ganhou o primeiro teste de DOM que ele nunca teve.
+
 ## 8. Anexo A — achados numerados
 
 Correções aplicadas na v2.0 sobre o rascunho v1.0, com a razão de cada uma.

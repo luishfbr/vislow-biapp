@@ -42,6 +42,18 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **Ferramenta é tecla NUA, sem modificador.** `Ctrl+B` é negrito, `Ctrl+P` é imprimir: roubar qualquer uma
   custaria mais do que a ferramenta vale. E a guarda de quem está digitando vale para elas com mais razão —
   escrever "Barras" no nome do projeto não pode armar sete ferramentas pelo caminho.
+- **A hierarquia se organiza por ARRASTO na Composicao.** `reparentNode` existia desde o Sprint 5 sem um único
+  chamador. Terço do meio de um container vira filho; ponta e folha viram fresta. **O fio da fresta começa no
+  recuo que o rótulo vai ter** — é o recuo que responde "em qual pai isto cai?". **Anel** para o alvo e **fundo**
+  para o selecionado: durante o arrasto o nó em voo está selecionado, e o mesmo fundo nos dois seria
+  indistinguível. As caixas saem do DOM **uma vez** no `pointerdown`, em coordenada de conteúdo, senão a rolagem
+  automática as invalida. Detalhe em docs/frontend.md §2.5.
+- **`reparentNodes` remove tudo antes de inserir qualquer coisa**, e é **tudo ou nada**. Intercalar faz cada
+  remoção deslocar o destino das inserções seguintes, e um bloco reordenado dentro do próprio pai sai
+  embaralhado — foi assim que a primeira versão errou.
+- **`Ctrl+→` / `Ctrl+←` indentam e desindentam na linha focada.** Sem eles, trocar de pai existiria só no
+  ponteiro: as setas do cabeçalho reordenam entre irmãos e nunca mudam de pai. O foco sobrevive porque as linhas
+  são irmãs com `key` estável — há teste, verificado quebrando a `key` de propósito.
 - **Ação que apaga o histórico confirma antes** (`ConfirmDialog`). `newProject` e `importSpec` zeram `past` e
   `future`: não há `Ctrl+Z` depois delas. Ação inofensiva **não** confirma — confirmação barata é o que ensina a
   clicar em "sim" sem ler, e é o que faz a confirmação cara deixar de proteger.

@@ -43,7 +43,7 @@
   "apps/web/src/components/ThemeToggle.tsx": 14,
   "apps/web/src/components/Toolbar.test.tsx": 9,
   "apps/web/src/components/Toolbar.tsx": 17,
-  "apps/web/src/components/TreePanel.tsx": 8,
+  "apps/web/src/components/TreePanel.tsx": 7,
   "apps/web/src/components/ZoomControl.tsx": 16,
   "apps/web/src/components/controls/ArtboardField.test.tsx": 8,
   "apps/web/src/lib/artboard.ts": 11,

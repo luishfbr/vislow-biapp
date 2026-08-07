@@ -169,6 +169,48 @@ export function reparentNode(
   return insertChild(detached, newParentId, node, index);
 }
 
+/**
+ * Varios nos para o mesmo pai, na ordem dada. TUDO OU NADA — metade do bloco no
+ * pai novo seria pior. `index` conta na lista ANTES das remocoes, a que se ve.
+ */
+export function reparentNodes(
+  root: SpecNode,
+  ids: readonly string[],
+  newParentId: string,
+  index?: number,
+): SpecNode | null {
+  const parent = findNode(root, newParentId);
+  if (ids.length === 0 || !parent || !acceptsChildren(parent)) return null;
+
+  const nodes: SpecNode[] = [];
+  for (const id of ids) {
+    const node = findNode(root, id);
+    if (!node || subtreeIds(node).has(newParentId)) return null;
+    nodes.push(node);
+  }
+
+  // Remover TUDO antes de inserir qualquer coisa: intercalar faria cada remocao
+  // deslocar o destino das insercoes seguintes, e um bloco reordenado dentro do
+  // proprio pai sairia embaralhado.
+  let detached: SpecNode | null = root;
+  for (const id of ids) detached = detached && removeNode(detached, id);
+  if (!detached) return null;
+
+  const moved = new Set(ids);
+  const before = (parent.children ?? []).filter(
+    (child, position) => moved.has(child.id) && index !== undefined && position < index,
+  ).length;
+  const at = index === undefined ? undefined : Math.max(index - before, 0);
+
+  // No fim, em ordem; num indice fixo, ao contrario — inserir sempre na mesma
+  // posicao empurra quem chegou antes, entao o ultimo a entrar fica na frente.
+  let next: SpecNode | null = detached;
+  for (const node of at === undefined ? nodes : [...nodes].reverse()) {
+    next = next && insertChild(next, newParentId, node, at);
+  }
+  return next;
+}
+
 /** EXCECAO a convencao do modulo: devolve sempre uma raiz, nunca `null` — e varredura, nao edicao. */
 export function unbindRole(root: SpecNode, roleName: string): SpecNode {
   const roleKeys = new Set(

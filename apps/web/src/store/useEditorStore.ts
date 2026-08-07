@@ -19,7 +19,7 @@ import {
   removeColumn,
   removeNode,
   removeRow,
-  reparentNode,
+  reparentNodes,
   selectionAfterRemoval,
   setCell,
   setColumnKind,
@@ -93,6 +93,7 @@ export interface EditorState {
   ) => readonly string[];
   moveSelected: (delta: number) => void;
   reparent: (id: string, parentId: string, index?: number) => void;
+  reparentMany: (ids: readonly string[], parentId: string, index?: number) => void;
   setProp: (id: string, key: string, value: unknown) => void;
   setRect: (id: string, rect: NodeRect) => void;
   setRects: (entries: readonly { id: string; rect: NodeRect }[]) => void;
@@ -438,7 +439,11 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
 
     reparent: (id, parentId, index) => {
-      editTree(reparentNode(get().spec.root, id, parentId, index), [id]);
+      get().reparentMany([id], parentId, index);
+    },
+
+    reparentMany: (ids, parentId, index) => {
+      editTree(reparentNodes(get().spec.root, ids, parentId, index), ids);
     },
 
     setProp: (id, key, value) => {

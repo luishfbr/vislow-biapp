@@ -781,6 +781,75 @@ describe('entrar e sair de container aninhado', () => {
 });
 
 /**
+ * Mudar de pai pelo arrasto na Composicao. A mira esta em `lib/treeDrop.test.ts`
+ * e a operacao em `tree.test.ts`; aqui fica a fronteira com o historico.
+ */
+describe('reparent de um bloco pelo store', () => {
+  /** Raiz com [texto, painel] e o painel com um texto dentro. */
+  function arvore(): { painel: string; texto: string; dentro: string } {
+    store().addNode('text');
+    const texto = selectedId() ?? '';
+    store().select(store().spec.root.id);
+    store().addNode('container');
+    const painel = selectedId() ?? '';
+    store().addNode('text');
+    return { painel, texto, dentro: selectedId() ?? '' };
+  }
+
+  it('leva o no para o pai novo e o deixa selecionado', () => {
+    const { painel, texto } = arvore();
+    store().reparentMany([texto], painel);
+
+    expect(findNode(store().spec.root, painel)?.children?.map((c) => c.id)).toContain(texto);
+    expect(store().selectedIds).toEqual([texto]);
+    expect(store().issues).toEqual([]);
+  });
+
+  it('um arrasto e UM passo de desfazer', () => {
+    const { painel, texto } = arvore();
+    const antes = store().spec.root;
+
+    store().reparentMany([texto], painel);
+    store().undo();
+
+    expect(store().spec.root).toEqual(antes);
+  });
+
+  it('recusa soltar um container dentro de um filho dele, sem mexer em nada', () => {
+    const { painel, dentro } = arvore();
+    const antes = store().spec.root;
+
+    store().reparentMany([painel], dentro);
+    expect(store().spec.root).toBe(antes);
+  });
+
+  it('o filho que chega num canvas ganha caixa, e a spec continua valida', () => {
+    const { painel, texto } = arvore();
+    store().reparentMany([texto], painel);
+
+    expect(findNode(store().spec.root, texto)?.rect).toBeDefined();
+    expect(validateSpec(store().spec).kind).toBe('valid');
+  });
+
+  it('o bloco inteiro vai junto, na ordem da arvore', () => {
+    store().addNode('text');
+    const primeiro = selectedId() ?? '';
+    store().select(store().spec.root.id);
+    store().addNode('text');
+    const segundo = selectedId() ?? '';
+    store().select(store().spec.root.id);
+    store().addNode('container');
+    const painel = selectedId() ?? '';
+
+    store().reparentMany([primeiro, segundo], painel);
+    expect(findNode(store().spec.root, painel)?.children?.map((c) => c.id)).toEqual([
+      primeiro,
+      segundo,
+    ]);
+  });
+});
+
+/**
  * A selecao desce ate o nivel do no (`hostOf`).
  *
  * Sem isto a arvore selecionava um neto que a prancheta nao mostrava: a camada
