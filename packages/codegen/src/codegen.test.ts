@@ -10,6 +10,7 @@ import {
   assertValidSpec,
   consumesData,
   createNode,
+  insertChild,
   walk,
   type NodeKind,
   type VisualSpec,
@@ -151,8 +152,8 @@ describe('paridade de interatividade no fonte gerado', () => {
   });
 
   it('liga a interacao mesmo numa arvore que nao le dados', () => {
-    const textOnly = createNode('container');
-    textOnly.children = [createNode('text')];
+    const vazio = createNode('container');
+    const textOnly = insertChild(vazio, vazio.id, createNode('text')) ?? vazio;
     const semDados = generateVisualSource(assertValidSpec(specWith(textOnly)), BUILD_ID);
 
     expect(semDados).toContain('EMPTY_FRAME');
@@ -172,10 +173,10 @@ describe('texto do usuario nunca vira codigo (RN-11)', () => {
   ];
 
   it.each(hostis)('neutraliza %j num campo de texto', (content) => {
-    const container = createNode('container');
+    const vazio = createNode('container');
     const text = createNode('text');
     text.props.content = content;
-    container.children = [text];
+    const container = insertChild(vazio, vazio.id, text) ?? vazio;
 
     const source = generateVisualSource(assertValidSpec(specWith(container)), BUILD_ID);
 
@@ -345,8 +346,8 @@ describe('capabilities.json contra o schema oficial do powerbi-visuals-api', () 
   });
 
   it('a arvore que nao le dados gera capabilities validos', () => {
-    const container = createNode('container');
-    container.children = [createNode('text')];
+    const vazio = createNode('container');
+    const container = insertChild(vazio, vazio.id, createNode('text')) ?? vazio;
     const capabilities = generateCapabilities(assertValidSpec(specWith(container)));
     expect(validate(capabilities), explique()).toBe(true);
   });
@@ -397,10 +398,10 @@ describe('generateProject', () => {
   });
 
   it('recusa spec invalida em vez de gerar fonte quebrado', () => {
-    const container = createNode('container');
+    const vazio = createNode('container');
     const texto = nodeOf('text');
     delete texto.props.fontSize;
-    container.children = [texto];
+    const container = insertChild(vazio, vazio.id, texto) ?? vazio;
 
     expect(() => generateProject(specWith(container), BUILD_ID)).toThrow(/fontSize/);
   });

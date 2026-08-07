@@ -142,12 +142,29 @@ function resolveSelection(root: SpecNode, ids: readonly string[]): readonly stri
   return (parent.children ?? []).map((child) => child.id).filter((id) => wanted.has(id));
 }
 
+/**
+ * O container onde a camada monta para estes nos ficarem manipulaveis — `null` e
+ * a raiz. Pai que empilha nao tem camada: fica onde estava (docs/frontend.md §3.6.1).
+ */
+function hostOf(root: SpecNode, ids: readonly string[], current: string | null): string | null {
+  const first = ids[0];
+  if (first === undefined) return current;
+
+  const parent = parentOf(root, first);
+  if (!parent) return current;
+  if (parent.id === root.id) return null;
+  return positionsChildren(parent) ? parent.id : current;
+}
+
 export const useEditorStore = create<EditorState>((set, get) => {
   let gestureBase: VisualSpec | null = null;
 
   /** `selectedIds` undefined = nao mexe na selecao; lista = troca. Colapsar os dois desselecionaria ao editar. */
   const commit = (spec: VisualSpec, selectedIds?: readonly string[]): void => {
-    const selection = selectedIds === undefined ? {} : { selectedIds };
+    const selection =
+      selectedIds === undefined
+        ? {}
+        : { selectedIds, enteredId: hostOf(spec.root, selectedIds, get().enteredId) };
 
     if (gestureBase) {
       set({ spec, ...selection });
@@ -264,11 +281,16 @@ export const useEditorStore = create<EditorState>((set, get) => {
     },
 
     select: (id) => {
+      // Limpar NAO sobe de nivel: o `Esc` limpa a selecao e so depois sai do
+      // container, e colapsar os dois passos tiraria o usuario de onde ele esta.
       if (id === null) {
         set({ selectedIds: NO_SELECTION });
         return;
       }
-      if (findNode(get().spec.root, id)) set({ selectedIds: [id] });
+      const { spec, enteredId } = get();
+      if (findNode(spec.root, id)) {
+        set({ selectedIds: [id], enteredId: hostOf(spec.root, [id], enteredId) });
+      }
     },
 
     toggleSelected: (id) => {
@@ -285,12 +307,14 @@ export const useEditorStore = create<EditorState>((set, get) => {
       const sameParent =
         anchor !== undefined && parentOf(spec.root, anchor)?.id === parentOf(spec.root, id)?.id;
 
-      set({ selectedIds: sameParent ? resolveSelection(spec.root, [...selectedIds, id]) : [id] });
+      const next = sameParent ? resolveSelection(spec.root, [...selectedIds, id]) : [id];
+      set({ selectedIds: next, enteredId: hostOf(spec.root, next, get().enteredId) });
     },
 
     setSelection: (ids) => {
-      const next = resolveSelection(get().spec.root, ids);
-      set({ selectedIds: next });
+      const { spec, enteredId } = get();
+      const next = resolveSelection(spec.root, ids);
+      set({ selectedIds: next, enteredId: hostOf(spec.root, next, enteredId) });
     },
 
     selectSiblings: () => {

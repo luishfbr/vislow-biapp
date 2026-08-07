@@ -199,9 +199,11 @@ describe('schema gerado a partir do registro', () => {
   });
 
   it('aceita aninhamento de containers', () => {
+    // Pelo `insertChild`, e nao por `children =`: o filho de um canvas nasce com
+    // caixa, e montar a arvore a mao produziria uma spec que o editor nao produz.
     const inner = createNode('container');
-    inner.children = [createNode('text')];
-    expect(validateSpec(specWithChild(inner, 'Aninhado')).kind).toBe('valid');
+    const comFilho = insertChild(inner, inner.id, createNode('text')) ?? inner;
+    expect(validateSpec(specWithChild(comFilho, 'Aninhado')).kind).toBe('valid');
   });
 });
 

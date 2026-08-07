@@ -21,6 +21,29 @@ export interface PlacedChild {
 
 export type HandleId = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
 
+/** Caixa de tela, do jeito que o `getBoundingClientRect` devolve. */
+export interface ScreenBox {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+/** Caixa medida na tela, em pixel de PRANCHETA: a diferenca cancela o deslocamento, e sobra desfazer o zoom. */
+export function boxWithin(
+  box: ScreenBox,
+  base: ScreenBox,
+  scale: number,
+): { x: number; y: number; w: number; h: number } | null {
+  if (scale <= 0) return null;
+  return {
+    x: (box.left - base.left) / scale,
+    y: (box.top - base.top) / scale,
+    w: box.width / scale,
+    h: box.height / scale,
+  };
+}
+
 export interface Guide {
   axis: 'x' | 'y';
   at: number;

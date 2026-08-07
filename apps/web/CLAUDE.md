@@ -82,6 +82,19 @@ Detalhe completo em [docs/frontend.md](../../docs/frontend.md). **UI aqui exige 
 - **A camada de manipulação vale num nível de cada vez** (`enteredId`). Duplo clique entra num container
   aninhado, `Esc` sobe. Com todas as camadas ativas, a de dentro cobria a de fora e o container nunca era
   clicável.
+- **Selecionar já entra no pai** (`hostOf`, no store). Toda escrita de `selectedIds` grava o `enteredId` junto,
+  então um neto ganha alça sem duplo clique. Pai que **empilha** não muda o nível — lá não há camada. E
+  **limpar a seleção não sobe**: o `Esc` é uma cascata de três passos, e o segundo não pode arrastar o terceiro.
+- **Container novo nasce `canvas`.** Empilhado o filho não tem `rect` e não redimensiona, e era esse o caminho
+  comum. Não é mudança de schema: a enum já tinha o valor e spec salva carrega o dela por extenso. Fixture de
+  teste que depende de empilhar declara `CONTAINER_STACK` — herdar o default tira o sentido de toda asserção
+  sobre a **ausência** do `CanvasSlot`.
+- **A alça do filho de um `stack` mede o DOM, e o primeiro arrasto converte o pai** (`StackHandles`, montado na
+  prancheta). Medir aqui não fere a ADR-18 — é pré-conversão, nunca durante o arrasto. Ela acha o elemento pelos
+  **índices da spec**, o que exige que cada componente do kit renderize **um** elemento raiz (teste em
+  `SpecPreview.test.tsx`); fica montada até o fim do gesto porque é a raiz dela que segura a captura do
+  ponteiro; e é toda `aria-hidden` — o caminho com foco é o botão "Posicionar livremente" do painel. Detalhe em
+  docs/frontend.md §3.6.3.
 - **Um arrasto é UM passo de desfazer.** `beginGesture`/`endGesture` tornam a escrita transitória: sem histórico,
   sem `validateSpec`, sem gravação até o `pointerup`.
 - **O painel fala pixel, a spec guarda `%`.** A conversão é `lib/units.ts`; o tamanho do pai vem do

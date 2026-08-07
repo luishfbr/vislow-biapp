@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { cloneSubtree, createEmptySpec, createNode } from './factory.js';
 import {
+  CONTAINER_CANVAS,
+  CONTAINER_STACK,
   NODE_DESCRIPTORS,
   NODE_KINDS,
   consumesData,
@@ -14,9 +16,11 @@ import {
   ancestryOf,
   clampRect,
   findNode,
+  indexPath,
   insertChild,
   moveNode,
   parentOf,
+  positionsChildren,
   removeNode,
   reparentNode,
   selectionAfterRemoval,
@@ -72,6 +76,13 @@ describe('navegacao', () => {
 
   it('subtreeIds inclui o proprio no', () => {
     expect(subtreeIds(fixture())).toEqual(new Set(['root', 'titulo', 'linha', 'nota', 'rodape']));
+  });
+
+  it('indexPath desce por indice de filho, e a raiz e o caminho vazio', () => {
+    expect(indexPath(fixture(), 'nota')).toEqual([1, 0]);
+    expect(indexPath(fixture(), 'rodape')).toEqual([2]);
+    expect(indexPath(fixture(), 'root')).toEqual([]);
+    expect(indexPath(fixture(), 'inexistente')).toBeNull();
   });
 });
 
@@ -168,6 +179,26 @@ describe('props', () => {
 });
 
 describe('geometria', () => {
+  it('container novo posiciona, e o filho nasce com caixa', () => {
+    // O default do descritor. Empilhado, o filho nao tem caixa e nao tem alca.
+    const vazio = createNode('container');
+    expect(positionsChildren(vazio)).toBe(true);
+    expect(insertChild(vazio, vazio.id, createNode('text'))?.children?.[0]?.rect).toBeDefined();
+  });
+
+  it('empilhar para posicionar reparte em FAIXAS, e nao em cascata', () => {
+    // A conversao nao pode fazer a tela pular: cada filho recebe a faixa que ja
+    // ocupava. A cascata (`droppedRect`) e para no que chega, nao para o que fica.
+    const empilhado = setNodeProps(fixture(), 'root', { placement: CONTAINER_STACK })!;
+    const livre = setNodeProps(empilhado, 'root', { placement: CONTAINER_CANVAS })!;
+
+    expect((livre.children ?? []).map((child) => child.rect)).toEqual([
+      { x: 0, y: 0, w: 100, h: 33.33 },
+      { x: 0, y: 33.33, w: 100, h: 33.33 },
+      { x: 0, y: 66.67, w: 100, h: 33.33 },
+    ]);
+  });
+
   it('prende a caixa dentro do pai em vez de rejeitar o arrasto', () => {
     // Arrastar alem da borda quer dizer "encosta na borda". Rejeitar faria o no
     // saltar de volta para a posicao anterior no meio do gesto.

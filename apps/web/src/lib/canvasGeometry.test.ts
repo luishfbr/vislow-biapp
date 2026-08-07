@@ -6,6 +6,7 @@ import {
   applyGesture,
   applyGroupMove,
   bandOf,
+  boxWithin,
   byKeyboard,
   edgesOf,
   marqueeHits,
@@ -412,5 +413,35 @@ describe('banda de selecao', () => {
     const paraTras = bandOf({ x: 250, y: 250 }, { x: 50, y: 50 });
     expect(paraTras).toEqual({ left: 50, top: 50, right: 250, bottom: 250 });
     expect(marqueeHits(BOXES, paraTras)).toEqual(['a', 'b']);
+  });
+});
+
+describe('caixa medida na tela', () => {
+  // A alca fantasma nao tem `%` para desenhar: o filho de um container que
+  // empilha nao tem caixa na spec. Ela mede o elemento e converte para pixel de
+  // prancheta — os dois lados ja vem transformados pela camera.
+  const base = { left: 200, top: 100, width: 1280, height: 720 };
+
+  it('desconta a origem da prancheta e desfaz o zoom', () => {
+    expect(boxWithin({ left: 400, top: 300, width: 320, height: 180 }, base, 2)).toEqual({
+      x: 100,
+      y: 100,
+      w: 160,
+      h: 90,
+    });
+  });
+
+  it('em 100% a caixa e a diferenca crua', () => {
+    expect(boxWithin({ left: 200, top: 100, width: 640, height: 360 }, base, 1)).toEqual({
+      x: 0,
+      y: 0,
+      w: 640,
+      h: 360,
+    });
+  });
+
+  it('sem zoom valido nao inventa medida', () => {
+    // Dividir por zero devolveria `Infinity` como posicao, e a alca sairia da tela.
+    expect(boxWithin({ left: 0, top: 0, width: 10, height: 10 }, base, 0)).toBeNull();
   });
 });

@@ -71,6 +71,10 @@ const VALUE_LABELS: Record<string, string> = {
   // rotulo errado no dropdown dentro do relatorio de outra pessoa.
   inline: 'Na mesma linha',
   stacked: 'Abaixo do rotulo',
+  // Disposicao do container. Sem entrada aqui o dropdown mostrava "stack" e
+  // "canvas" crus, e "livre" e a palavra que a alca e o painel tambem usam.
+  stack: 'Empilhar',
+  canvas: 'Livre',
 };
 
 export interface ValueOption {

@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import {
+  NODE_KINDS,
   createEmptySpec,
   createNode,
   insertChild,
+  suggestRoleBindings,
   setNodeProps,
   setNodeRect,
   type SpecNode,
@@ -78,6 +80,11 @@ function textNode(props: Record<string, unknown>): SpecNode {
 }
 
 const NAO_RENDERIZOU = 'Não foi possível renderizar o visual';
+
+/** Um no do tipo pedido, com os papeis ligados as colunas da tabela padrao. */
+function nodeOf(kind: (typeof NODE_KINDS)[number]): SpecNode {
+  return createNode(kind, suggestRoleBindings(kind, createEmptySpec('x').data.columns));
+}
 
 describe('preview da arvore', () => {
   it('desenha o conteudo do usuario, sem card de erro', () => {
@@ -205,6 +212,28 @@ describe('preview da arvore', () => {
 
     const dom = render(spec);
     expect(dom.textContent).toContain('La dentro');
+    expect(dom.textContent).not.toContain(NAO_RENDERIZOU);
+  });
+
+  it('o i-esimo filho da spec e o i-esimo elemento no DOM', () => {
+    // A alca fantasma acha o elemento de um no descendo pelos INDICES da spec
+    // (`indexPath` + `elementAt`, no `StackHandles`), porque o preview nao marca
+    // no nenhum. Um tipo novo que renderizasse fragmento ou dois irmaos faria a
+    // contagem escorregar, e a alca apareceria sobre o no errado — em silencio.
+    //
+    // EMPILHADO de proposito: e o unico arranjo em que o filho da spec e filho
+    // direto do container no DOM. Em canvas o `CanvasSlot` entra no meio, e a
+    // contagem passaria por ele em vez de pelos componentes.
+    const spec = createEmptySpec('Um elemento por no');
+    let raiz = setNodeProps(spec.root, spec.root.id, { placement: 'stack' })!;
+    for (const kind of NODE_KINDS) {
+      raiz = insertChild(raiz, spec.root.id, nodeOf(kind)) ?? raiz;
+    }
+
+    const dom = render({ ...spec, root: raiz });
+    const container = dom.querySelector('.vsl-root')?.children[0];
+
+    expect(container?.children).toHaveLength(NODE_KINDS.length);
     expect(dom.textContent).not.toContain(NAO_RENDERIZOU);
   });
 
